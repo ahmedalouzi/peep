@@ -1,0 +1,398 @@
+.onboarding-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.onboarding-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 16px;
+  width: 520px;
+  max-width: 94vw;
+  padding: 40px;
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.6);
+  animation: slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUp {
+  from { transform: translateY(24px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+/* Progress dots */
+.onboarding-progress {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 32px;
+}
+
+.onboarding-dot {
+  width: 28px;
+  height: 4px;
+  border-radius: 2px;
+  background: #30363d;
+  transition: background 0.3s;
+}
+
+.onboarding-dot.active {
+  background: #7c3aed;
+}
+
+.onboarding-dot.passed {
+  background: #059669;
+}
+
+/* Steps */
+.onboarding-step {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.onboarding-logo {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 4px;
+}
+
+.logo-icon {
+  font-size: 36px;
+  filter: drop-shadow(0 0 16px #7c3aed88);
+}
+
+.onboarding-logo h1 {
+  font-size: 26px;
+  font-weight: 700;
+  color: #f0f6fc;
+  margin: 0;
+  background: linear-gradient(135deg, #c084fc, #7c3aed);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.onboarding-subtitle {
+  color: #8b949e;
+  line-height: 1.6;
+  margin: 0;
+  font-size: 14px;
+}
+
+.onboarding-feature-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.onboarding-feature-list li {
+  color: #c9d1d9;
+  font-size: 13.5px;
+  padding: 10px 14px;
+  background: #0d1117;
+  border-radius: 8px;
+  border: 1px solid #21262d;
+}
+
+/* SDK step */
+.onboarding-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.onboarding-status.checking {
+  background: #1c2128;
+  border: 1px solid #30363d;
+  color: #8b949e;
+}
+
+.onboarding-status.found {
+  background: #0f2419;
+  border: 1px solid #1a4731;
+  color: #3fb950;
+}
+
+.onboarding-status.missing {
+  background: #2d1515;
+  border: 1px solid #5a2d2d;
+  color: #f85149;
+}
+
+.status-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.sdk-path {
+  font-size: 11px;
+  color: #6e7681;
+  margin-top: 2px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+.onboarding-sdk-missing {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.onboarding-sdk-row {
+  display: flex;
+  gap: 8px;
+}
+
+.onboarding-input {
+  flex: 1;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  color: #c9d1d9;
+  padding: 8px 12px;
+  font-size: 13px;
+  outline: none;
+  font-family: 'JetBrains Mono', monospace;
+  transition: border-color 0.2s;
+}
+
+.onboarding-input:focus {
+  border-color: #7c3aed;
+}
+
+.onboarding-desc {
+  color: #8b949e;
+  font-size: 13.5px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.onboarding-desc.small {
+  font-size: 12.5px;
+}
+
+.onboarding-desc a {
+  color: #a78bfa;
+  text-decoration: none;
+}
+
+.onboarding-desc a:hover {
+  text-decoration: underline;
+}
+
+/* Telemetry cards */
+.onboarding-telemetry-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.telemetry-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 16px;
+  background: #0d1117;
+  border: 1px solid #21262d;
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.telemetry-card:hover {
+  border-color: #484f58;
+  background: #161b22;
+}
+
+.telemetry-card.selected {
+  border-color: #7c3aed;
+  background: #1a1040;
+}
+
+.tc-icon {
+  font-size: 16px;
+  margin-top: 1px;
+  flex-shrink: 0;
+  color: #8b949e;
+}
+
+.telemetry-card.selected .tc-icon {
+  color: #a78bfa;
+}
+
+.telemetry-card strong {
+  display: block;
+  color: #c9d1d9;
+  font-size: 13.5px;
+  margin-bottom: 3px;
+}
+
+.telemetry-card p {
+  color: #6e7681;
+  font-size: 12px;
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Done step */
+.done-step {
+  align-items: center;
+  text-align: center;
+}
+
+.done-check {
+  font-size: 54px;
+  margin-bottom: 4px;
+  animation: pop 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes pop {
+  from { transform: scale(0.4); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+
+.done-step h2 {
+  font-size: 22px;
+  color: #f0f6fc;
+  margin: 0;
+}
+
+.onboarding-tips {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+  width: 100%;
+}
+
+.onboarding-tips li {
+  color: #8b949e;
+  font-size: 13px;
+  padding: 10px 14px;
+  background: #0d1117;
+  border: 1px solid #21262d;
+  border-radius: 8px;
+}
+
+.onboarding-tips kbd {
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+  color: #c9d1d9;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Actions row */
+.onboarding-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+}
+
+/* Buttons */
+.onboarding-btn-primary {
+  background: linear-gradient(135deg, #7c3aed, #6d28d9);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 22px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.15s;
+  margin-top: 8px;
+}
+
+.onboarding-btn-primary:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.onboarding-btn-primary:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.onboarding-btn-primary.large {
+  padding: 13px 32px;
+  font-size: 15px;
+  width: 100%;
+  max-width: 260px;
+  margin-top: 4px;
+}
+
+.onboarding-btn-secondary {
+  background: #21262d;
+  color: #c9d1d9;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s;
+}
+
+.onboarding-btn-secondary:hover {
+  background: #30363d;
+}
+
+.onboarding-btn-ghost {
+  background: none;
+  border: none;
+  color: #6e7681;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 6px 0;
+  transition: color 0.2s;
+}
+
+.onboarding-btn-ghost:hover {
+  color: #c9d1d9;
+}
+
+.onboarding-card h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #f0f6fc;
+  margin: 0;
+}
+
+/* Spinner */
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #30363d;
+  border-top-color: #7c3aed;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  display: inline-block;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

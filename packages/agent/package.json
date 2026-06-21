@@ -1,0 +1,23 @@
+{
+  "name": "@peep/agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "eval": "npx tsx src/evals/runner.ts"
+  },
+  "dependencies": {
+    "@peep/platform-core": "workspace:*",
+    "@peep/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.1",
+    "typescript": "^5.7.2"
+  }
+}

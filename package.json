@@ -1,0 +1,17 @@
+{
+  "name": "peep",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI desktop IDE for Flutter developers",
+  "scripts": {
+    "dev": "pnpm --filter @peep/desktop dev",
+    "build": "pnpm -r build",
+    "package": "pnpm --filter @peep/desktop package",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@9.15.0"
+}

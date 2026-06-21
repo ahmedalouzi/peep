@@ -1,0 +1,56 @@
+.activity-bar {
+  width: 48px;
+  height: 100%;
+  background-color: var(--bg-surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  flex-shrink: 0;
+}
+
+.activity-bar__top,
+.activity-bar__bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.activity-action {
+  width: 48px;
+  height: 48px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+  transition: color 0.2s;
+}
+
+.activity-action:hover {
+  color: var(--text-primary);
+}
+
+.activity-action.active {
+  color: var(--text-primary);
+}
+
+.activity-action.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background-color: var(--accent);
+}
+
+.activity-action svg {
+  width: 24px;
+  height: 24px;
+}

@@ -1,0 +1,45 @@
+.sidebar__body {
+  padding: 8px 0;
+}
+
+.sidebar__welcome {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  color: var(--text-secondary);
+}
+
+.sidebar__recent {
+  margin-top: 8px;
+}
+
+.sidebar__recent-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.sidebar__recent ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sidebar__recent-item {
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+}
+
+.sidebar__recent-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}

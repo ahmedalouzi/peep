@@ -1,0 +1,149 @@
+.panel-header--tabs {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 12px;
+}
+
+.bottom-panel__tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.bottom-panel__tabs .btn {
+  border-radius: 0;
+  border-bottom: 1px solid transparent;
+  padding: 8px 12px;
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.bottom-panel__tabs .bottom-tab--active {
+  background: transparent !important;
+  color: var(--text-primary) !important;
+  border-bottom: 1px solid var(--accent);
+}
+
+.bottom-panel__body {
+  background: var(--bg-base);
+  position: relative;
+  min-height: 0;
+}
+
+.bottom-panel__tab {
+  display: none;
+  height: 100%;
+  min-height: 0;
+}
+
+.bottom-panel__tab--active {
+  display: block;
+}
+
+.bottom-panel__logs,
+.bottom-panel__problems {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: auto;
+}
+
+.bottom-panel__empty {
+  padding: 16px;
+  color: var(--text-muted);
+}
+
+.bottom-tab--active {
+  color: var(--accent) !important;
+  background: var(--accent-soft) !important;
+}
+
+.badge {
+  margin-left: 4px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.badge--error {
+  background: rgba(248, 81, 73, 0.2);
+  color: var(--danger);
+}
+
+.badge--warn {
+  background: rgba(210, 153, 34, 0.2);
+  color: var(--warning);
+}
+
+.problem-row {
+  display: grid;
+  grid-template-columns: 72px 1fr auto;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 16px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.problem-row:hover {
+  background: var(--bg-hover);
+}
+
+.problem-row__severity {
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.problem-row--error .problem-row__severity {
+  color: var(--danger);
+}
+
+.problem-row--warning .problem-row__severity {
+  color: var(--warning);
+}
+
+.problem-row--info .problem-row__severity {
+  color: var(--accent);
+}
+
+.problem-row__message {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.problem-row__location {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.bottom-panel__logs {
+  padding: 12px 16px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.log-line {
+  color: var(--text-secondary);
+}
+
+.log-line--info .log-line__prefix {
+  color: var(--accent);
+}
+
+.log-line--warn .log-line__prefix {
+  color: var(--warning);
+}
+
+.log-line--error .log-line__prefix {
+  color: var(--danger);
+}

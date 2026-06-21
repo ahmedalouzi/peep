@@ -1,0 +1,68 @@
+.file-tree {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.file-tree__item {
+  margin: 0;
+}
+
+.file-tree__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 12px 4px 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+}
+
+.file-tree__row--file,
+.file-tree__row--dir {
+  cursor: pointer;
+}
+
+.file-tree__row--file:hover,
+.file-tree__row--file:focus-visible,
+.file-tree__row--dir:hover,
+.file-tree__row--dir:focus-visible {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.file-tree__row--dir {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.file-tree__arrow {
+  width: 12px;
+  font-size: 10px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s ease;
+}
+
+.file-tree__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.file-tree__icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.file-tree__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}

@@ -1,0 +1,23 @@
+appId: com.peep.desktop
+productName: Peep
+directories:
+  output: release
+files:
+  - out/**/*
+publish:
+  # Placeholder config for auto-update-service.ts to work
+  provider: github
+  owner: YOUR_GITHUB_USERNAME
+  repo: peep
+win:
+  target: nsis
+  icon: resources/icons/icon.ico
+  # TODO: Add Authenticode signing configuration here when ready
+  # certificateFile: "build/certs/your_cert.pfx"
+  # certificatePassword: "YOUR_PASSWORD"
+  # sign: "scripts/sign.js" (if using custom signing script)
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false

@@ -1,0 +1,16 @@
+node_modules/
+dist/
+dist-electron/
+out/
+release/
+*.local
+.DS_Store
+Thumbs.db
+*.log
+.env
+.env.*
+!.env.example
+.peep/
+*.tsbuildinfo
+.vscode/*
+!.vscode/extensions.json

@@ -1,0 +1,163 @@
+.preview-pane__body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-base);
+}
+
+.preview-device-select {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.preview-platform-badge {
+  margin-left: 8px;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1px 7px;
+  vertical-align: middle;
+}
+
+.preview-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 20px;
+  gap: 10px;
+}
+
+/* ── Phone frame ─────────────────────────────────────────────────── */
+.phone-frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: #0a0a0a;
+  border-radius: 44px;
+  border: 2px solid #2c2c2c;
+  box-shadow:
+    0 0 0 1px #3a3a3a,
+    0 0 0 5px #181818,
+    0 36px 72px rgba(0, 0, 0, 0.8),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+  padding: 12px 6px 8px;
+}
+
+/* Dynamic Island pill */
+.phone-frame__notch {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  z-index: 10;
+  width: 80px;
+  height: 22px;
+  border-radius: 20px;
+  background: #000;
+  transform: translateX(-50%);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.06);
+}
+
+.phone-frame__screen {
+  flex: 1;
+  border-radius: 38px;
+  background: #000;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Home indicator */
+.phone-frame__home {
+  height: 4px;
+  width: 90px;
+  margin: 6px auto 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+/* ── Device label ────────────────────────────────────────────────── */
+.preview-device-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+/* ── Placeholder states ──────────────────────────────────────────── */
+.preview-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 100%;
+  padding: 24px;
+  text-align: center;
+  color: var(--text-secondary);
+  background: #000;
+}
+
+.preview-placeholder__icon {
+  font-size: 28px;
+}
+
+.preview-placeholder__spinner {
+  animation: spin 1.4s linear infinite;
+  display: inline-block;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.preview-placeholder h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.preview-placeholder p {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.preview-placeholder--error p {
+  color: var(--danger);
+}
+
+.preview-retry-btn {
+  margin-top: 4px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 6px;
+  color: #c9d1d9;
+  font-size: 11.5px;
+  cursor: pointer;
+  padding: 5px 14px;
+  transition: background 0.2s;
+}
+
+.preview-retry-btn:hover {
+  background: rgba(255,255,255,0.14);
+}
+
+/* ── iframe ──────────────────────────────────────────────────────── */
+.preview-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #fff;
+}

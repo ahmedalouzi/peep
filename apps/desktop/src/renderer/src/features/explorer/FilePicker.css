@@ -1,0 +1,75 @@
+.file-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.file-picker {
+  width: min(560px, 92vw);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.file-picker__input {
+  width: 100%;
+  padding: 14px 16px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 14px;
+  outline: none;
+}
+
+.file-picker__list {
+  margin: 0;
+  padding: 6px;
+  max-height: 320px;
+  overflow: auto;
+  list-style: none;
+}
+
+.file-picker__empty {
+  padding: 16px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.file-picker__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+}
+
+.file-picker__item:hover,
+.file-picker__item--active {
+  background: var(--bg-hover);
+}
+
+.file-picker__name {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.file-picker__path {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

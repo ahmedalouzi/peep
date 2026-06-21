@@ -1,0 +1,278 @@
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px 24px;
+  height: 100%;
+  min-height: 200px;
+  gap: 12px;
+  user-select: none;
+}
+
+.empty-state__icon {
+  font-size: 42px;
+  margin-bottom: 4px;
+  opacity: 0.85;
+  animation: floatIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes floatIn {
+  from { transform: translateY(8px); opacity: 0; }
+  to   { transform: translateY(0);   opacity: 0.85; }
+}
+
+.empty-state__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #c9d1d9;
+  margin: 0;
+}
+
+.empty-state__desc {
+  font-size: 12.5px;
+  color: #6e7681;
+  line-height: 1.6;
+  margin: 0;
+  max-width: 280px;
+}
+
+.empty-state__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.empty-state__btn {
+  border-radius: 7px;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 7px 16px;
+  transition: all 0.18s;
+  border: none;
+}
+
+.empty-state__btn.primary {
+  background: linear-gradient(135deg, #7c3aed, #6d28d9);
+  color: #fff;
+}
+
+.empty-state__btn.primary:hover {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
+.empty-state__btn.secondary {
+  background: #21262d;
+  border: 1px solid #30363d;
+  color: #c9d1d9;
+}
+
+.empty-state__btn.secondary:hover {
+  background: #30363d;
+}
+
+.empty-state__hint {
+  font-size: 11.5px;
+  color: #484f58;
+  margin: 0;
+  font-style: italic;
+  max-width: 260px;
+}
+
+/* ── Antigravity-style "No Project" welcome screen ── */
+
+.antigravity-empty-state {
+  display: flex;
+  flex-direction: column;
+  padding: 40px 32px;
+  height: 100%;
+  color: #c9d1d9;
+  background: var(--bg-base);
+  overflow-y: auto;
+}
+
+.antigravity-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 600px;
+}
+
+.antigravity-logo {
+  color: #f0f6fc;
+  margin-bottom: 12px;
+  width: 42px;
+  height: 42px;
+}
+
+.antigravity-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #f0f6fc;
+  margin: 0 0 24px;
+}
+
+.antigravity-actions {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+.antigravity-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.antigravity-btn svg {
+  opacity: 0.8;
+}
+
+.antigravity-btn-primary {
+  background: #f0f6fc;
+  color: #0d1117;
+}
+
+.antigravity-btn-primary:hover {
+  background: #c9d1d9;
+}
+
+.antigravity-btn-secondary {
+  background: transparent;
+  color: #c9d1d9;
+  border-color: #30363d;
+}
+
+.antigravity-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: #8b949e;
+}
+
+.antigravity-section {
+  margin-bottom: 32px;
+  width: 100%;
+}
+
+.antigravity-section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #f0f6fc;
+  margin: 0 0 12px;
+}
+
+.antigravity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.antigravity-list-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  background: transparent;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.antigravity-list-item.empty {
+  cursor: default;
+  color: #8b949e;
+  font-size: 13px;
+  padding: 8px 0;
+}
+
+.antigravity-list-item:not(.empty):hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.antigravity-list-item strong {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #c9d1d9;
+}
+
+.antigravity-list-item span {
+  font-size: 12px;
+  color: #8b949e;
+  margin-top: 2px;
+}
+
+.antigravity-show-more {
+  background: transparent;
+  border: none;
+  color: #58a6ff;
+  font-size: 13px;
+  padding: 8px 0;
+  cursor: pointer;
+  margin-top: 4px;
+}
+
+.antigravity-show-more:hover {
+  text-decoration: underline;
+}
+
+/* Extensions Card */
+
+.antigravity-extension-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.ext-icon {
+  font-size: 24px;
+}
+
+.ext-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.ext-info strong {
+  font-size: 13.5px;
+  color: #f0f6fc;
+  margin-bottom: 2px;
+}
+
+.ext-info span {
+  font-size: 12px;
+  color: #8b949e;
+}
+
+.ext-download {
+  background: #238636;
+  color: #fff;
+  border: none;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.ext-download:hover {
+  background: #2ea043;
+}

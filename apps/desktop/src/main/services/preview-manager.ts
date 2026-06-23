@@ -1,23 +1,29 @@
-import type { BrowserWindow } from 'electron';
+import { BrowserWindow } from 'electron';
 import { IPC_EVENTS } from '@peep/shared';
 import type { PreviewSession } from '@peep/shared';
 import type { FlutterService } from './flutter-service';
 
 export class PreviewManager {
   private session: PreviewSession | null = null;
-  private mainWindow: BrowserWindow | null = null;
-
-  setMainWindow(window: BrowserWindow | null): void {
-    this.mainWindow = window;
+  setMainWindow(_window: BrowserWindow | null): void {
+    // no-op
   }
 
   getSession(): PreviewSession | null {
     return this.session;
   }
 
+  setSession(session: PreviewSession): void {
+    this.emit(session);
+  }
+
   private emit(session: PreviewSession): void {
     this.session = session;
-    this.mainWindow?.webContents.send(IPC_EVENTS.PREVIEW_STATUS, session);
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send(IPC_EVENTS.PREVIEW_STATUS, session);
+      }
+    }
   }
 
   async start(projectRoot: string, flutter: FlutterService): Promise<PreviewSession> {
@@ -30,7 +36,11 @@ export class PreviewManager {
       const { url, processId, logs } = await flutter.startWebPreview(projectRoot);
 
       for (const line of logs) {
-        this.mainWindow?.webContents.send(IPC_EVENTS.PREVIEW_LOG, line);
+        for (const win of BrowserWindow.getAllWindows()) {
+          if (!win.isDestroyed()) {
+            win.webContents.send(IPC_EVENTS.PREVIEW_LOG, line);
+          }
+        }
       }
 
       const session: PreviewSession = { url, processId, status: 'running' };

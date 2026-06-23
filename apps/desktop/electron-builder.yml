@@ -5,19 +5,30 @@ directories:
 files:
   - out/**/*
 publish:
-  # Placeholder config for auto-update-service.ts to work
   provider: github
-  owner: YOUR_GITHUB_USERNAME
+  owner: ahmedalouzi
   repo: peep
 win:
   target: nsis
   icon: resources/icons/icon.ico
-  # TODO: Add Authenticode signing configuration here when ready
-  # certificateFile: "build/certs/your_cert.pfx"
-  # certificatePassword: "YOUR_PASSWORD"
-  # sign: "scripts/sign.js" (if using custom signing script)
+  # Add Authenticode signing configurations here when cert is ready:
+  # certificateFile: "build/certs/win_cert.pfx"
+  # certificatePassword: "WIN_CERT_PASSWORD"
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.developer-tools
+  icon: resources/icons/icon.icns
+  # Add Apple Developer ID code signing & notarization configurations here:
+  # identity: "Developer ID Application: Your Name (TeamID)"
+  # entitlements: "build/entitlements.mac.plist"
+  # entitlementsInherit: "build/entitlements.mac.plist"
+  # gatekeeperAssess: false
+  # hardentedRuntime: true
 nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
   deleteAppDataOnUninstall: false
+

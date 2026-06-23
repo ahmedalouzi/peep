@@ -7,9 +7,17 @@ import { OnboardingWizard } from './features/onboarding/OnboardingWizard';
 import { UpdateBanner } from './features/shared/UpdateBanner';
 import { KeyboardHelp } from './features/shared/KeyboardHelp';
 import { usePeepEvents } from './hooks/usePeepEvents';
+import { DetachedPreview } from './features/preview/DetachedPreview';
 
 export default function App() {
   usePeepEvents();
+
+  const query = new URLSearchParams(window.location.search);
+  const windowType = query.get('windowType');
+
+  if (windowType === 'preview') {
+    return <DetachedPreview />;
+  }
 
   const [globalPickerOpen, setGlobalPickerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);

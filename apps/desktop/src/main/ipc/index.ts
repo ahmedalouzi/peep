@@ -1,4 +1,5 @@
-import { ipcMain, dialog, app, type BrowserWindow } from 'electron';
+import { ipcMain, dialog, app, BrowserWindow } from 'electron';
+import { join } from 'node:path';
 import { IPC_CHANNELS, IPC_EVENTS } from '@peep/shared';
 import type { Settings } from '@peep/shared';
 import { DatabaseService } from '../services/db';
@@ -20,6 +21,7 @@ import { buildAuditReport, capturePerformanceSnapshot } from '../services/audit-
 
 let db: DatabaseService | null = null;
 let mainWindow: BrowserWindow | null = null;
+let previewWindow: BrowserWindow | null = null;
 let agentService: AgentService | null = null;
 
 const previewManager = new PreviewManager();
@@ -48,30 +50,64 @@ async function runAnalyze(projectPath: string, flutter: FlutterService): Promise
   mainWindow?.webContents.send(IPC_EVENTS.DIAGNOSTICS_UPDATED, diagnostics);
 }
 
+async function runRnAnalyze(projectPath: string, rn: ReactNativeService): Promise<void> {
+  const diagnostics = await rn.analyze(projectPath);
+  mainWindow?.webContents.send(IPC_EVENTS.DIAGNOSTICS_UPDATED, diagnostics);
+}
+
+
 async function openProjectAtPath(
   projectPath: string,
   workspace: WorkspaceManager,
   flutter: FlutterService,
+  rnService: ReactNativeService,
+  previewManager: PreviewManager,
 ): Promise<Awaited<ReturnType<WorkspaceManager['openFolder']>>> {
   const project = await workspace.openFolder(projectPath);
-  await onProjectOpened(project.path, flutter);
+  await onProjectOpened(project.path, flutter, rnService, previewManager);
   notifyGitChanged();
   return project;
 }
 
-async function onProjectOpened(projectPath: string, flutter: FlutterService): Promise<void> {
+async function onProjectOpened(
+  projectPath: string,
+  flutter: FlutterService,
+  rnService: ReactNativeService,
+  previewManager: PreviewManager,
+): Promise<void> {
+  const isFlutter = await flutter.isFlutterProject(projectPath);
+  const isRN = !isFlutter && (await rnService.isReactNativeProject(projectPath));
+
   fileWatcher.watch(projectPath, mainWindow, () => {
-    void runAnalyze(projectPath, flutter);
-    previewManager.reload(flutter);
+    if (isFlutter) {
+      void runAnalyze(projectPath, flutter);
+      previewManager.reload(flutter);
+    } else if (isRN) {
+      void runRnAnalyze(projectPath, rnService);
+      const session = previewManager.getSession();
+      if (session && session.processId && session.status === 'running') {
+        rnService.reloadPreview(session.processId);
+      }
+    }
   });
 
-  void runAnalyze(projectPath, flutter);
+  if (isFlutter) {
+    void runAnalyze(projectPath, flutter);
 
-  try {
-    await previewManager.start(projectPath, flutter);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    mainWindow?.webContents.send(IPC_EVENTS.PREVIEW_LOG, `[preview] ${message}`);
+    previewManager.start(projectPath, flutter).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      mainWindow?.webContents.send(IPC_EVENTS.PREVIEW_LOG, `[preview] ${message}`);
+    });
+  } else if (isRN) {
+    void runRnAnalyze(projectPath, rnService);
+
+    rnService.startWebPreview(projectPath).then((result) => {
+      previewManager.setSession({ url: result.url, processId: result.processId, status: 'running' });
+    }).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      mainWindow?.webContents.send(IPC_EVENTS.PREVIEW_LOG, `[preview] ${message}`);
+      previewManager.setSession({ url: '', processId: 0, status: 'error', error: message });
+    });
   }
 }
 
@@ -100,35 +136,41 @@ export async function registerIpcHandlers(): Promise<{
   const flutter = new FlutterService(processManager, settings.flutterSdkPath);
   rnService = new ReactNativeService(processManager);
   platformRegistry = new PlatformRegistry(flutter, rnService);
-  agentService = new AgentService(db, workspace, flutter);
+  agentService = new AgentService(db, workspace, flutter, rnService);
   agentService.setMainWindow(mainWindow);
   const projectService = new ProjectService(flutter, workspace);
 
   ipcMain.handle(IPC_CHANNELS.DIALOG_SELECT_FOLDER, async () => {
-    const result = await dialog.showOpenDialog({
-      properties: ['openDirectory', 'createDirectory'],
+    const options = {
+      properties: ['openDirectory' as const, 'createDirectory' as const],
       title: 'Select parent folder',
-    });
+    };
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, options)
+      : await dialog.showOpenDialog(options);
     if (result.canceled || result.filePaths.length === 0) return null;
     return result.filePaths[0];
   });
 
   ipcMain.handle(IPC_CHANNELS.DIALOG_OPEN_FOLDER, async () => {
-    const result = await dialog.showOpenDialog({
-      properties: ['openDirectory'],
+    const options = {
+      properties: ['openDirectory' as const],
       title: 'Open Flutter Project',
-    });
+    };
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, options)
+      : await dialog.showOpenDialog(options);
 
     if (result.canceled || result.filePaths.length === 0) {
       return null;
     }
 
-    const project = await openProjectAtPath(result.filePaths[0], workspace, flutter);
+    const project = await openProjectAtPath(result.filePaths[0], workspace, flutter, rnService!, previewManager);
     return project;
   });
 
   ipcMain.handle(IPC_CHANNELS.WORKSPACE_OPEN_FOLDER, async (_event, folderPath: string) => {
-    return openProjectAtPath(folderPath, workspace, flutter);
+    return openProjectAtPath(folderPath, workspace, flutter, rnService!, previewManager);
   });
 
   ipcMain.handle(IPC_CHANNELS.WORKSPACE_GET_RECENT, () => {
@@ -151,8 +193,18 @@ export async function registerIpcHandlers(): Promise<{
     await workspace.writeFile(filePath, content);
     const project = workspace.getProject();
     if (project) {
-      void runAnalyze(project.path, flutter);
-      previewManager.reload(flutter);
+      const isFlutter = await flutter.isFlutterProject(project.path);
+      const isRN = !isFlutter && (await rnService!.isReactNativeProject(project.path));
+      if (isFlutter) {
+        void runAnalyze(project.path, flutter);
+        previewManager.reload(flutter);
+      } else if (isRN) {
+        void runRnAnalyze(project.path, rnService!);
+        const session = previewManager.getSession();
+        if (session && session.processId && session.status === 'running') {
+          rnService!.reloadPreview(session.processId);
+        }
+      }
       notifyGitChanged();
     }
   });
@@ -203,6 +255,60 @@ export async function registerIpcHandlers(): Promise<{
     previewManager.reload(flutter);
   });
 
+  ipcMain.handle(IPC_CHANNELS.PREVIEW_GET_SESSION, () => {
+    return previewManager.getSession();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PREVIEW_IS_DETACHED, () => {
+    return previewWindow !== null && !previewWindow.isDestroyed();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PREVIEW_DETACH, async () => {
+    if (previewWindow && !previewWindow.isDestroyed()) {
+      previewWindow.focus();
+      return;
+    }
+
+    previewWindow = new BrowserWindow({
+      width: 420,
+      height: 880,
+      minWidth: 320,
+      minHeight: 600,
+      title: 'Peep Mobile Preview',
+      backgroundColor: '#0d1117',
+      autoHideMenuBar: true,
+      webPreferences: {
+        preload: join(__dirname, '../preload/index.js'),
+        sandbox: false,
+        contextIsolation: true,
+        nodeIntegration: false,
+        webviewTag: true,
+      },
+    });
+
+    const isDev = !app.isPackaged && process.env.ELECTRON_RENDERER_URL;
+    if (isDev) {
+      previewWindow.loadURL(`${process.env.ELECTRON_RENDERER_URL}?windowType=preview`);
+    } else {
+      previewWindow.loadFile(join(__dirname, '../renderer/index.html'), { query: { windowType: 'preview' } });
+    }
+
+    previewWindow.on('closed', () => {
+      previewWindow = null;
+      // Broadcast state update that preview is attached back
+      const session = previewManager.getSession();
+      if (session) {
+        previewManager.setSession({ ...session });
+      }
+    });
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PREVIEW_ATTACH, () => {
+    if (previewWindow && !previewWindow.isDestroyed()) {
+      previewWindow.close();
+    }
+  });
+
   ipcMain.handle(IPC_CHANNELS.AGENT_SEND, async (_event, options) => {
     await agentService!.send(options);
   });
@@ -215,7 +321,16 @@ export async function registerIpcHandlers(): Promise<{
     await agentService!.applyEdits(editIds);
     const project = workspace.getProject();
     if (project) {
-      previewManager.reload(flutter);
+      const isFlutter = await flutter.isFlutterProject(project.path);
+      const isRN = !isFlutter && (await rnService!.isReactNativeProject(project.path));
+      if (isFlutter) {
+        previewManager.reload(flutter);
+      } else if (isRN) {
+        const session = previewManager.getSession();
+        if (session && session.processId && session.status === 'running') {
+          rnService!.reloadPreview(session.processId);
+        }
+      }
     }
   });
 
@@ -277,7 +392,7 @@ export async function registerIpcHandlers(): Promise<{
 
   ipcMain.handle(IPC_CHANNELS.PROJECT_CREATE, async (_event, options) => {
     const projectPath = await projectService.createFromTemplate(options);
-    return openProjectAtPath(projectPath, workspace, flutter);
+    return openProjectAtPath(projectPath, workspace, flutter, rnService!, previewManager);
   });
 
   ipcMain.handle(IPC_CHANNELS.PROJECT_CREATE_FROM_PROMPT, async (_event, options) => {
@@ -293,7 +408,7 @@ export async function registerIpcHandlers(): Promise<{
     });
 
     await agentService!.scaffold(projectPath, options.prompt);
-    return openProjectAtPath(projectPath, workspace, flutter);
+    return openProjectAtPath(projectPath, workspace, flutter, rnService!, previewManager);
   });
 
   // ── Telemetry ──────────────────────────────────────────────────────────────
@@ -354,11 +469,14 @@ export async function registerIpcHandlers(): Promise<{
 
   ipcMain.handle(IPC_CHANNELS.RN_START_PREVIEW, async (_event, projectPath: string) => {
     const result = await rnService!.startWebPreview(projectPath);
-    return { url: result.url, processId: result.processId, status: 'running' };
+    const session = { url: result.url, processId: result.processId, status: 'running' as const };
+    previewManager.setSession(session);
+    return session;
   });
 
   ipcMain.handle(IPC_CHANNELS.RN_STOP_PREVIEW, async (_event, processId: number) => {
     rnService!.stopPreview(processId);
+    previewManager.setSession({ url: '', processId: 0, status: 'stopped' });
   });
 
   ipcMain.handle(IPC_CHANNELS.RN_RELOAD_PREVIEW, async (_event, processId: number) => {

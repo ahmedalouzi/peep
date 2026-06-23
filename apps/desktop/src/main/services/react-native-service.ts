@@ -17,11 +17,11 @@ const PREVIEW_STARTUP_MS = 150_000;
 export class ReactNativeService {
   constructor(
     private processManager: ProcessManager,
-    private nodePath?: string,
+    _nodePath?: string,
   ) {}
 
-  setNodePath(path: string | undefined): void {
-    this.nodePath = path;
+  setNodePath(_path: string | undefined): void {
+    // optional setting
   }
 
   private getNpxBin(): string {
@@ -245,7 +245,7 @@ function parseTscOutput(output: string, root: string): Diagnostic[] {
   return diagnostics;
 }
 
-function parseEslintOutput(output: string, root: string): Diagnostic[] {
+function parseEslintOutput(output: string, _root: string): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
   // ESLint compact format: /path/to/file.tsx: line 10, col 5, Error - message (rule)
   const regex = /^(.+?):\s+line\s+(\d+),\s+col\s+(\d+),\s+(Error|Warning|Info)\s+-\s+(.+)$/gm;

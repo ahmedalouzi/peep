@@ -21,7 +21,7 @@ export function isValidProjectName(name: string): boolean {
 export class ProjectService {
   constructor(
     private flutter: FlutterService,
-    private workspace: WorkspaceManager,
+    _workspace: WorkspaceManager,
   ) {}
 
   listTemplates(): ProjectTemplateInfo[] {

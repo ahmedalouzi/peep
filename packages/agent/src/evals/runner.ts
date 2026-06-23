@@ -6,6 +6,7 @@ import { SCENARIOS } from './scenarios';
 import { EvalExecutor } from './executor';
 import { runAgentLoop } from '../orchestrator';
 import { parseFlutterAnalyze } from '@peep/flutter-adapter';
+import type { Diagnostic } from '@peep/shared';
 
 const API_KEY = process.env.OPENAI_API_KEY;
 if (!API_KEY) {
@@ -13,7 +14,11 @@ if (!API_KEY) {
   process.exit(1);
 }
 
-const SYSTEM_CONTEXT = `You are Peep, an expert Flutter developer AI.
+const SYSTEM_CONTEXT_FLUTTER = `You are Peep, an expert Flutter developer AI.
+You must fulfill the user's request by proposing file edits.
+Always ensure your code is error-free and follows best practices.`;
+
+const SYSTEM_CONTEXT_RN = `You are Peep, an expert React Native and Expo developer AI.
 You must fulfill the user's request by proposing file edits.
 Always ensure your code is error-free and follows best practices.`;
 
@@ -26,9 +31,28 @@ interface EvalResult {
   dir: string;
 }
 
+function parseTscOutput(output: string, root: string): Diagnostic[] {
+  const diagnostics: Diagnostic[] = [];
+  const regex = /^(.+?)\((\d+),(\d+)\):\s+(error|warning|info)\s+TS\d+:\s+(.+)$/gm;
+  let m: RegExpExecArray | null;
+  while ((m = regex.exec(output)) !== null) {
+    diagnostics.push({
+      file: join(root, m[1]!.replace(/\\/g, '/')),
+      line: parseInt(m[2]!, 10),
+      column: parseInt(m[3]!, 10),
+      severity: m[4] as 'error' | 'warning' | 'info',
+      message: m[5]!.trim(),
+    });
+  }
+  return diagnostics;
+}
+
 async function run() {
   const results: EvalResult[] = [];
   const filter = process.argv[2]; // optional filter
+
+  // Find the monorepo root directory to locate templates
+  const repoRoot = join(__dirname, '..', '..', '..', '..');
 
   for (const scenario of SCENARIOS) {
     if (filter && !scenario.id.includes(filter)) continue;
@@ -37,9 +61,61 @@ async function run() {
     const tempDir = await fs.mkdtemp(join(tmpdir(), `peep-eval-${scenario.id}-`));
     console.log(`Temp dir: ${tempDir}`);
 
+    const isRN = scenario.platform === 'react-native';
+
     try {
-      // 1. Scaffold base Flutter app
-      execSync('flutter create . --platforms web', { cwd: tempDir, stdio: 'ignore' });
+      if (!isRN) {
+        // 1. Scaffold base Flutter app
+        execSync('flutter create . --platforms web', { cwd: tempDir, stdio: 'ignore' });
+      } else {
+        // 1. Scaffold React Native project
+        const packageJson = {
+          name: 'peep-eval-rn',
+          version: '1.0.0',
+          dependencies: {
+            react: '18.2.0',
+            'react-native': '0.72.6',
+            expo: '~49.0.15',
+          },
+          devDependencies: {
+            typescript: '^5.1.3',
+            '@types/react': '^18.2.8',
+            '@types/react-native': '^0.72.2',
+          },
+        };
+
+        const tsconfigJson = {
+          compilerOptions: {
+            target: 'es2020',
+            module: 'commonjs',
+            jsx: 'react-native',
+            strict: true,
+            skipLibCheck: true,
+            moduleResolution: 'node',
+            allowSyntheticDefaultImports: true,
+          },
+        };
+
+        await fs.writeFile(join(tempDir, 'package.json'), JSON.stringify(packageJson, null, 2), 'utf-8');
+        await fs.writeFile(join(tempDir, 'tsconfig.json'), JSON.stringify(tsconfigJson, null, 2), 'utf-8');
+
+        // Copy default App.tsx from template if no custom App.tsx is specified in initialFiles
+        const initialHasApp = scenario.initialFiles && ('App.tsx' in scenario.initialFiles);
+        if (!initialHasApp) {
+          const templatePath = join(repoRoot, 'templates', 'react-native', 'blank-rn', 'App.tsx');
+          let appContent = 'import React from \'react\';\nimport { View, Text } from \'react-native\';\nexport default function App() { return <View><Text>Peep</Text></View>; }';
+          try {
+            appContent = await fs.readFile(templatePath, 'utf-8');
+          } catch {
+            // Fallback if template doesn't exist locally
+          }
+          await fs.writeFile(join(tempDir, 'App.tsx'), appContent, 'utf-8');
+        }
+
+        // Install minimal packages for tsc checks (fast install)
+        console.log('  Installing npm dependencies for TS type checking...');
+        execSync('npm install --no-audit --no-fund --legacy-peer-deps', { cwd: tempDir, stdio: 'ignore' });
+      }
 
       // 2. Apply initial files
       if (scenario.initialFiles) {
@@ -61,26 +137,36 @@ async function run() {
 
       console.log(`  Prompt: "${scenario.prompt}"`);
       await runAgentLoop(
-        { apiKey: API_KEY, provider: 'openai', model: 'gpt-4o-mini' },
-        SYSTEM_CONTEXT,
-        scenario.prompt,
+        { apiKey: API_KEY!, provider: 'openai', model: 'gpt-4o-mini' },
+        isRN ? SYSTEM_CONTEXT_RN : SYSTEM_CONTEXT_FLUTTER,
+        [{ role: 'user', content: scenario.prompt }],
         executor,
         callbacks,
         new AbortController().signal
       );
 
-      // 4. Run Flutter Analyze
-      console.log('  Running flutter analyze...');
-      let analyzeOutput = '';
-      try {
-        analyzeOutput = execSync('flutter analyze', { cwd: tempDir, encoding: 'utf-8' });
-      } catch (err: any) {
-        // flutter analyze exits with code 1 if there are errors
-        analyzeOutput = err.stdout?.toString() || err.message;
+      // 4. Run Analyze
+      let diagnostics: Diagnostic[] = [];
+      if (!isRN) {
+        console.log('  Running flutter analyze...');
+        let analyzeOutput = '';
+        try {
+          analyzeOutput = execSync('flutter analyze', { cwd: tempDir, encoding: 'utf-8' });
+        } catch (err: any) {
+          analyzeOutput = err.stdout?.toString() || err.message;
+        }
+        diagnostics = parseFlutterAnalyze(analyzeOutput);
+      } else {
+        console.log('  Running tsc analyze...');
+        let tsOutput = '';
+        try {
+          tsOutput = execSync('npx tsc --noEmit --pretty false', { cwd: tempDir, encoding: 'utf-8' });
+        } catch (err: any) {
+          tsOutput = err.stdout?.toString() || err.message;
+        }
+        diagnostics = parseTscOutput(tsOutput, tempDir);
       }
 
-      const diagnostics = parseFlutterAnalyze(analyzeOutput);
-      
       // 5. Validate
       const { passed, note } = await scenario.validate(tempDir, diagnostics);
       const errorsCount = diagnostics.filter((d) => d.severity === 'error').length;

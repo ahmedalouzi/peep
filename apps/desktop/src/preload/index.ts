@@ -46,6 +46,11 @@ const api: IpcApi = {
     ipcRenderer.invoke(IPC_CHANNELS.PREVIEW_START, projectPath) as Promise<PreviewSession>,
   stopPreview: () => ipcRenderer.invoke(IPC_CHANNELS.PREVIEW_STOP),
   reloadPreview: () => ipcRenderer.invoke(IPC_CHANNELS.PREVIEW_RELOAD),
+  getPreviewSession: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.PREVIEW_GET_SESSION) as Promise<PreviewSession | null>,
+  detachPreview: () => ipcRenderer.invoke(IPC_CHANNELS.PREVIEW_DETACH) as Promise<void>,
+  attachPreview: () => ipcRenderer.invoke(IPC_CHANNELS.PREVIEW_ATTACH) as Promise<void>,
+  isPreviewDetached: () => ipcRenderer.invoke(IPC_CHANNELS.PREVIEW_IS_DETACHED) as Promise<boolean>,
   sendAgentMessage: (options: AgentSendOptions) => ipcRenderer.invoke(IPC_CHANNELS.AGENT_SEND, options),
   cancelAgent: () => ipcRenderer.invoke(IPC_CHANNELS.AGENT_CANCEL),
   applyAgentEdits: (editIds: string[]) => ipcRenderer.invoke(IPC_CHANNELS.AGENT_APPLY_EDITS, editIds),

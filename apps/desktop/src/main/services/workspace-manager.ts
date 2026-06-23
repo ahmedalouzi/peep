@@ -45,30 +45,41 @@ export class WorkspaceManager {
   async listDir(dirPath: string, depth = 0, maxDepth = 3): Promise<FileEntry[]> {
     if (depth > maxDepth) return [];
 
-    const entries = await readdir(dirPath, { withFileTypes: true });
-    const result: FileEntry[] = [];
+    try {
+      const entries = await readdir(dirPath, { withFileTypes: true });
+      const result: FileEntry[] = [];
 
-    for (const entry of entries) {
-      if (IGNORED.has(entry.name)) continue;
+      for (const entry of entries) {
+        if (IGNORED.has(entry.name)) continue;
 
-      const fullPath = join(dirPath, entry.name);
-      const fileEntry: FileEntry = {
-        name: entry.name,
-        path: fullPath,
-        type: entry.isDirectory() ? 'directory' : 'file',
-      };
+        const fullPath = join(dirPath, entry.name);
+        const fileEntry: FileEntry = {
+          name: entry.name,
+          path: fullPath,
+          type: entry.isDirectory() ? 'directory' : 'file',
+        };
 
-      if (entry.isDirectory()) {
-        fileEntry.children = await this.listDir(fullPath, depth + 1, maxDepth);
+        if (entry.isDirectory()) {
+          try {
+            fileEntry.children = await this.listDir(fullPath, depth + 1, maxDepth);
+          } catch {
+            fileEntry.children = [];
+          }
+        }
+
+        result.push(fileEntry);
       }
 
-      result.push(fileEntry);
+      return result.sort((a, b) => {
+        if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+    } catch (err) {
+      if (depth === 0) {
+        throw err;
+      }
+      return [];
     }
-
-    return result.sort((a, b) => {
-      if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    });
   }
 
   async readFile(filePath: string): Promise<string> {

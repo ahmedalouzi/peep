@@ -204,6 +204,11 @@ export const IPC_CHANNELS = {
   // Audit
   AUDIT_PERFORMANCE: 'audit:performance',
   AUDIT_PROJECT: 'audit:project',
+  // Preview Detached Window
+  PREVIEW_GET_SESSION: 'preview:getSession',
+  PREVIEW_DETACH: 'preview:detach',
+  PREVIEW_ATTACH: 'preview:attach',
+  PREVIEW_IS_DETACHED: 'preview:isDetached',
 } as const;
 
 export const IPC_EVENTS = {
@@ -239,6 +244,10 @@ export interface IpcApi {
   startPreview: (projectPath: string) => Promise<PreviewSession>;
   stopPreview: () => Promise<void>;
   reloadPreview: () => Promise<void>;
+  getPreviewSession: () => Promise<PreviewSession | null>;
+  detachPreview: () => Promise<void>;
+  attachPreview: () => Promise<void>;
+  isPreviewDetached: () => Promise<boolean>;
   sendAgentMessage: (options: AgentSendOptions) => Promise<void>;
   cancelAgent: () => Promise<void>;
   applyAgentEdits: (editIds: string[]) => Promise<void>;

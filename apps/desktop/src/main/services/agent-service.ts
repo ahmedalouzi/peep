@@ -3,11 +3,12 @@ import { join, isAbsolute, normalize } from 'node:path';
 import { access } from 'node:fs/promises';
 import type { BrowserWindow } from 'electron';
 import { IPC_EVENTS } from '@peep/shared';
-import type { Diagnostic, ProposedEdit, AgentStreamEvent, AgentSendOptions } from '@peep/shared';
-import { buildAgentContext, runAgentLoop, SCAFFOLD_SYSTEM_ADDENDUM } from '@peep/agent';
+import type { ProposedEdit, AgentStreamEvent, AgentSendOptions } from '@peep/shared';
+import { buildAgentContext, runAgentLoop, SCAFFOLD_SYSTEM_ADDENDUM, type ChatMessage } from '@peep/agent';
 import type { DatabaseService } from './db';
 import type { WorkspaceManager } from './workspace-manager';
 import type { FlutterService } from './flutter-service';
+import type { ReactNativeService } from './react-native-service';
 import { searchFiles } from './file-search';
 import { searchContent } from './content-search';
 
@@ -33,6 +34,7 @@ export class AgentService {
     private db: DatabaseService,
     private workspace: WorkspaceManager,
     private flutter: FlutterService,
+    private rnService?: ReactNativeService,
   ) {}
 
   setMainWindow(window: BrowserWindow | null): void {
@@ -183,7 +185,7 @@ export class AgentService {
         userMessage: options.message,
       });
 
-    const messages = [
+    const messages: ChatMessage[] = [
       { role: 'system', content: systemContext },
     ];
 
@@ -240,7 +242,35 @@ export class AgentService {
 
             if (autoApply) {
               await this.workspace.writeFile(path, proposedContent);
-              return `Applied edit to ${path}`;
+              
+              let diagOutput = '';
+              try {
+                const isFlutter = await this.flutter.isFlutterProject(options.projectPath);
+                if (isFlutter) {
+                  const diags = await this.flutter.analyze(options.projectPath);
+                  if (diags.length > 0) {
+                    diagOutput = '\n\nActive compilation/analysis diagnostics after this change:\n' +
+                      diags.map(d => `- [${d.severity}] ${d.file}:${d.line}:${d.column} - ${d.message}`).join('\n');
+                  } else {
+                    diagOutput = '\n\nAnalysis passed with 0 errors.';
+                  }
+                } else if (this.rnService) {
+                  const isRN = await this.rnService.isReactNativeProject(options.projectPath);
+                  if (isRN) {
+                    const diags = await this.rnService.analyze(options.projectPath);
+                    if (diags.length > 0) {
+                      diagOutput = '\n\nActive React Native TS/ESLint diagnostics after this change:\n' +
+                        diags.map(d => `- [${d.severity}] ${d.file}:${d.line}:${d.column} - ${d.message}`).join('\n');
+                    } else {
+                      diagOutput = '\n\nAnalysis passed with 0 errors.';
+                    }
+                  }
+                }
+              } catch (e) {
+                // Ignore errors
+              }
+
+              return `Applied edit to ${path}.${diagOutput}`;
             }
 
             const existingIndex = this.pendingEdits.findIndex((e) => e.path === path);

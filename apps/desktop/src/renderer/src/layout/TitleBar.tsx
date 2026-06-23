@@ -7,14 +7,11 @@ interface TitleBarProps {
 }
 
 export function TitleBar({ onNewProject }: TitleBarProps) {
-  const { project, openProjectFolder, isLoading, toggleBottomPanel, toggleSidebar, toggleAgentPane } = useWorkspace();
-  const [version, setVersion] = useState('0.1.0');
+  const { project, openProjectFolder, toggleBottomPanel, toggleSidebar, toggleAgentPane } = useWorkspace();
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const menusRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    window.peep.getVersion().then(setVersion).catch(() => undefined);
-
     const handleClickOutside = (event: MouseEvent) => {
       if (menusRef.current && !menusRef.current.contains(event.target as Node)) {
         setActiveMenu(null);

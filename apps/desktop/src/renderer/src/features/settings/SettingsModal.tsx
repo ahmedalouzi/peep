@@ -11,7 +11,6 @@ interface SettingsModalProps {
 
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [tab, setTab] = useState<SettingsTab>('sdk');
-  const [settings, setSettings] = useState<Settings | null>(null);
   const [flutterPath, setFlutterPath] = useState('');
   const [saving, setSaving] = useState(false);
   const [sdkVersion, setSdkVersion] = useState<string | null>(null);
@@ -22,7 +21,6 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   useEffect(() => {
     if (!open) return;
     void window.peep.getSettings().then((s) => {
-      setSettings(s);
       setFlutterPath(s.flutterSdkPath ?? '');
     });
     void window.peep.detectFlutterSdk().then((sdk) => setSdkVersion(sdk?.version ?? null));
@@ -50,8 +48,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       const partial: Partial<Settings> = {
         flutterSdkPath: flutterPath || undefined,
       };
-      const updated = await window.peep.setSettings(partial);
-      setSettings(updated);
+      await window.peep.setSettings(partial);
     } finally {
       setSaving(false);
     }

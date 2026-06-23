@@ -34,6 +34,7 @@ export function TerminalPanel() {
     term.loadAddon(fit);
     term.open(containerRef.current);
     fit.fit();
+    term.focus();
 
     terminalRef.current = term;
     fitRef.current = fit;
@@ -49,8 +50,15 @@ export function TerminalPanel() {
     });
 
     const onData = term.onData((data) => {
+      console.log('[TerminalPanel] Keypress data:', JSON.stringify(data));
       void window.peep.writeTerminal(TERMINAL_ID, data);
     });
+
+    const handleFocusClick = () => {
+      term.focus();
+    };
+    const container = containerRef.current;
+    container.addEventListener('click', handleFocusClick);
 
     const resizeObserver = new ResizeObserver(() => {
       fit.fit();
@@ -60,6 +68,7 @@ export function TerminalPanel() {
     initializedRef.current = true;
 
     return () => {
+      container.removeEventListener('click', handleFocusClick);
       onData.dispose();
       unsubOutput();
       unsubExit();

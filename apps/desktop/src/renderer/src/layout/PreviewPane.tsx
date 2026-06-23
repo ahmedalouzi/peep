@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { usePreviewStore } from '../stores/preview-store';
 import { useWorkspaceStore } from '../stores/workspace-store';
 import './PreviewPane.css';
@@ -42,9 +42,20 @@ function getStoppedMessage(platform: string): string {
 
 export function PreviewPane() {
   const [deviceId, setDeviceId] = useState<DeviceId>('iphone-15');
+  const [isDetached, setIsDetached] = useState(false);
   const session   = usePreviewStore((s) => s.session);
   const iframeKey = usePreviewStore((s) => s.iframeKey);
   const project   = useWorkspaceStore((s) => s.project);
+
+  useEffect(() => {
+    void window.peep.isPreviewDetached().then(setIsDetached);
+
+    const unsub = window.peep.onPreviewStatus(() => {
+      void window.peep.isPreviewDetached().then(setIsDetached);
+    });
+
+    return () => unsub();
+  }, []);
 
   const device    = DEVICES.find((d) => d.id === deviceId) ?? DEVICES[0]!;
   const isRunning = session?.status === 'running' && session.url;
@@ -60,6 +71,10 @@ export function PreviewPane() {
     void window.peep.startPreview(project.path);
   };
 
+  const handleDetach = () => {
+    void window.peep.detachPreview();
+  };
+
   return (
     <section className="panel preview-pane">
       <div className="panel-header">
@@ -73,103 +88,140 @@ export function PreviewPane() {
         </span>
 
         <div className="panel-actions">
-          <select
-            className="preview-device-select"
-            value={deviceId}
-            onChange={(e) => setDeviceId(e.target.value as DeviceId)}
-            title="Device frame"
-          >
-            {DEVICES.map((d) => (
-              <option key={d.id} value={d.id}>{d.label}</option>
-            ))}
-          </select>
-
-          {isRunning ? (
-            <button type="button" className="btn btn-ghost" onClick={handleRefresh} title="Hot reload">
-              ↺ Refresh
-            </button>
-          ) : (
+          {isDetached ? (
             <button
               type="button"
               className="btn btn-primary"
-              onClick={handleStart}
-              disabled={!project}
-              title={`Start ${getPlatformLabel(platform)} preview`}
+              onClick={() => void window.peep.attachPreview()}
+              title="Attach preview to IDE"
             >
-              ▶ Start
+              📥 Attach
             </button>
+          ) : (
+            <>
+              <select
+                className="preview-device-select"
+                value={deviceId}
+                onChange={(e) => setDeviceId(e.target.value as DeviceId)}
+                title="Device frame"
+              >
+                {DEVICES.map((d) => (
+                  <option key={d.id} value={d.id}>{d.label}</option>
+                ))}
+              </select>
+
+              {isRunning ? (
+                <button type="button" className="btn btn-ghost" onClick={handleRefresh} title="Hot reload">
+                  ↺ Refresh
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleStart}
+                  disabled={!project}
+                  title={`Start ${getPlatformLabel(platform)} preview`}
+                >
+                  ▶ Start
+                </button>
+              )}
+
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={handleDetach}
+                title="Detach preview to floating window"
+              >
+                ↗ Detach
+              </button>
+            </>
           )}
         </div>
       </div>
 
       <div className="panel-body preview-pane__body">
-        <div className="preview-stage">
-          <div
-            className="phone-frame"
-            style={{
-              width:  device.width  * device.scale,
-              height: device.height * device.scale,
-            }}
-          >
-            <div className="phone-frame__notch" />
-            <div className="phone-frame__screen">
-
-              {session?.status === 'starting' && (
-                <div className="preview-placeholder">
-                  <span className="preview-placeholder__icon preview-placeholder__spinner">⏳</span>
-                  <h3>Starting preview…</h3>
-                  <p>{getStartingMessage(platform)}</p>
-                </div>
-              )}
-
-              {session?.status === 'error' && (
-                <div className="preview-placeholder preview-placeholder--error">
-                  <span className="preview-placeholder__icon">⚠️</span>
-                  <h3>Preview failed</h3>
-                  <p>{session.error ?? `Could not start ${getPlatformLabel(platform)} preview.`}</p>
-                  <button
-                    type="button"
-                    className="preview-retry-btn"
-                    onClick={handleStart}
-                    disabled={!project}
-                  >
-                    Retry
-                  </button>
-                </div>
-              )}
-
-              {isRunning && (
-                <iframe
-                  key={iframeKey}
-                  className="preview-iframe"
-                  src={session.url}
-                  title={`${getPlatformLabel(platform)} preview`}
-                />
-              )}
-
-              {!session && (
-                <div className="preview-placeholder">
-                  <span className="preview-placeholder__icon">📱</span>
-                  <h3>Live preview</h3>
-                  <p>{getIdleMessage(platform)}</p>
-                </div>
-              )}
-
-              {session?.status === 'stopped' && (
-                <div className="preview-placeholder">
-                  <span className="preview-placeholder__icon">⏹</span>
-                  <h3>Preview stopped</h3>
-                  <p>{getStoppedMessage(platform)}</p>
-                </div>
-              )}
-
-            </div>
-            <div className="phone-frame__home" />
+        {isDetached ? (
+          <div className="preview-placeholder">
+            <span className="preview-placeholder__icon">↗️</span>
+            <h3>Preview detached</h3>
+            <p>The preview is running in a separate floating window.</p>
+            <button
+              type="button"
+              className="preview-retry-btn"
+              onClick={() => void window.peep.attachPreview()}
+            >
+              Attach Back
+            </button>
           </div>
+        ) : (
+          <div className="preview-stage">
+            <div
+              className="phone-frame"
+              style={{
+                width:  device.width  * device.scale,
+                height: device.height * device.scale,
+              }}
+            >
+              <div className="phone-frame__notch" />
+              <div className="phone-frame__screen">
 
-          {/* Device label */}
-          <div className="preview-device-label">{device.label}</div>
-        </div>
+                {session?.status === 'starting' && (
+                  <div className="preview-placeholder">
+                    <span className="preview-placeholder__icon preview-placeholder__spinner">⏳</span>
+                    <h3>Starting preview…</h3>
+                    <p>{getStartingMessage(platform)}</p>
+                  </div>
+                )}
+
+                {session?.status === 'error' && (
+                  <div className="preview-placeholder preview-placeholder--error">
+                    <span className="preview-placeholder__icon">⚠️</span>
+                    <h3>Preview failed</h3>
+                    <p>{session.error ?? `Could not start ${getPlatformLabel(platform)} preview.`}</p>
+                    <button
+                      type="button"
+                      className="preview-retry-btn"
+                      onClick={handleStart}
+                      disabled={!project}
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+
+                {isRunning && (
+                  <iframe
+                    key={iframeKey}
+                    className="preview-iframe"
+                    src={session.url}
+                    title={`${getPlatformLabel(platform)} preview`}
+                  />
+                )}
+
+                {!session && (
+                  <div className="preview-placeholder">
+                    <span className="preview-placeholder__icon">📱</span>
+                    <h3>Live preview</h3>
+                    <p>{getIdleMessage(platform)}</p>
+                  </div>
+                )}
+
+                {session?.status === 'stopped' && (
+                  <div className="preview-placeholder">
+                    <span className="preview-placeholder__icon">⏹</span>
+                    <h3>Preview stopped</h3>
+                    <p>{getStoppedMessage(platform)}</p>
+                  </div>
+                )}
+
+              </div>
+              <div className="phone-frame__home" />
+            </div>
+
+            {/* Device label */}
+            <div className="preview-device-label">{device.label}</div>
+          </div>
+        )}
       </div>
     </section>
   );

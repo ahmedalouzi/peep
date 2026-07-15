@@ -2,6 +2,13 @@ import { app, BrowserWindow, shell } from 'electron';
 import { join } from 'node:path';
 import { cleanupServices, registerIpcHandlers, setMainWindow } from './ipc';
 
+// Suppress harmless Chromium GPU cache permission errors on Windows
+if (process.platform === 'win32') {
+  app.commandLine.appendSwitch('no-sandbox');
+  app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
+  app.commandLine.appendSwitch('disable-gpu-program-cache');
+}
+
 let mainWindow: BrowserWindow | null = null;
 let appServices: Awaited<ReturnType<typeof registerIpcHandlers>> | null = null;
 

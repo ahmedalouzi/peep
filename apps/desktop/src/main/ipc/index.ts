@@ -1,5 +1,6 @@
 import { ipcMain, dialog, app, BrowserWindow } from 'electron';
 import { join } from 'node:path';
+import * as fs from 'node:fs';
 import { IPC_CHANNELS, IPC_EVENTS } from '@peep/shared';
 import type { Settings } from '@peep/shared';
 import { DatabaseService } from '../services/db';
@@ -9,6 +10,7 @@ import { FlutterService } from '../services/flutter-service';
 import { PreviewManager } from '../services/preview-manager';
 import { FileWatcherService } from '../services/file-watcher';
 import { searchFiles } from '../services/file-search';
+import { searchContent } from '../services/content-search';
 import { AgentService } from '../services/agent-service';
 import { GitService } from '../services/git-service';
 import { TerminalService } from '../services/terminal-service';
@@ -18,7 +20,7 @@ import { AutoUpdateService } from '../services/auto-update-service';
 import { ReactNativeService } from '../services/react-native-service';
 import { PlatformRegistry } from '../services/platform-registry';
 import { buildAuditReport, capturePerformanceSnapshot } from '../services/audit-service';
-import { PublishService } from '../services/publish-service';
+import { ExtensionService } from '../services/extension-service';
 
 let db: DatabaseService | null = null;
 let mainWindow: BrowserWindow | null = null;
@@ -33,7 +35,7 @@ const telemetryService = new TelemetryService();
 let autoUpdateService: AutoUpdateService | null = null;
 let rnService: ReactNativeService | null = null;
 let platformRegistry: PlatformRegistry | null = null;
-let publishService: PublishService | null = null;
+const extensionService = new ExtensionService();
 
 export function setMainWindow(window: BrowserWindow | null): void {
   mainWindow = window;
@@ -174,6 +176,67 @@ export async function registerIpcHandlers(): Promise<{
     return project;
   });
 
+  ipcMain.handle(IPC_CHANNELS.DIALOG_OPEN_FILE, async () => {
+    const options = {
+      properties: ['openFile' as const],
+      title: 'Open File',
+    };
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, options)
+      : await dialog.showOpenDialog(options);
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+    const filePath = result.filePaths[0];
+    const content = await fs.promises.readFile(filePath, 'utf-8');
+    return { path: filePath, content };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.DIALOG_SAVE_FILE, async (_event, defaultPath?: string, content?: string) => {
+    const options = {
+      title: 'Save File',
+      defaultPath,
+    };
+    const result = mainWindow
+      ? await dialog.showSaveDialog(mainWindow, options)
+      : await dialog.showSaveDialog(options);
+
+    if (result.canceled || !result.filePath) {
+      return null;
+    }
+
+    if (content !== undefined) {
+      await fs.promises.writeFile(result.filePath, content, 'utf-8');
+    }
+
+    return result.filePath;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.APP_NEW_WINDOW, async () => {
+    // Requires createWindow function to be exported from main, or we can just emit an event to main.
+    // Or we can just import createWindow from index.ts. 
+    // To avoid circular dependency, we can just require it dynamically.
+    const { createWindow } = require('../index');
+    await createWindow();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.APP_EXIT, () => {
+    app.quit();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.APP_MINIMIZE, () => {
+    mainWindow?.minimize();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.APP_MAXIMIZE, () => {
+    if (mainWindow?.isMaximized()) {
+      mainWindow?.unmaximize();
+    } else {
+      mainWindow?.maximize();
+    }
+  });
+
   ipcMain.handle(IPC_CHANNELS.WORKSPACE_OPEN_FOLDER, async (_event, folderPath: string) => {
     return openProjectAtPath(folderPath, workspace, flutter, rnService!, previewManager);
   });
@@ -190,8 +253,24 @@ export async function registerIpcHandlers(): Promise<{
     return workspace.listDir(dirPath);
   });
 
+  ipcMain.handle(IPC_CHANNELS.WORKSPACE_SEARCH_CONTENT, async (_event, options: { projectPath: string; query: string; caseSensitive?: boolean; isRegex?: boolean }) => {
+    return searchContent(options);
+  });
+
   ipcMain.handle(IPC_CHANNELS.WORKSPACE_READ_FILE, async (_event, filePath: string) => {
     return workspace.readFile(filePath);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.WORKSPACE_READ_IMAGE, async (_event, filePath: string) => {
+    const buf = await fs.promises.readFile(filePath);
+    const ext = filePath.split('.').pop()?.toLowerCase() ?? 'png';
+    const mimeMap: Record<string, string> = {
+      png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+      gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
+      ico: 'image/x-icon', bmp: 'image/bmp', avif: 'image/avif',
+    };
+    const mime = mimeMap[ext] ?? 'image/png';
+    return `data:${mime};base64,${buf.toString('base64')}`;
   });
 
   ipcMain.handle(IPC_CHANNELS.WORKSPACE_WRITE_FILE, async (_event, filePath: string, content: string) => {
@@ -270,20 +349,27 @@ export async function registerIpcHandlers(): Promise<{
     return previewWindow !== null && !previewWindow.isDestroyed();
   });
 
-  ipcMain.handle(IPC_CHANNELS.PREVIEW_DETACH, async () => {
+  let currentDetachedDeviceId = 'iphone-15';
+
+  ipcMain.handle(IPC_CHANNELS.PREVIEW_DETACH, async (_event, deviceId?: string) => {
+    if (deviceId) {
+      currentDetachedDeviceId = deviceId;
+    }
     if (previewWindow && !previewWindow.isDestroyed()) {
       previewWindow.focus();
       return;
     }
 
     previewWindow = new BrowserWindow({
-      width: 420,
-      height: 880,
+      width: 400,
+      height: 820,
       minWidth: 320,
       minHeight: 600,
       title: 'Peep Mobile Preview',
-      backgroundColor: '#0d1117',
-      autoHideMenuBar: true,
+      backgroundColor: '#00000000',
+      transparent: true,
+      frame: false,
+      hasShadow: true,
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
         sandbox: false,
@@ -295,9 +381,9 @@ export async function registerIpcHandlers(): Promise<{
 
     const isDev = !app.isPackaged && process.env.ELECTRON_RENDERER_URL;
     if (isDev) {
-      previewWindow.loadURL(`${process.env.ELECTRON_RENDERER_URL}?windowType=preview`);
+      previewWindow.loadURL(`${process.env.ELECTRON_RENDERER_URL}?windowType=preview&deviceId=${currentDetachedDeviceId}`);
     } else {
-      previewWindow.loadFile(join(__dirname, '../renderer/index.html'), { query: { windowType: 'preview' } });
+      previewWindow.loadFile(join(__dirname, '../renderer/index.html'), { query: { windowType: 'preview', deviceId: currentDetachedDeviceId } });
     }
 
     previewWindow.on('closed', () => {
@@ -377,6 +463,26 @@ export async function registerIpcHandlers(): Promise<{
     return gitService.diff(projectPath, filePath);
   });
 
+  ipcMain.handle(IPC_CHANNELS.GIT_PULL, async (_event, projectPath: string) => {
+    await gitService.pull(projectPath);
+    notifyGitChanged();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GIT_PUSH, async (_event, projectPath: string) => {
+    await gitService.push(projectPath);
+    notifyGitChanged();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GIT_CHECKOUT, async (_event, projectPath: string, branch: string) => {
+    await gitService.checkoutBranch(projectPath, branch);
+    notifyGitChanged();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GIT_BRANCH, async (_event, projectPath: string, branch: string) => {
+    await gitService.createBranch(projectPath, branch);
+    notifyGitChanged();
+  });
+
   ipcMain.handle(IPC_CHANNELS.TERMINAL_CREATE, async (_event, options: { id: string; cwd: string }) => {
     terminalService.create(options.id, options.cwd);
   });
@@ -448,6 +554,28 @@ export async function registerIpcHandlers(): Promise<{
   ipcMain.handle(IPC_CHANNELS.ONBOARDING_COMPLETE, async () => {
     await db!.setSettings({ onboardingCompleted: true });
     void telemetryService.track('onboarding_completed');
+  });
+
+  // ── Extensions ─────────────────────────────────────────────────────────────
+
+  ipcMain.handle(IPC_CHANNELS.EXTENSIONS_SEARCH, async (_event, query: string, offset?: number, size?: number) => {
+    return extensionService.searchExtensions(query, offset, size);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.EXTENSIONS_INSTALLED, async () => {
+    return extensionService.getInstalledExtensions();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.EXTENSIONS_INSTALL, async (_event, id: string, url?: string) => {
+    return extensionService.installExtension(id, url);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.EXTENSIONS_UNINSTALL, async (_event, id: string) => {
+    return extensionService.uninstallExtension(id);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.EXTENSIONS_DETAILS, async (_event, id: string) => {
+    return extensionService.getExtensionDetails(id);
   });
 
   // ── React Native ───────────────────────────────────────────────────────────

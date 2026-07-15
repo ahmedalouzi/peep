@@ -1,32 +1,53 @@
+/* ═══════════════════════════════════════════════════════════════════
+   EDITOR PANE  — reference UI style
+═══════════════════════════════════════════════════════════════════ */
 .editor-pane__body {
   display: flex;
   flex-direction: column;
+  height: 100%;
+  min-height: 0;
 }
 
+/* ── Tab bar ──────────────────────────────────────────────────────── */
 .editor-tabs {
   display: flex;
-  gap: 2px;
-  padding: 4px 8px 0;
+  align-items: flex-end;
+  gap: 0;
+  padding: 0 4px 0;
   overflow-x: auto;
   border-bottom: 1px solid var(--border);
-  background: var(--bg-elevated);
+  background: var(--bg-surface);
   flex-shrink: 0;
+  scrollbar-width: none;
+  min-height: 35px;
 }
+
+.editor-tabs::-webkit-scrollbar { display: none; }
 
 .editor-tab {
   display: flex;
   align-items: center;
-  gap: 4px;
-  max-width: 180px;
+  gap: 0;
+  max-width: 200px;
+  min-width: 80px;
   border: 1px solid transparent;
   border-bottom: none;
   border-radius: 6px 6px 0 0;
   background: transparent;
+  flex-shrink: 0;
+  position: relative;
+  top: 1px;
+  transition: background 0.1s;
+}
+
+.editor-tab:hover {
+  background: var(--bg-hover);
 }
 
 .editor-tab--active {
-  background: var(--bg-surface);
+  background: var(--bg-base);
   border-color: var(--border);
+  border-bottom-color: var(--bg-base);
 }
 
 .editor-tab__label {
@@ -35,32 +56,98 @@
   padding: 6px 8px;
   border: none;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: var(--font-mono);
   font-size: 12px;
+  cursor: pointer;
+  transition: color 0.1s;
+}
+
+.editor-tab:hover .editor-tab__label {
+  color: var(--text-primary);
 }
 
 .editor-tab--active .editor-tab__label {
   color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* Dirty indicator dot */
+.editor-tab__label--dirty::after {
+  content: '●';
+  font-size: 7px;
+  margin-left: 5px;
+  color: var(--text-muted);
+  vertical-align: middle;
 }
 
 .editor-tab__close {
-  padding: 2px 6px;
+  padding: 3px 6px;
   border: none;
   background: transparent;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1;
+  border-radius: 4px;
+  opacity: 0;
+  transition: color 0.1s, opacity 0.1s;
+  flex-shrink: 0;
+}
+
+.editor-tab:hover .editor-tab__close,
+.editor-tab--active .editor-tab__close {
+  opacity: 1;
 }
 
 .editor-tab__close:hover {
   color: var(--text-primary);
+  background: rgba(255,255,255,0.06);
 }
 
+/* ── No file placeholder ──────────────────────────────────────────── */
+.editor-no-file {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 10px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 24px;
+  background: var(--bg-base);
+}
+
+.editor-no-file__icon {
+  font-size: 36px;
+  opacity: 0.4;
+  margin-bottom: 4px;
+}
+
+.editor-no-file h3 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.editor-no-file p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.editor-no-file__tip {
+  font-style: italic;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* ── Monaco / textarea ────────────────────────────────────────────── */
 .editor-textarea {
   flex: 1;
   width: 100%;
@@ -72,6 +159,7 @@
   color: var(--text-primary);
   font-family: var(--font-mono);
   font-size: 13px;
-  line-height: 1.6;
+  line-height: 1.65;
   outline: none;
+  tab-size: 2;
 }

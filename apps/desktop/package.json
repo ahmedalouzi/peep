@@ -26,7 +26,9 @@
     "monaco-editor": "^0.52.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
     "react-resizable-panels": "^2.1.7",
+    "remark-gfm": "^4.0.1",
     "simple-git": "^3.27.0",
     "zustand": "^5.0.2"
   },

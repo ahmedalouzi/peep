@@ -5,17 +5,20 @@ interface PreviewState {
   session: PreviewSession | null;
   logs: string[];
   iframeKey: number;
+  deviceId: string;
 
   setSession: (session: PreviewSession) => void;
   addLog: (line: string) => void;
   bumpIframe: () => void;
   clearLogs: () => void;
+  setDeviceId: (id: string) => void;
 }
 
 export const usePreviewStore = create<PreviewState>((set) => ({
   session: null,
   logs: [],
   iframeKey: 0,
+  deviceId: 'iphone-15',
 
   setSession: (session) => set({ session }),
   addLog: (line) =>
@@ -24,6 +27,7 @@ export const usePreviewStore = create<PreviewState>((set) => ({
     })),
   bumpIframe: () => set((state) => ({ iframeKey: state.iframeKey + 1 })),
   clearLogs: () => set({ logs: [] }),
+  setDeviceId: (id) => set({ deviceId: id }),
 }));
 
 interface DiagnosticsState {

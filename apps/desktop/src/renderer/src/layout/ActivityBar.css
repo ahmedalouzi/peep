@@ -1,13 +1,16 @@
+/* ═══════════════════════════════════════════════════════════════════
+   ACTIVITY BAR  — reference UI style
+═══════════════════════════════════════════════════════════════════ */
 .activity-bar {
-  width: 48px;
+  width: 44px;
   height: 100%;
-  background-color: var(--bg-surface);
+  background: var(--bg-surface);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 0;
+  padding: 6px 0;
   flex-shrink: 0;
 }
 
@@ -15,42 +18,47 @@
 .activity-bar__bottom {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 4px;
+  align-items: center;
 }
 
 .activity-action {
-  width: 48px;
-  height: 48px;
+  width: 36px;
+  height: 36px;
   background: transparent;
   border: none;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   position: relative;
-  transition: color 0.2s;
+  border-radius: 8px;
+  transition: color 0.15s, background 0.15s;
 }
 
 .activity-action:hover {
-  color: var(--text-primary);
+  color: var(--text-secondary);
+  background: rgba(255,255,255,0.06);
 }
 
 .activity-action.active {
   color: var(--text-primary);
+  background: rgba(79, 110, 247, 0.14);
 }
 
 .activity-action.active::before {
   content: '';
   position: absolute;
-  left: 0;
+  left: -4px;
   top: 8px;
   bottom: 8px;
   width: 2px;
-  background-color: var(--accent);
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
 }
 
 .activity-action svg {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
 }

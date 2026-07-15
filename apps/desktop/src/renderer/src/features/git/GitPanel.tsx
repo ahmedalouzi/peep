@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { GitFileChange, GitStatusResult } from '@peep/shared';
+import { useWorkspaceStore } from '../../stores/workspace-store';
 import { useWorkspace } from '../../hooks/useWorkspace';
 import './GitPanel.css';
 
@@ -16,7 +17,6 @@ export function GitPanel() {
   const { project } = useWorkspace();
   const [status, setStatus] = useState<GitStatusResult | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [diff, setDiff] = useState('');
   const [commitMessage, setCommitMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -42,13 +42,15 @@ export function GitPanel() {
     return unsub;
   }, [refresh]);
 
-  useEffect(() => {
-    if (!project || !selectedFile) {
-      setDiff('');
-      return;
-    }
-    void window.peep.gitDiff(project.path, selectedFile).then((result) => setDiff(result.diff));
-  }, [project, selectedFile]);
+  const openFileInEditor = (filePath: string) => {
+    setSelectedFile(filePath);
+    useWorkspaceStore.getState().openFile({
+      path: `git-diff://${filePath}`,
+      name: `Diff: ${filePath.split('/').pop()}`,
+      content: '',
+      dirty: false,
+    });
+  };
 
   if (!project) {
     return <div className="bottom-panel__empty">Open a project to use Git.</div>;
@@ -76,26 +78,70 @@ export function GitPanel() {
   };
 
   return (
-    <div className="git-panel">
-      <div className="git-panel__sidebar">
-        <div className="git-panel__branch">
-          <span className="git-panel__branch-label">Branch</span>
-          <strong>{status.branch}</strong>
-          <button type="button" className="btn btn-ghost" onClick={() => void refresh()} disabled={loading}>
-            Refresh
+    <div className="sidebar" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div className="sidebar-header">
+        <span className="sidebar-title">SOURCE CONTROL</span>
+        <div className="sidebar-actions">
+          <button type="button" className="sidebar-btn" onClick={() => void refresh()} disabled={loading} title="Refresh">
+            <svg style={{width:'12px',height:'12px'}} viewBox="0 0 16 16" fill="currentColor"><path d="M8 2.5a5.5 5.5 0 1 0 5.5 5.5h-1a4.5 4.5 0 1 1-4.5-4.5v1.5L11.5 2 8 0v2.5z"/></svg>
           </button>
         </div>
+      </div>
 
-        <div className="git-section">
-          <h4>Staged ({staged.length})</h4>
-          <ul className="git-file-list">
-            {staged.length === 0 && <li className="git-file-list__empty">No staged changes</li>}
+      <div style={{ padding: '0 10px', marginBottom: '10px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Branch</div>
+          <div style={{ display: 'flex', gap: '4px' }}>
+            <button type="button" className="btn btn-ghost" style={{ padding: '2px 6px', fontSize: '10px' }} onClick={async () => { await window.peep.gitPull(project.path); refresh(); }} title="Pull">↓ Pull</button>
+            <button type="button" className="btn btn-ghost" style={{ padding: '2px 6px', fontSize: '10px' }} onClick={async () => { await window.peep.gitPush(project.path); refresh(); }} title="Push">↑ Push</button>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+          <strong style={{ fontSize: '12px', flex: 1 }}>{status.branch}</strong>
+          <button type="button" className="btn btn-ghost" style={{ padding: '2px 6px', fontSize: '10px' }} onClick={async () => {
+            const b = prompt('Enter branch name to checkout or create:');
+            if (b) {
+              try {
+                await window.peep.gitCheckout(project.path, b);
+              } catch {
+                await window.peep.gitBranch(project.path, b);
+              }
+              refresh();
+            }
+          }} title="Checkout/Create branch">Branch...</button>
+        </div>
+      </div>
+
+      <div className="git-commit" style={{ padding: '0 10px', marginBottom: '10px' }}>
+        <textarea
+          placeholder="Commit message"
+          value={commitMessage}
+          rows={2}
+          onChange={(e) => setCommitMessage(e.target.value)}
+          style={{ width: '100%', padding: '6px', fontSize: '12px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', marginBottom: '6px', resize: 'vertical' }}
+        />
+        <button
+          type="button"
+          className="btn btn-primary"
+          style={{ width: '100%', padding: '4px', fontSize: '12px' }}
+          disabled={!commitMessage.trim() || staged.length === 0}
+          onClick={() => void handleCommit()}
+        >
+          Commit
+        </button>
+      </div>
+
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        <div className="git-section" style={{ padding: '0 10px' }}>
+          <h4 style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted)', margin: '10px 0 6px' }}>Staged ({staged.length})</h4>
+          <ul className="git-file-list" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+            {staged.length === 0 && <li className="git-file-list__empty" style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No staged changes</li>}
             {staged.map((file) => (
               <GitFileRow
                 key={`staged-${file.path}`}
                 file={file}
                 selected={selectedFile === file.path}
-                onSelect={() => setSelectedFile(file.path)}
+                onSelect={() => openFileInEditor(file.path)}
                 onUnstage={() => void window.peep.gitUnstage(project.path, [file.path])}
                 actionLabel="−"
               />
@@ -103,50 +149,22 @@ export function GitPanel() {
           </ul>
         </div>
 
-        <div className="git-section">
-          <h4>Changes ({unstaged.length})</h4>
-          <ul className="git-file-list">
-            {unstaged.length === 0 && <li className="git-file-list__empty">No unstaged changes</li>}
+        <div className="git-section" style={{ padding: '0 10px' }}>
+          <h4 style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted)', margin: '10px 0 6px' }}>Changes ({unstaged.length})</h4>
+          <ul className="git-file-list" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+            {unstaged.length === 0 && <li className="git-file-list__empty" style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No unstaged changes</li>}
             {unstaged.map((file) => (
               <GitFileRow
                 key={`unstaged-${file.path}`}
                 file={file}
                 selected={selectedFile === file.path}
-                onSelect={() => setSelectedFile(file.path)}
+                onSelect={() => openFileInEditor(file.path)}
                 onStage={() => void window.peep.gitStage(project.path, [file.path])}
                 actionLabel="+"
               />
             ))}
           </ul>
         </div>
-
-        <div className="git-commit">
-          <textarea
-            placeholder="Commit message"
-            value={commitMessage}
-            rows={2}
-            onChange={(e) => setCommitMessage(e.target.value)}
-          />
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={!commitMessage.trim() || staged.length === 0}
-            onClick={() => void handleCommit()}
-          >
-            Commit
-          </button>
-        </div>
-      </div>
-
-      <div className="git-panel__diff">
-        {selectedFile ? (
-          <>
-            <div className="git-panel__diff-header">{selectedFile}</div>
-            <pre className="git-panel__diff-content">{diff}</pre>
-          </>
-        ) : (
-          <div className="bottom-panel__empty">Select a file to view diff</div>
-        )}
       </div>
     </div>
   );

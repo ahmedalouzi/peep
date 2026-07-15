@@ -1,0 +1,418 @@
+/* ═══════════════════════════════════════════════════════════════════
+   REALISTIC PHONE FRAMES — Xcode Simulator Style
+   Ultra-thin bezels, precise hardware details
+═══════════════════════════════════════════════════════════════════ */
+
+/* ── Base ─────────────────────────────────────────────────────────── */
+.pf {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   iPHONE 15 / 15 PRO
+   Titanium chassis, Dynamic Island, flat sides, ultra-thin bezel
+════════════════════════════════════════════════════════════════════ */
+.pf-iphone {
+  width: 290px;
+  height: 600px;
+  border-radius: 50px;
+
+  /* Deep titanium / aluminum body */
+  background:
+    linear-gradient(165deg,
+      #5c5c5e 0%,
+      #38383a 12%,
+      #1c1c1e 28%,
+      #252527 45%,
+      #1a1a1c 62%,
+      #363638 80%,
+      #2a2a2c 100%
+    );
+
+  /* Metal rim + depth shadow */
+  box-shadow:
+    /* Outer metal edge highlight */
+    0 0 0 0.5px rgba(255, 255, 255, 0.2),
+    /* Subtle rim */
+    0 0 0 1.5px rgba(0, 0, 0, 0.8),
+    /* Drop shadow — Xcode style */
+    0 30px 60px rgba(0, 0, 0, 0.55),
+    0 8px 20px rgba(0, 0, 0, 0.35),
+    0 2px 5px rgba(0, 0, 0, 0.3);
+
+  /* Xcode has ultra thin bezel — almost non-existent */
+  padding: 3px;
+}
+
+/* Pro: deeper titanium tone */
+.pf-iphone--pro {
+  background:
+    linear-gradient(165deg,
+      #6e5b4c 0%,
+      #3e342a 14%,
+      #1c1a18 30%,
+      #282420 46%,
+      #1a1816 62%,
+      #443a30 80%,
+      #322e28 100%
+    );
+}
+
+/* ── Side buttons ── */
+.pf-btn {
+  position: absolute;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #606062 0%, #404042 50%, #525254 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.45),
+    1px 0 2px rgba(0, 0, 0, 0.4);
+}
+
+/* Left side */
+.pf-btn--mute {
+  top: 105px; left: -3.5px;
+  width: 3.5px; height: 28px;
+  border-radius: 2px 0 0 2px;
+}
+.pf-btn--vol-up {
+  top: 155px; left: -3.5px;
+  width: 3.5px; height: 56px;
+  border-radius: 2px 0 0 2px;
+}
+.pf-btn--vol-down {
+  top: 225px; left: -3.5px;
+  width: 3.5px; height: 56px;
+  border-radius: 2px 0 0 2px;
+}
+
+/* Right side (power) */
+.pf-btn--power {
+  top: 178px; right: -3.5px;
+  width: 3.5px; height: 80px;
+  border-radius: 0 2px 2px 0;
+}
+
+/* ── Inner bezel (screen area) ── */
+.pf-bezel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  border-radius: 47px;   /* exactly outer radius (50) minus padding (3) */
+  overflow: hidden;
+  position: relative;
+  /* Very subtle inner shadow — Xcode style */
+  box-shadow:
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.08),
+    inset 0 1px 4px rgba(0, 0, 0, 0.8);
+}
+
+/* ── Dynamic Island ── */
+.pf-dynamic-island {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 110px;
+  height: 32px;
+  border-radius: 18px;
+  background: #000;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  /* Seamless with screen */
+  box-shadow:
+    0 0 0 1.5px rgba(0, 0, 0, 0.95),
+    0 2px 6px rgba(0, 0, 0, 0.6);
+}
+
+.pf-di-cam {
+  width: 11px; height: 11px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 32%, #1a3a5c 0%, #080808 55%, #040404 100%);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(255, 255, 255, 0.07),
+    0 0 5px rgba(60, 140, 255, 0.18);
+}
+
+.pf-di-speaker {
+  width: 48px; height: 4px;
+  border-radius: 2.5px;
+  background: #080808;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.9);
+}
+
+/* ── Screen area ── */
+.pf-screen {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  background: #000;
+}
+
+/* ── Home indicator ── */
+.pf-home-indicator {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 110px; height: 4px;
+  border-radius: 2.5px;
+  background: rgba(255, 255, 255, 0.32);
+  z-index: 20;
+}
+
+/* ── Frame gloss ── */
+.pf-shine {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    138deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    transparent 38%,
+    transparent 62%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+}
+
+
+/* ════════════════════════════════════════════════════════════════════
+   iPHONE SE (3rd gen) — classic aluminum, home button
+════════════════════════════════════════════════════════════════════ */
+.pf-iphone-se {
+  width: 250px;
+  height: 510px;
+  border-radius: 44px;
+  background:
+    linear-gradient(155deg,
+      #545456 0%, #303032 20%,
+      #1c1c1e 42%, #2a2a2c 62%,
+      #3e3e40 80%, #2c2c2e 100%
+    );
+  box-shadow:
+    0 0 0 0.5px rgba(255, 255, 255, 0.18),
+    0 0 0 1px rgba(0, 0, 0, 0.65),
+    0 25px 50px rgba(0, 0, 0, 0.5),
+    0 6px 14px rgba(0, 0, 0, 0.3);
+  padding: 4px;
+}
+
+.pf-iphone-se .pf-bezel {
+  border-radius: 40px;
+}
+
+.pf-se-topbar {
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: #000;
+  flex-shrink: 0;
+}
+
+.pf-se-speaker {
+  width: 54px; height: 4px;
+  border-radius: 2.5px;
+  background: #0f0f0f;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.85);
+}
+
+.pf-se-cam {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #1a3a5c 0%, #050505 70%);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.07);
+}
+
+.pf-se-home-btn {
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  flex-shrink: 0;
+}
+
+.pf-se-home-ring {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #404042 0%, #1e1e20 55%, #111 100%);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(255,255,255,0.1),
+    inset 0 2px 4px rgba(0,0,0,0.85),
+    0 2px 4px rgba(0,0,0,0.5);
+}
+
+
+/* ════════════════════════════════════════════════════════════════════
+   PIXEL 8  — polished glass, flat sides, punch-hole camera
+════════════════════════════════════════════════════════════════════ */
+.pf-pixel {
+  width: 270px;
+  height: 570px;
+  border-radius: 40px;
+  background:
+    linear-gradient(150deg,
+      #2e2e2e 0%, #1e1e1e 28%,
+      #111 52%, #1c1c1c 74%,
+      #282828 100%
+    );
+  box-shadow:
+    0 0 0 0.5px rgba(255, 255, 255, 0.12),
+    0 0 0 1px rgba(0, 0, 0, 0.7),
+    0 28px 55px rgba(0, 0, 0, 0.6),
+    0 8px 18px rgba(0, 0, 0, 0.3);
+  padding: 3px;
+}
+
+.pf-btn--android-power {
+  top: 135px; right: -3.5px;
+  width: 3.5px; height: 54px;
+  border-radius: 0 2px 2px 0;
+  background: linear-gradient(180deg, #484848 0%, #252525 50%, #3a3a3a 100%);
+}
+.pf-btn--android-vol-up {
+  top: 108px; left: -3.5px;
+  width: 3.5px; height: 46px;
+  border-radius: 2px 0 0 2px;
+  background: linear-gradient(180deg, #484848 0%, #252525 50%, #3a3a3a 100%);
+}
+.pf-btn--android-vol-down {
+  top: 162px; left: -3.5px;
+  width: 3.5px; height: 46px;
+  border-radius: 2px 0 0 2px;
+  background: linear-gradient(180deg, #484848 0%, #252525 50%, #3a3a3a 100%);
+}
+
+.pf-bezel--android {
+  border-radius: 37px;
+  box-shadow:
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.05),
+    inset 0 1px 5px rgba(0, 0, 0, 0.9);
+}
+
+.pf-punchhole {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 11px; height: 11px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 32%, #1a3a5c 0%, #050505 65%);
+  box-shadow:
+    0 0 0 1.5px rgba(0, 0, 0, 0.92),
+    0 0 0 2.5px rgba(255, 255, 255, 0.04),
+    0 0 5px rgba(60, 140, 255, 0.14);
+  z-index: 20;
+}
+
+.pf-android-bar {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 90px; height: 3.5px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.24);
+  z-index: 20;
+}
+
+.pf-shine--android {
+  background: linear-gradient(138deg, rgba(255,255,255,0.03) 0%, transparent 35%);
+}
+
+
+/* ════════════════════════════════════════════════════════════════════
+   PIXEL FOLD  — wider foldable, hinge
+════════════════════════════════════════════════════════════════════ */
+.pf-pixel-fold {
+  width: 380px;
+  height: 520px;
+  border-radius: 24px;
+  background:
+    linear-gradient(145deg, #2a2a2a 0%, #141414 40%, #1c1c1c 60%, #242424 100%);
+  box-shadow:
+    0 0 0 0.5px rgba(255,255,255,0.1),
+    0 0 0 1px rgba(0,0,0,0.7),
+    0 25px 55px rgba(0,0,0,0.58);
+  padding: 3px;
+}
+
+.pf-bezel--fold {
+  border-radius: 21px;
+}
+
+.pf-fold-hinge {
+  position: absolute;
+  top: 0; bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  background: linear-gradient(180deg, #1c1c1c 0%, #333 50%, #1c1c1c 100%);
+  z-index: 30;
+  box-shadow: 0 0 4px rgba(0,0,0,0.9);
+}
+
+.pf-punchhole--fold {
+  top: 10px;
+  width: 9px; height: 9px;
+}
+
+
+/* ════════════════════════════════════════════════════════════════════
+   GALAXY S24  — Samsung Armor Aluminum, ultra-thin bezel
+════════════════════════════════════════════════════════════════════ */
+.pf-galaxy {
+  width: 268px;
+  height: 560px;
+  border-radius: 44px;
+  background:
+    linear-gradient(155deg,
+      #363638 0%, #1e1e20 25%,
+      #0e0e10 50%, #1c1c1e 75%,
+      #2e2e30 100%
+    );
+  box-shadow:
+    0 0 0 0.5px rgba(255,255,255,0.14),
+    0 0 0 1px rgba(0,0,0,0.68),
+    0 35px 70px rgba(0,0,0,0.62),
+    0 8px 18px rgba(0,0,0,0.28);
+  padding: 3px;
+}
+
+.pf-bezel--samsung {
+  border-radius: 41px;
+}
+
+.pf-punchhole--samsung {
+  width: 9px; height: 9px;
+  top: 10px;
+}
+
+.pf-btn--samsung-power {
+  top: 155px; right: -3.5px;
+  width: 3.5px; height: 50px;
+  border-radius: 0 2px 2px 0;
+  background: linear-gradient(180deg, #4a4a4c 0%, #282828 50%, #3e3e3e 100%);
+}
+.pf-btn--samsung-vol-up {
+  top: 116px; left: -3.5px;
+  width: 3.5px; height: 42px;
+  border-radius: 2px 0 0 2px;
+  background: linear-gradient(180deg, #4a4a4c 0%, #282828 50%, #3e3e3e 100%);
+}
+.pf-btn--samsung-vol-down {
+  top: 166px; left: -3.5px;
+  width: 3.5px; height: 42px;
+  border-radius: 2px 0 0 2px;
+  background: linear-gradient(180deg, #4a4a4c 0%, #282828 50%, #3e3e3e 100%);
+}

@@ -71,4 +71,24 @@ export class GitService {
     const diff = await git.diff(['--', filePath]);
     return { path: filePath, diff: diff || 'No changes.' };
   }
+
+  async pull(projectPath: string): Promise<void> {
+    const git = this.getGit(projectPath);
+    await git.pull();
+  }
+
+  async push(projectPath: string): Promise<void> {
+    const git = this.getGit(projectPath);
+    await git.push();
+  }
+
+  async checkoutBranch(projectPath: string, branch: string): Promise<void> {
+    const git = this.getGit(projectPath);
+    await git.checkout(branch);
+  }
+
+  async createBranch(projectPath: string, branch: string): Promise<void> {
+    const git = this.getGit(projectPath);
+    await git.checkoutLocalBranch(branch);
+  }
 }

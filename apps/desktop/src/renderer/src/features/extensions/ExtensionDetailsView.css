@@ -1,0 +1,333 @@
+.extension-details {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  overflow-y: auto;
+  font-family: var(--font-primary);
+}
+
+.extension-details__loading,
+.extension-details__error {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.extension-details__error {
+  color: var(--danger);
+}
+
+/* Header Section */
+.extension-details__header-section {
+  display: flex;
+  gap: 24px;
+  padding: 24px 32px 16px 32px;
+}
+
+.extension-details__icon {
+  width: 128px;
+  height: 128px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+.extension-details__icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background-color: #fff;
+}
+
+.extension-details__icon-placeholder {
+  width: 100%;
+  height: 100%;
+  background: var(--bg-elevated);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 64px;
+  font-weight: bold;
+  color: var(--text-muted);
+}
+
+.extension-details__info {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 8px;
+  flex: 1;
+}
+
+.extension-details__title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 400;
+  color: var(--text-primary);
+}
+
+.extension-details__meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.extension-details__publisher {
+  color: #3794ff; /* VS Code publisher link color */
+  cursor: pointer;
+}
+
+.extension-details__publisher:hover {
+  text-decoration: underline;
+}
+
+.extension-details__version {
+  color: var(--text-muted);
+}
+
+.extension-details__stat {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary);
+}
+
+.extension-details__description {
+  font-size: 14px;
+  color: var(--text-primary);
+  margin-top: 4px;
+  margin-bottom: 12px;
+}
+
+.extension-details__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.extension-details__actions .btn {
+  padding: 4px 12px;
+  border-radius: 2px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.extension-details__actions .btn-primary {
+  background: #0e639c; /* VS Code primary blue */
+  color: white;
+}
+
+.extension-details__actions .btn-primary:hover:not(:disabled) {
+  background: #1177bb;
+}
+
+.extension-details__actions .btn-secondary {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.extension-details__actions .btn-secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.btn-mock {
+  opacity: 0.8;
+}
+
+.extension-details__auto-update {
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.extension-details__auto-update input {
+  accent-color: #0e639c;
+}
+
+/* Tabs */
+.extension-details__tabs {
+  display: flex;
+  padding: 0 32px;
+  border-bottom: 1px solid var(--border);
+  gap: 32px;
+  margin-top: 16px;
+}
+
+.extension-details__tab {
+  padding: 8px 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.extension-details__tab:hover {
+  color: var(--text-primary);
+}
+
+.extension-details__tab.active {
+  color: var(--text-primary);
+  border-bottom: 2px solid #3794ff;
+}
+
+/* Layout */
+.extension-details__layout {
+  display: flex;
+  padding: 24px 32px;
+  gap: 32px;
+  align-items: flex-start;
+}
+
+.extension-details__main-content {
+  flex: 1;
+  min-width: 0; /* prevent text overflow breaking flex layout */
+}
+
+/* Markdown styling (VS Code mimic) */
+.markdown-body {
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4, .markdown-body h5, .markdown-body h6 {
+  margin-top: 24px;
+  margin-bottom: 16px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.markdown-body h1 {
+  font-size: 2em;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: .3em;
+}
+
+.markdown-body h2 {
+  font-size: 1.5em;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: .3em;
+}
+
+.markdown-body h3 {
+  font-size: 1.25em;
+}
+
+.markdown-body p, .markdown-body blockquote, .markdown-body ul, .markdown-body ol, .markdown-body dl, .markdown-body table, .markdown-body pre, .markdown-body details {
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+
+.markdown-body a {
+  color: #3794ff;
+  text-decoration: none;
+}
+
+.markdown-body a:hover {
+  text-decoration: underline;
+}
+
+.markdown-body img {
+  max-width: 100%;
+  box-sizing: content-box;
+}
+
+.markdown-body code {
+  padding: .2em .4em;
+  margin: 0;
+  font-size: 85%;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  font-family: Consolas, "Courier New", monospace;
+}
+
+.markdown-body pre {
+  padding: 16px;
+  overflow: auto;
+  font-size: 85%;
+  line-height: 1.45;
+  background-color: #1e1e1e; /* VS Code dark pre bg */
+  border-radius: 3px;
+}
+
+.markdown-body pre code {
+  background-color: transparent;
+  padding: 0;
+}
+
+/* Sidebar */
+.extension-details__sidebar {
+  width: 250px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.extension-details__sidebar-section h3 {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-top: 0;
+  margin-bottom: 12px;
+  text-transform: capitalize;
+}
+
+.extension-details__sidebar-item {
+  display: flex;
+  margin-bottom: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.extension-details__sidebar-item .label {
+  color: var(--text-muted);
+  width: 100px;
+  flex-shrink: 0;
+}
+
+.extension-details__sidebar-item .value {
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.extension-details__sidebar-item .value.identifier {
+  color: #3794ff;
+  font-family: var(--font-mono);
+}
+
+.extension-details__categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.extension-details__category-tag {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.extension-details__category-tag:hover {
+  border-color: var(--text-primary);
+  color: var(--text-primary);
+}

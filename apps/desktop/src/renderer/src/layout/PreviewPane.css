@@ -1,96 +1,238 @@
-.preview-pane__body {
+/* ═══════════════════════════════════════════════════════════════════
+   PREVIEW HEADER ROW 1 — title + action buttons
+═══════════════════════════════════════════════════════════════════ */
+.preview-header {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
+  height: 34px;
+  padding: 0 8px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  gap: 6px;
+}
+
+/* ── Left: PREVIEW + platform ───────────────────────────────────── */
+.preview-header__left {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+}
+
+.preview-header__title {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.preview-header__platform {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--plat-color, #7c5cbf);
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--plat-color, #7c5cbf) 12%, transparent);
+}
+
+.preview-header__platform-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--plat-color, #7c5cbf);
+  flex-shrink: 0;
+}
+
+/* ── Right: action buttons ──────────────────────────────────────── */
+.preview-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   PREVIEW DEVICE TOOLBAR ROW 2 — horizontal scrollable chip bar
+═══════════════════════════════════════════════════════════════════ */
+.preview-device-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  height: 30px;
+  padding: 0 6px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.preview-device-toolbar::-webkit-scrollbar { display: none; }
+
+/* ── Chip buttons ───────────────────────────────────────────────── */
+.preview-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s;
+}
+
+.preview-chip:hover {
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+}
+
+.preview-chip--active {
+  background: rgba(79, 110, 247, 0.14);
+  color: var(--accent);
+}
+
+.preview-chip--active:hover {
+  background: rgba(79, 110, 247, 0.22);
+}
+
+.preview-chip__icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.preview-chip__label {
+  font-size: 10.5px;
+  letter-spacing: 0.01em;
+}
+
+.preview-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+}
+
+.preview-action-btn:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.preview-action-btn--start {
+  background: #16a34a;
+  color: #fff;
+  font-weight: 600;
+  padding: 3px 11px;
+}
+
+.preview-action-btn--start:hover {
+  background: #15803d;
+  color: #fff;
+}
+
+.preview-action-btn--start:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.preview-action-btn--primary {
+  background: #2563eb;
+  color: #fff;
+  font-weight: 600;
+}
+
+.preview-action-btn--primary:hover {
+  background: #1d4ed8;
+}
+
+.preview-action-btn--close {
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 3px 7px;
+}
+
+.preview-action-btn--close:hover {
+  background: rgba(220, 38, 38, 0.15);
+  color: #f87171;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   PREVIEW BODY
+═══════════════════════════════════════════════════════════════════ */
+.preview-pane__body {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 !important;
+  min-height: 0;
+  overflow: hidden;
   background: var(--bg-base);
 }
 
-.preview-device-select {
-  padding: 3px 8px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--bg-elevated);
-  color: var(--text-primary);
-  font-size: 12px;
-  cursor: pointer;
-}
+.preview-platform-badge { display: none; }
+.preview-device-select  { display: none; }
 
-.preview-platform-badge {
-  margin-left: 8px;
-  font-size: 10.5px;
-  font-weight: 500;
-  color: var(--text-muted);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1px 7px;
-  vertical-align: middle;
-}
-
+/* ── Stage fills the entire body ──────────────────────────────────── */
 .preview-stage {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   width: 100%;
-  height: 100%;
-  padding: 20px;
-  gap: 10px;
-}
-
-/* ── Phone frame ─────────────────────────────────────────────────── */
-.phone-frame {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  background: #0a0a0a;
-  border-radius: 44px;
-  border: 2px solid #2c2c2c;
-  box-shadow:
-    0 0 0 1px #3a3a3a,
-    0 0 0 5px #181818,
-    0 36px 72px rgba(0, 0, 0, 0.8),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  padding: 14px 12px;
+  gap: 8px;
   overflow: hidden;
-  padding: 12px 6px 8px;
 }
 
-/* Dynamic Island pill */
-.phone-frame__notch {
+/* ── Phone scale wrappers ────────────────────────────────────────────────── */
+/* Outer: reserves scaled pixel dimensions, centers in stage */
+.phone-scale-outer {
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* Inner: natural size, scaled via transform from top-left origin */
+.phone-scale-inner {
   position: absolute;
-  top: 14px;
-  left: 50%;
-  z-index: 10;
-  width: 80px;
-  height: 22px;
-  border-radius: 20px;
-  background: #000;
-  transform: translateX(-50%);
-  box-shadow: 0 0 0 1px rgba(255,255,255,0.06);
-}
-
-.phone-frame__screen {
-  flex: 1;
-  border-radius: 38px;
-  background: #000;
-  overflow: hidden;
-  position: relative;
-}
-
-/* Home indicator */
-.phone-frame__home {
-  height: 4px;
-  width: 90px;
-  margin: 6px auto 4px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.28);
+  top: 0;
+  left: 0;
 }
 
 /* ── Device label ────────────────────────────────────────────────── */
 .preview-device-label {
   font-size: 11px;
+  letter-spacing: 0.07em;
   color: var(--text-muted);
-  opacity: 0.6;
+  opacity: 0.55;
+  flex-shrink: 0;
+  text-transform: uppercase;
+  font-weight: 600;
 }
 
 /* ── Placeholder states ──────────────────────────────────────────── */
@@ -106,37 +248,25 @@
   color: var(--text-secondary);
   background: #000;
 }
-
-.preview-placeholder__icon {
-  font-size: 28px;
-}
-
+.preview-placeholder__icon { font-size: 28px; }
 .preview-placeholder__spinner {
   animation: spin 1.4s linear infinite;
   display: inline-block;
 }
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
+@keyframes spin { to { transform: rotate(360deg); } }
 .preview-placeholder h3 {
   margin: 0;
   color: var(--text-primary);
   font-size: 14px;
   font-weight: 600;
 }
-
 .preview-placeholder p {
   margin: 0;
   font-size: 11px;
   color: var(--text-muted);
   line-height: 1.5;
 }
-
-.preview-placeholder--error p {
-  color: var(--danger);
-}
+.preview-placeholder--error p { color: var(--danger); }
 
 .preview-retry-btn {
   margin-top: 4px;
@@ -149,10 +279,7 @@
   padding: 5px 14px;
   transition: background 0.2s;
 }
-
-.preview-retry-btn:hover {
-  background: rgba(255,255,255,0.14);
-}
+.preview-retry-btn:hover { background: rgba(255,255,255,0.14); }
 
 /* ── iframe ──────────────────────────────────────────────────────── */
 .preview-iframe {

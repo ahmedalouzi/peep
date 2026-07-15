@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Antigravity IDE - Redesigned</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      /* Deep space dark theme */
+      --bg-base: #030409;
+      --bg-panel: rgba(12, 14, 20, 0.65);
+      --bg-surface: rgba(255, 255, 255, 0.03);
+      --bg-hover: rgba(255, 255, 255, 0.06);
+      --border: rgba(255, 255, 255, 0.06);
+      --border-light: rgba(255, 255, 255, 0.12);
+      
+      /* Vibrant Accents */
+      --accent-primary: #818cf8; /* Indigo */
+      --accent-secondary: #c084fc; /* Purple */
+      --accent-glow: rgba(129, 140, 248, 0.3);
+      --success: #34d399;
+      --warning: #fbbf24;
+      --danger: #f87171;
+
+      /* Typography */
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --text-muted: #475569;
+      --font-sans: 'Inter', system-ui, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+
+      /* Syntax Highlighting */
+      --syn-keyword: #c084fc;
+      --syn-string: #a7f3d0;
+      --syn-function: #60a5fa;
+      --syn-comment: #64748b;
+      --syn-punctuation: #94a3b8;
+      --syn-number: #fba918;
+
+      --radius-sm: 6px;
+      --radius-md: 12px;
+      --radius-lg: 18px;
+      
+      --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    html, body {
+      height: 100vh;
+      width: 100vw;
+      background-color: var(--bg-base);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: 13px;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    /* Ambient Background Elements */
+    .ambient-light {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(120px);
+      z-index: 0;
+      pointer-events: none;
+    }
+    .ambient-1 {
+      top: -10%; left: -10%;
+      width: 40vw; height: 40vw;
+      background: rgba(99, 102, 241, 0.15);
+    }
+    .ambient-2 {
+      bottom: -10%; right: -10%;
+      width: 30vw; height: 30vw;
+      background: rgba(192, 132, 252, 0.12);
+    }
+
+    /* Main App Window - Glassmorphism */
+    .app-window {
+      position: relative;
+      z-index: 10;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-panel);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--border);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    }
+
+    /* --- TITLE BAR --- */
+    .titlebar {
+      height: 38px;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(to right, rgba(255,255,255,0.02), transparent);
+    }
+    .mac-controls {
+      display: flex;
+      gap: 8px;
+      width: 60px;
+    }
+    .mac-btn {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+    .mac-btn:hover { transform: scale(1.1); filter: brightness(1.2); }
+    .mac-close { background: #ff5f56; }
+    .mac-min { background: #ffbd2e; }
+    .mac-max { background: #27c93f; }
+    
+    .titlebar-center {
+      flex: 1;
+      text-align: center;
+      font-weight: 500;
+      font-size: 12px;
+      color: var(--text-secondary);
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+    .ide-logo {
+      width: 18px; height: 18px;
+      background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: bold;
+      color: #fff;
+      box-shadow: 0 0 10px var(--accent-glow);
+    }
+
+    /* --- MENU BAR --- */
+    .menubar {
+      display: flex;
+      padding: 0 12px;
+      height: 32px;
+      align-items: center;
+      gap: 4px;
+      border-bottom: 1px solid var(--border);
+    }
+    .menu-item {
+      padding: 4px 10px;
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      font-size: 12px;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+    .menu-item:hover {
+      color: var(--text-primary);
+      background: var(--bg-hover);
+    }
+
+    /* --- LAYOUT GRID --- */
+    .workspace {
+      display: grid;
+      grid-template-columns: 56px 240px 1fr 340px;
+      grid-template-rows: 1fr 180px;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* --- ACTIVITY BAR --- */
+    .activity-bar {
+      grid-row: 1 / 3;
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 16px 0;
+      gap: 16px;
+      background: rgba(0, 0, 0, 0.2);
+    }
+    .act-icon {
+      width: 36px; height: 36px;
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: var(--transition);
+      position: relative;
+    }
+    .act-icon svg { width: 20px; height: 20px; stroke-width: 1.5; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; }
+    .act-icon:hover { color: var(--text-primary); background: var(--bg-surface); }
+    .act-icon.active {
+      color: var(--accent-primary);
+      background: rgba(129, 140, 248, 0.1);
+      box-shadow: inset 0 0 0 1px rgba(129, 140, 248, 0.2);
+    }
+    .act-icon.active::after {
+      content: ''; position: absolute;
+      left: -2px; top: 8px; bottom: 8px; width: 3px;
+      background: var(--accent-primary);
+      border-radius: 0 4px 4px 0;
+      box-shadow: 0 0 8px var(--accent-glow);
+    }
+
+    /* --- SIDEBAR --- */
+    .sidebar {
+      grid-row: 1 / 3;
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      background: rgba(255, 255, 255, 0.01);
+    }
+    .sidebar-header {
+      padding: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .sidebar-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-secondary);
+    }
+    .sidebar-search {
+      margin: 0 16px 12px;
+      position: relative;
+    }
+    .sidebar-search input {
+      width: 100%;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 6px 12px 6px 30px;
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 12px;
+      transition: var(--transition);
+    }
+    .sidebar-search input:focus {
+      outline: none;
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 2px var(--accent-glow);
+    }
+    .search-icon {
+      position: absolute; left: 10px; top: 8px;
+      width: 14px; height: 14px;
+      color: var(--text-muted);
+    }
+    .file-tree {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 8px;
+    }
+    .file-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      color: var(--text-secondary);
+      font-size: 12.5px;
+      transition: var(--transition);
+      margin-bottom: 2px;
+    }
+    .file-item:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+    .file-item.active {
+      background: linear-gradient(90deg, rgba(129, 140, 248, 0.15), transparent);
+      color: var(--accent-primary);
+      border-left: 2px solid var(--accent-primary);
+    }
+    .f-icon { width: 14px; height: 14px; }
+    .indent-1 { padding-left: 24px; }
+    .indent-2 { padding-left: 36px; }
+
+    /* --- EDITOR --- */
+    .editor-pane {
+      grid-column: 3 / 4;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+    .editor-tabs {
+      display: flex;
+      background: rgba(0,0,0,0.2);
+      border-bottom: 1px solid var(--border);
+      padding-top: 8px;
+      padding-left: 16px;
+      gap: 4px;
+    }
+    .tab {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-bottom: none;
+      border-radius: var(--radius-md) var(--radius-md) 0 0;
+      color: var(--text-secondary);
+      font-size: 12px;
+      cursor: pointer;
+      transition: var(--transition);
+      position: relative;
+    }
+    .tab:hover { background: var(--bg-hover); }
+    .tab.active {
+      background: var(--bg-panel);
+      color: var(--text-primary);
+    }
+    .tab.active::before {
+      content: ''; position: absolute;
+      top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+      border-radius: 2px 2px 0 0;
+    }
+    .editor-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.01);
+    }
+    .breadcrumb { font-size: 12px; color: var(--text-muted); }
+    .breadcrumb span { color: var(--text-secondary); }
+    .toolbar-actions { display: flex; gap: 8px; }
+    .btn-action {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 4px 10px;
+      border-radius: var(--radius-sm);
+      font-size: 11px;
+      cursor: pointer;
+      transition: var(--transition);
+      display: flex; align-items: center; gap: 6px;
+    }
+    .btn-action:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+      border-color: var(--border-light);
+    }
+    .code-area {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.6;
+      background: #00000022;
+    }
+    .line-numbers {
+      padding: 16px 12px;
+      color: var(--text-muted);
+      text-align: right;
+      user-select: none;
+      border-right: 1px solid var(--border);
+    }
+    .code-content {
+      padding: 16px;
+      flex: 1;
+      overflow: auto;
+      color: var(--text-primary);
+      white-space: pre;
+    }
+    .highlight-line {
+      background: rgba(255,255,255,0.04);
+      display: inline-block;
+      width: 100%;
+      border-left: 2px solid var(--accent-primary);
+      margin-left: -16px;
+      padding-left: 14px;
+    }
+    .code-content::-webkit-scrollbar { width: 10px; height: 10px; }
+    .code-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 5px; }
+    
+    /* Code Colors */
+    .c-kw { color: var(--syn-keyword); }
+    .c-str { color: var(--syn-string); }
+    .c-punc { color: var(--syn-punctuation); }
+    .c-func { color: var(--syn-function); }
+    .c-num { color: var(--syn-number); }
+
+    /* --- RIGHT PANEL (AI AGENT & PREVIEW) --- */
+    .right-pane {
+      grid-column: 4 / 5;
+      grid-row: 1 / 3;
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      background: rgba(255,255,255,0.01);
+    }
+    .pane-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .pane-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .ai-badge {
+      background: linear-gradient(135deg, rgba(129, 140, 248, 0.2), rgba(192, 132, 252, 0.2));
+      border: 1px solid rgba(192, 132, 252, 0.3);
+      color: #e2e8f0;
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      display: flex; align-items: center; gap: 4px;
+    }
+    .ai-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--accent-secondary);
+      box-shadow: 0 0 8px var(--accent-secondary);
+      animation: pulse 2s infinite;
+    }
+    
+    .chat-area {
+      flex: 1;
+      padding: 16px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .chat-msg {
+      display: flex;
+      gap: 12px;
+    }
+    .avatar {
+      width: 28px; height: 28px;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: bold; font-size: 12px;
+      flex-shrink: 0;
+    }
+    .avatar-ai {
+      background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+      color: #fff;
+    }
+    .avatar-user {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+    }
+    .msg-content {
+      background: rgba(0,0,0,0.2);
+      border: 1px solid var(--border);
+      padding: 12px;
+      border-radius: 0 var(--radius-md) var(--radius-md) var(--radius-md);
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--text-primary);
+    }
+    .msg-content p { margin-bottom: 8px; }
+    .msg-content p:last-child { margin-bottom: 0; }
+    .msg-actions { margin-top: 8px; display: flex; gap: 8px; }
+    .msg-btn {
+      background: var(--bg-hover);
+      border: 1px solid var(--border-light);
+      color: var(--text-secondary);
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 11px; cursor: pointer;
+    }
+    
+    .chat-input {
+      padding: 16px;
+      border-top: 1px solid var(--border);
+    }
+    .input-box {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      display: flex;
+      padding: 4px;
+      transition: var(--transition);
+    }
+    .input-box:focus-within {
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 2px var(--accent-glow);
+    }
+    .input-box input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      padding: 8px 12px;
+      color: var(--text-primary);
+      font-size: 13px;
+      outline: none;
+    }
+    .send-btn {
+      width: 32px; height: 32px;
+      border-radius: var(--radius-sm);
+      background: var(--accent-primary);
+      border: none;
+      color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: var(--transition);
+    }
+    .send-btn:hover { background: var(--accent-secondary); transform: scale(1.05); }
+
+    /* --- TERMINAL --- */
+    .terminal-pane {
+      grid-column: 3 / 4;
+      grid-row: 2 / 3;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      background: rgba(0,0,0,0.3);
+    }
+    .term-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      padding: 0 16px;
+    }
+    .term-tab {
+      padding: 8px 16px;
+      font-size: 11px;
+      color: var(--text-muted);
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+    }
+    .term-tab.active {
+      color: var(--text-primary);
+      border-bottom-color: var(--accent-primary);
+    }
+    .term-body {
+      flex: 1;
+      padding: 12px 16px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-secondary);
+      overflow-y: auto;
+    }
+    .term-line { margin-bottom: 4px; }
+    .term-prompt { color: var(--success); }
+    .term-path { color: var(--accent-primary); }
+    .term-cmd { color: #fff; }
+    .term-cursor {
+      display: inline-block; width: 8px; height: 14px;
+      background: #fff; vertical-align: middle;
+      animation: blink 1s step-end infinite;
+    }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+    /* --- STATUS BAR --- */
+    .statusbar {
+      height: 24px;
+      background: var(--accent-primary);
+      color: #fff;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 16px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .status-group { display: flex; gap: 16px; align-items: center; }
+    .status-item { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.6; transform: scale(1.2); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Ambient Glow Backgrounds -->
+  <div class="ambient-light ambient-1"></div>
+  <div class="ambient-light ambient-2"></div>
+
+  <!-- App Container -->
+  <div class="app-window">
+    
+    <!-- Titlebar -->
+    <div class="titlebar">
+      <div class="mac-controls">
+        <div class="mac-btn mac-close"></div>
+        <div class="mac-btn mac-min"></div>
+        <div class="mac-btn mac-max"></div>
+      </div>
+      <div class="titlebar-center">
+        <div class="ide-logo">Ag</div>
+        Antigravity IDE — IOM-VTON
+      </div>
+      <div style="width: 60px;"></div> <!-- Spacer for balance -->
+    </div>
+
+    <!-- Menubar -->
+    <div class="menubar">
+      <div class="menu-item">File</div>
+      <div class="menu-item">Edit</div>
+      <div class="menu-item">Selection</div>
+      <div class="menu-item">View</div>
+      <div class="menu-item">Go</div>
+      <div class="menu-item">Run</div>
+      <div class="menu-item">Terminal</div>
+      <div class="menu-item">Help</div>
+    </div>
+
+    <!-- Main Workspace -->
+    <div class="workspace">
+      
+      <!-- Activity Bar -->
+      <div class="activity-bar">
+        <div class="act-icon active">
+          <svg viewBox="0 0 24 24"><path d="M3 3h18v18H3z M3 9h18 M9 21V9" /></svg>
+        </div>
+        <div class="act-icon">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        </div>
+        <div class="act-icon">
+          <svg viewBox="0 0 24 24"><path d="M6 9v1a2 2 0 002 2h8a2 2 0 012 2v1 M6 18a2 2 0 100-4 2 2 0 000 4z M18 18a2 2 0 100-4 2 2 0 000 4z M18 10a2 2 0 100-4 2 2 0 000 4z"/></svg>
+        </div>
+        <div class="act-icon" style="margin-top: auto;">
+          <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </div>
+        <div class="act-icon">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        </div>
+      </div>
+
+      <!-- Sidebar -->
+      <div class="sidebar">
+        <div class="sidebar-header">
+          <span class="sidebar-title">Explorer</span>
+          <svg style="width:16px;height:16px;color:var(--text-muted)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+        </div>
+        <div class="sidebar-search">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="text" placeholder="Search files..." />
+        </div>
+        <div class="file-tree">
+          <!-- Folder -->
+          <div class="file-item">
+            <svg class="f-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+            IOM-VTON
+          </div>
+          <!-- Sub Folders -->
+          <div class="file-item indent-1">
+            <svg class="f-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+            dp_openpose
+          </div>
+          <div class="file-item indent-1">
+            <svg class="f-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+            text_encoder_2
+          </div>
+          <!-- Files -->
+          <div class="file-item active indent-2">
+            <svg class="f-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8 M16 17H8 M10 9H8"/></svg>
+            model_index.json
+          </div>
+          <div class="file-item indent-2">
+            <svg class="f-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
+            config.json
+          </div>
+          <div class="file-item indent-1">
+            <svg class="f-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
+            README.md
+          </div>
+        </div>
+      </div>
+
+      <!-- Editor -->
+      <div class="editor-pane">
+        <div class="editor-tabs">
+          <div class="tab">README.md <span style="font-size:10px; margin-left:4px;">✕</span></div>
+          <div class="tab active">model_index.json <span style="font-size:10px; margin-left:4px;">✕</span></div>
+          <div class="tab">config.json <span style="font-size:10px; margin-left:4px;">✕</span></div>
+        </div>
+        <div class="editor-toolbar">
+          <div class="breadcrumb">
+            IOM-VTON <span style="margin:0 4px">›</span> text_encoder_2 <span style="margin:0 4px">›</span> <span>model_index.json</span>
+          </div>
+          <div class="toolbar-actions">
+            <div class="btn-action">
+              <svg style="width:12px;height:12px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4 M7 10l5 5 5-5 M12 15V3"/></svg>
+              Format
+            </div>
+            <div class="btn-action" style="background: var(--accent-primary); color: white; border: none;">
+              <svg style="width:12px;height:12px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Run Preview
+            </div>
+          </div>
+        </div>
+        <div class="code-area">
+          <div class="line-numbers">
+            1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9<br>10<br>11<br>12<br>13<br>14<br>15
+          </div>
+          <div class="code-content">
+<span class="c-punc">{</span>
+  <span class="c-str">"_class_name"</span><span class="c-punc">:</span> <span class="c-str">"StableDiffusionXLInpaintPipeline"</span><span class="c-punc">,</span>
+  <span class="c-str">"_diffusers_version"</span><span class="c-punc">:</span> <span class="c-str">"0.25.0"</span><span class="c-punc">,</span>
+<span class="highlight-line">  <span class="c-str">"_name_or_path"</span><span class="c-punc">:</span> <span class="c-str">"stabilityai/stable-diffusion-xl-base-1.0"</span><span class="c-punc">,</span></span>
+  <span class="c-str">"force_zeros_for_empty_prompt"</span><span class="c-punc">:</span> <span class="c-kw">true</span><span class="c-punc">,</span>
+  <span class="c-str">"requires_aesthetics_score"</span><span class="c-punc">:</span> <span class="c-kw">false</span><span class="c-punc">,</span>
+  <span class="c-str">"scheduler"</span><span class="c-punc">: [</span>
+    <span class="c-str">"diffusers"</span><span class="c-punc">,</span>
+    <span class="c-str">"DDPMScheduler"</span>
+  <span class="c-punc">],</span>
+  <span class="c-str">"text_encoder"</span><span class="c-punc">: [</span>
+    <span class="c-str">"transformers"</span><span class="c-punc">,</span>
+    <span class="c-str">"CLIPTextModel"</span>
+  <span class="c-punc">]</span>
+<span class="c-punc">}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Pane (Agent/Preview) -->
+      <div class="right-pane">
+        <div class="pane-header">
+          <div class="pane-title">
+            <svg style="width:16px;height:16px;color:var(--accent-secondary)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 100 20 10 10 0 000-20z M12 16v-4 M12 8h.01"/></svg>
+            Antigravity AI
+          </div>
+          <div class="ai-badge">
+            <div class="ai-dot"></div>
+            Gemini 3.1 Pro
+          </div>
+        </div>
+        <div class="chat-area">
+          <div class="chat-msg">
+            <div class="avatar avatar-ai">Ag</div>
+            <div class="msg-content">
+              <p>Hello! I've loaded your project <strong>IOM-VTON</strong>. How can I help you today?</p>
+              <div class="msg-actions">
+                <button class="msg-btn">Explain Code</button>
+                <button class="msg-btn">Find Bugs</button>
+              </div>
+            </div>
+          </div>
+          <div class="chat-msg">
+            <div class="avatar avatar-user">U</div>
+            <div class="msg-content" style="background: rgba(129, 140, 248, 0.1); border-color: var(--accent-glow);">
+              <p>Can you redesign this IDE interface to be more modern and visually stunning?</p>
+            </div>
+          </div>
+          <div class="chat-msg">
+            <div class="avatar avatar-ai">Ag</div>
+            <div class="msg-content">
+              <p>Absolutely! I've applied a new <strong>glassmorphism</strong> theme with deep space background, vibrant purple/indigo accents, and smoother micro-animations. Check out the new layout!</p>
+            </div>
+          </div>
+        </div>
+        <div class="chat-input">
+          <div class="input-box">
+            <input type="text" placeholder="Ask the agent anything..." />
+            <button class="send-btn">
+              <svg style="width:14px;height:14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13 M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Terminal Pane -->
+      <div class="terminal-pane">
+        <div class="term-tabs">
+          <div class="term-tab active">Terminal</div>
+          <div class="term-tab">Output</div>
+          <div class="term-tab">Problems <span style="background:var(--danger);color:#fff;border-radius:10px;padding:2px 6px;font-size:9px;margin-left:4px;">0</span></div>
+        </div>
+        <div class="term-body">
+          <div class="term-line">
+            <span class="term-prompt">user@antigravity</span>:<span class="term-path">~/IOM-VTON</span>$ npm start
+          </div>
+          <div class="term-line" style="color:var(--text-muted)">
+            &gt; iom-vton@1.0.0 start<br>
+            &gt; react-scripts start
+          </div>
+          <div class="term-line" style="color:var(--success); margin-top:8px;">
+            Compiled successfully!
+          </div>
+          <div class="term-line" style="margin-top:8px;">
+            <span class="term-prompt">user@antigravity</span>:<span class="term-path">~/IOM-VTON</span>$ <span class="term-cursor"></span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Statusbar -->
+    <div class="statusbar">
+      <div class="status-group">
+        <div class="status-item">
+          <svg style="width:14px;height:14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9v1a2 2 0 002 2h8a2 2 0 012 2v1 M6 18a2 2 0 100-4 2 2 0 000 4z M18 18a2 2 0 100-4 2 2 0 000 4z M6 6a2 2 0 100-4 2 2 0 000 4z"/></svg>
+          main*
+        </div>
+        <div class="status-item">
+          <svg style="width:14px;height:14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+          0 errors, 0 warnings
+        </div>
+      </div>
+      <div class="status-group">
+        <div class="status-item">UTF-8</div>
+        <div class="status-item">JSON</div>
+        <div class="status-item">Prettier</div>
+      </div>
+    </div>
+
+  </div>
+
+</body>
+</html>

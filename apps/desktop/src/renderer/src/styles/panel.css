@@ -1,3 +1,6 @@
+/* ═══════════════════════════════════════════════════════════════════
+   PANEL SYSTEM  — reference UI style
+═══════════════════════════════════════════════════════════════════ */
 .panel {
   display: flex;
   flex-direction: column;
@@ -11,20 +14,28 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
+  height: 34px;
   min-height: 34px;
-  padding: 0 12px;
+  padding: 0 10px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-surface);
   flex-shrink: 0;
 }
 
+.panel-header--tabs {
+  padding: 0 6px;
+}
+
 .panel-title {
   font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.07em;
+  font-weight: 700;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
   color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .panel-body {
@@ -36,58 +47,62 @@
 .panel-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 2px;
 }
 
+/* ─── Buttons ────────────────────────────────────────────────────── */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 4px 10px;
+  gap: 5px;
+  padding: 3px 9px;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--bg-elevated);
-  color: var(--text-primary);
+  color: var(--text-secondary);
   font-size: 12px;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  white-space: nowrap;
 }
 
 .btn:hover {
   background: var(--bg-hover);
-  border-color: var(--text-muted);
+  color: var(--text-primary);
+  border-color: #3a3f5c;
 }
 
-/* Antigravity-style teal primary button */
 .btn-primary {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #1a9ba3;
-  border-color: #1a9ba3;
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
 .btn-primary:disabled {
-  opacity: 0.45;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
 .btn-ghost {
   background: transparent;
   border-color: transparent;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   font-size: 12px;
 }
 
 .btn-ghost:hover {
-  background: var(--bg-elevated);
+  background: rgba(255, 255, 255, 0.06);
   color: var(--text-primary);
+  border-color: transparent;
 }
 
+/* ─── Empty state ────────────────────────────────────────────────── */
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -102,12 +117,13 @@
 
 .empty-state h2 {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
   color: var(--text-primary);
 }
 
 .empty-state p {
   margin: 0;
-  max-width: 320px;
-  line-height: 1.5;
+  max-width: 280px;
+  line-height: 1.6;
+  font-size: 12px;
 }

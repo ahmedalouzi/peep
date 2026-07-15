@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import type { FileEntry, ProjectInfo } from '@peep/shared';
 import type { DatabaseService } from './db';
 
-const IGNORED = new Set(['.git', 'node_modules', '.dart_tool', 'build', '.peep']);
+const IGNORED = new Set(['.git', 'node_modules', '.dart_tool', 'build', '.peep', 'dist', '.next', '.expo', 'Pods', '.idea', '.vscode']);
 
 export class WorkspaceManager {
   private project: ProjectInfo | null = null;
@@ -47,10 +47,8 @@ export class WorkspaceManager {
 
     try {
       const entries = await readdir(dirPath, { withFileTypes: true });
-      const result: FileEntry[] = [];
-
-      for (const entry of entries) {
-        if (IGNORED.has(entry.name)) continue;
+      const promises = entries.map(async (entry) => {
+        if (IGNORED.has(entry.name)) return null;
 
         const fullPath = join(dirPath, entry.name);
         const fileEntry: FileEntry = {
@@ -66,9 +64,11 @@ export class WorkspaceManager {
             fileEntry.children = [];
           }
         }
+        return fileEntry;
+      });
 
-        result.push(fileEntry);
-      }
+      const resolved = await Promise.all(promises);
+      const result = resolved.filter((entry): entry is FileEntry => entry !== null);
 
       return result.sort((a, b) => {
         if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;

@@ -11,16 +11,19 @@ interface SettingsModalProps {
 
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [tab, setTab] = useState<SettingsTab>('ai');
-  const [apiProvider, setApiProvider] = useState<'openai' | 'anthropic' | 'google'>('openai');
-  const [apiKey, setApiKey] = useState('');
-  const [apiModel, setApiModel] = useState('gpt-4o-mini');
-  const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
   const [flutterPath, setFlutterPath] = useState('');
   const [saving, setSaving] = useState(false);
   const [sdkVersion, setSdkVersion] = useState<string | null>(null);
   const [telemetryEnabled, setTelemetryEnabled] = useState<boolean | null>(null);
   const [version, setVersion] = useState<string>('');
   const [perfInfo, setPerfInfo] = useState<{ heapUsedMB: number; rssMemMB: number } | null>(null);
+
+  // AI Keys
+  const [geminiKey, setGeminiKey] = useState('');
+  const [anthropicKey, setAnthropicKey] = useState('');
+  const [openaiKey, setOpenaiKey] = useState('');
+  const [showKeys, setShowKeys] = useState(false);
+  const [aiSaved, setAiSaved] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -34,9 +37,14 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     void window.peep.detectFlutterSdk().then((sdk) => setSdkVersion(sdk?.version ?? null));
     void window.peep.getTelemetryEnabled().then(setTelemetryEnabled);
     void window.peep.getVersion().then(setVersion);
+
+    // Load saved AI keys from localStorage
+    setGeminiKey(localStorage.getItem('peep_gemini_key') ?? '');
+    setAnthropicKey(localStorage.getItem('peep_anthropic_key') ?? '');
+    setOpenaiKey(localStorage.getItem('peep_openai_key') ?? '');
+    setAiSaved(false);
   }, [open]);
 
-  // Load perf info when About tab is open
   useEffect(() => {
     if (tab === 'about') {
       void (window.peep as any).getPerformanceInfo?.()?.then((info: any) => setPerfInfo(info));
@@ -70,17 +78,30 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     }
   };
 
+  const handleSaveAiKeys = () => {
+    if (geminiKey.trim()) localStorage.setItem('peep_gemini_key', geminiKey.trim());
+    else localStorage.removeItem('peep_gemini_key');
+    if (anthropicKey.trim()) localStorage.setItem('peep_anthropic_key', anthropicKey.trim());
+    else localStorage.removeItem('peep_anthropic_key');
+    if (openaiKey.trim()) localStorage.setItem('peep_openai_key', openaiKey.trim());
+    else localStorage.removeItem('peep_openai_key');
+    setAiSaved(true);
+    setTimeout(() => setAiSaved(false), 2000);
+  };
+
   const handleTelemetryToggle = async (enabled: boolean) => {
     setTelemetryEnabled(enabled);
     await window.peep.setTelemetryEnabled(enabled);
   };
 
   const TABS: { id: SettingsTab; label: string }[] = [
-    { id: 'ai',        label: '🤖 AI Settings' },
-    { id: 'sdk',       label: '🔧 SDK' },
+    { id: 'ai', label: '🤖 AI Keys' },
+    { id: 'sdk', label: '🔧 SDK' },
     { id: 'telemetry', label: '🔒 Privacy' },
-    { id: 'about',     label: 'ℹ About' },
+    { id: 'about', label: 'ℹ About' },
   ];
+
+  const inputType = showKeys ? 'text' : 'password';
 
   return (
     <div className="settings-overlay" onClick={handleClose}>
@@ -108,72 +129,66 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         {/* Body */}
         <div className="settings-modal__body">
 
-          {/* ── AI ── */}
+          {/* ── AI API Keys ── */}
           {tab === 'ai' && (
-            <>
-              <label className="settings-field">
-                <span>AI Provider</span>
-                <select
-                  value={apiProvider}
-                  onChange={(e) => {
-                    const nextProvider = e.target.value as 'openai' | 'google';
-                    setApiProvider(nextProvider);
-                    setApiModel(nextProvider === 'google' ? 'gemini-3.5-flash' : 'gpt-4o-mini');
-                  }}
-                >
-                  <option value="openai">OpenAI (BYOK)</option>
-                  <option value="google">Google Gemini (BYOK)</option>
-                  <option value="anthropic" disabled>Anthropic (Coming Soon)</option>
-                </select>
-              </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: 0, lineHeight: 1.6 }}>
+                Your API keys are stored locally in this browser context and never sent to any server except the respective AI provider.
+              </p>
 
+              {/* Gemini */}
               <label className="settings-field">
-                <span>API Key</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="10" /><path d="M12 2v20M2 12h20" /></svg>
+                  Google Gemini API Key
+                </span>
                 <input
-                  type="password"
-                  placeholder={apiKeyConfigured ? '•••••••• (Saved. Enter new key to overwrite)' : `Enter ${apiProvider === 'google' ? 'Google Gemini' : 'OpenAI'} API Key...`}
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
+                  type={inputType}
+                  placeholder="AIza…"
+                  value={geminiKey}
+                  onChange={(e) => setGeminiKey(e.target.value)}
+                  style={{ fontFamily: 'var(--font-code)', letterSpacing: showKeys ? 'normal' : '0.1em' }}
                 />
-                {apiKeyConfigured && (
-                  <small className="settings-field__ok">✓ API Key is configured and saved locally</small>
-                )}
+                {geminiKey && <small className="settings-field__ok">✓ Key set</small>}
               </label>
 
+              {/* Anthropic */}
               <label className="settings-field">
-                <span>Model</span>
-                <select
-                  value={apiModel}
-                  onChange={(e) => {
-                    const model = e.target.value;
-                    setApiModel(model);
-                    if (model.startsWith('gemini-')) {
-                      setApiProvider('google');
-                    } else if (model.startsWith('gpt-')) {
-                      setApiProvider('openai');
-                    }
-                  }}
-                >
-                  <option value="gemini-3.5-flash">gemini-3.5-flash (Google Gemini - Default)</option>
-                  <option value="gemini-3.1-pro">gemini-3.1-pro (Google Gemini)</option>
-                  <option value="gemini-3">gemini-3 (Google Gemini)</option>
-                  <option value="gemini-3-flash">gemini-3-flash (Google Gemini)</option>
-                  <option value="gemini-2.5-flash">gemini-2.5-flash (Google Gemini)</option>
-                  <option value="gemini-1.5-flash">gemini-1.5-flash (Google Gemini)</option>
-                  <option value="gemini-1.5-pro">gemini-1.5-pro (Google Gemini - High Quality)</option>
-                  <option value="gpt-4o-mini">gpt-4o-mini (OpenAI - Default)</option>
-                  <option value="gpt-4o">gpt-4o (OpenAI - High Quality)</option>
-                  <option value="gpt-3.5-turbo">gpt-3.5-turbo (OpenAI - Legacy)</option>
-                  <option value="o1-mini">o1-mini (OpenAI - Reasoning)</option>
-                  <option value="o3-mini">o3-mini (OpenAI - Reasoning)</option>
-                  <option value="claude-3-5-sonnet">claude-3-5-sonnet (Claude - Coding)</option>
-                  <option value="claude-3-5-haiku">claude-3-5-haiku (Claude - Fast)</option>
-                  <option value="claude-3-opus">claude-3-opus (Claude - High Quality)</option>
-                  <option value="llama-3.3-70b">llama-3.3-70b (Llama - Open Weights)</option>
-                  <option value="codestral">codestral (Mistral - Coding)</option>
-                </select>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 2L2 19h20L12 2z" /></svg>
+                  Anthropic (Claude) API Key
+                </span>
+                <input
+                  type={inputType}
+                  placeholder="sk-ant-…"
+                  value={anthropicKey}
+                  onChange={(e) => setAnthropicKey(e.target.value)}
+                  style={{ fontFamily: 'var(--font-code)', letterSpacing: showKeys ? 'normal' : '0.1em' }}
+                />
+                {anthropicKey && <small className="settings-field__ok">✓ Key set</small>}
               </label>
-            </>
+
+              {/* OpenAI */}
+              <label className="settings-field">
+                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M2 12h2M20 12h2" /></svg>
+                  OpenAI API Key
+                </span>
+                <input
+                  type={inputType}
+                  placeholder="sk-…"
+                  value={openaiKey}
+                  onChange={(e) => setOpenaiKey(e.target.value)}
+                  style={{ fontFamily: 'var(--font-code)', letterSpacing: showKeys ? 'normal' : '0.1em' }}
+                />
+                {openaiKey && <small className="settings-field__ok">✓ Key set</small>}
+              </label>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--text-muted)', cursor: 'pointer', userSelect: 'none' }}>
+                <input type="checkbox" checked={showKeys} onChange={(e) => setShowKeys(e.target.checked)} />
+                Show keys
+              </label>
+            </div>
           )}
 
           {/* ── SDK ── */}
@@ -287,8 +302,20 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           )}
         </div>
 
-        {/* Footer — show Save for AI and SDK tabs */}
-        {(tab === 'ai' || tab === 'sdk') && (
+        {/* Footer */}
+        {tab === 'ai' && (
+          <div className="settings-modal__footer">
+            <button type="button" className="btn btn-ghost" onClick={handleClose}>Cancel</button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleSaveAiKeys}
+            >
+              {aiSaved ? '✓ Saved!' : 'Save Keys'}
+            </button>
+          </div>
+        )}
+        {tab === 'sdk' && (
           <div className="settings-modal__footer">
             <button type="button" className="btn btn-ghost" onClick={handleClose}>Cancel</button>
             <button

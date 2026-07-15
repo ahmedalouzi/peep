@@ -18,6 +18,7 @@ import { AutoUpdateService } from '../services/auto-update-service';
 import { ReactNativeService } from '../services/react-native-service';
 import { PlatformRegistry } from '../services/platform-registry';
 import { buildAuditReport, capturePerformanceSnapshot } from '../services/audit-service';
+import { PublishService } from '../services/publish-service';
 
 let db: DatabaseService | null = null;
 let mainWindow: BrowserWindow | null = null;
@@ -32,6 +33,7 @@ const telemetryService = new TelemetryService();
 let autoUpdateService: AutoUpdateService | null = null;
 let rnService: ReactNativeService | null = null;
 let platformRegistry: PlatformRegistry | null = null;
+let publishService: PublishService | null = null;
 
 export function setMainWindow(window: BrowserWindow | null): void {
   mainWindow = window;
@@ -133,9 +135,12 @@ export async function registerIpcHandlers(): Promise<{
   const workspace = new WorkspaceManager(db);
   const processManager = new ProcessManager();
   const settings = db.getSettingsRaw();
+  processManager.setFlutterSdkPath(settings.flutterSdkPath);
+  terminalService.setFlutterSdkPath(settings.flutterSdkPath);
   const flutter = new FlutterService(processManager, settings.flutterSdkPath);
   rnService = new ReactNativeService(processManager);
   platformRegistry = new PlatformRegistry(flutter, rnService);
+  publishService = new PublishService(processManager);
   agentService = new AgentService(db, workspace, flutter, rnService);
   agentService.setMainWindow(mainWindow);
   const projectService = new ProjectService(flutter, workspace);
@@ -221,6 +226,8 @@ export async function registerIpcHandlers(): Promise<{
     await db!.setSettings(partial);
     if ('flutterSdkPath' in partial) {
       flutter.setSdkPath(partial.flutterSdkPath);
+      processManager.setFlutterSdkPath(partial.flutterSdkPath);
+      terminalService.setFlutterSdkPath(partial.flutterSdkPath);
     }
     return db!.getSettings();
   });
@@ -481,6 +488,24 @@ export async function registerIpcHandlers(): Promise<{
 
   ipcMain.handle(IPC_CHANNELS.RN_RELOAD_PREVIEW, async (_event, processId: number) => {
     rnService!.reloadPreview(processId);
+  });
+
+  // ── Publish ──────────────────────────────────────────────────────────────
+
+  ipcMain.handle(IPC_CHANNELS.PUBLISH_GET_STATUS, () => {
+    return publishService!.getStatus();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PUBLISH_BUILD_DEPLOY, async (_event, options: { projectPath: string, platform: 'flutter' | 'react-native', target: 'vercel' | 'netlify', token?: string }) => {
+    void publishService!.buildAndDeploy(options.projectPath, options.platform, options.target, options.token);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PUBLISH_EAS_BUILD, async (_event, options: { projectPath: string }) => {
+    void publishService!.easBuild(options.projectPath);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PUBLISH_CANCEL, () => {
+    publishService!.cancel();
   });
 
   // ── Audit / Performance ────────────────────────────────────────────────────

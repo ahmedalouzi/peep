@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { platform } from 'node:os';
+import { join } from 'node:path';
 import type { BrowserWindow } from 'electron';
 import { IPC_EVENTS } from '@peep/shared';
 import type { RunCommandResult } from '@peep/shared';
@@ -29,9 +30,14 @@ interface TerminalSession {
 export class TerminalService {
   private sessions = new Map<string, TerminalSession>();
   private mainWindow: BrowserWindow | null = null;
+  private flutterSdkPath?: string;
 
   setMainWindow(window: BrowserWindow | null): void {
     this.mainWindow = window;
+  }
+
+  setFlutterSdkPath(path: string | undefined): void {
+    this.flutterSdkPath = path;
   }
 
   private getShell(): { command: string; args: string[] } {
@@ -45,11 +51,21 @@ export class TerminalService {
     console.log(`[TerminalService] Creating terminal session for id: ${id}, cwd: ${cwd}`);
     this.destroy(id);
 
+    const customEnv = { ...process.env };
+    if (this.flutterSdkPath) {
+      const binPath = join(this.flutterSdkPath, 'bin');
+      const pathKeyActual = Object.keys(customEnv).find(k => k.toLowerCase() === 'path') || 'PATH';
+      const existingPath = customEnv[pathKeyActual] || '';
+      customEnv[pathKeyActual] = platform() === 'win32'
+        ? `${binPath};${existingPath}`
+        : `${binPath}:${existingPath}`;
+    }
+
     const shell = this.getShell();
     console.log(`[TerminalService] Spawning shell command: ${shell.command} with args:`, shell.args);
     const child = spawn(shell.command, shell.args, {
       cwd,
-      env: { ...process.env },
+      env: customEnv,
       stdio: ['pipe', 'pipe', 'pipe'],
       shell: false,
     });
@@ -191,7 +207,17 @@ export class TerminalService {
 
     return new Promise((resolve, reject) => {
       const shell = platform() === 'win32';
-      const child = spawn(command, [], { cwd, shell, env: { ...process.env } });
+      const customEnv = { ...process.env };
+      if (this.flutterSdkPath) {
+        const binPath = join(this.flutterSdkPath, 'bin');
+        const pathKeyActual = Object.keys(customEnv).find(k => k.toLowerCase() === 'path') || 'PATH';
+        const existingPath = customEnv[pathKeyActual] || '';
+        customEnv[pathKeyActual] = platform() === 'win32'
+          ? `${binPath};${existingPath}`
+          : `${binPath}:${existingPath}`;
+      }
+
+      const child = spawn(command, [], { cwd, shell, env: customEnv });
 
       let stdout = '';
       let stderr = '';

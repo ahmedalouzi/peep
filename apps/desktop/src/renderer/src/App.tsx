@@ -8,6 +8,7 @@ import { UpdateBanner } from './features/shared/UpdateBanner';
 import { KeyboardHelp } from './features/shared/KeyboardHelp';
 import { usePeepEvents } from './hooks/usePeepEvents';
 import { DetachedPreview } from './features/preview/DetachedPreview';
+import { PublishModal } from './features/publish/PublishModal';
 
 export default function App() {
   usePeepEvents();
@@ -23,6 +24,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false);
 
   // Onboarding state — null = loading from settings
   const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null);
@@ -55,13 +57,16 @@ export default function App() {
   useEffect(() => {
     const onOpenPicker = () => setGlobalPickerOpen(true);
     const onOpenSettings = () => setSettingsOpen(true);
+    const onOpenPublish = () => setPublishOpen(true);
 
     window.addEventListener('peep:open-picker', onOpenPicker);
     window.addEventListener('peep:open-settings', onOpenSettings);
+    window.addEventListener('peep:open-publish', onOpenPublish);
 
     return () => {
       window.removeEventListener('peep:open-picker', onOpenPicker);
       window.removeEventListener('peep:open-settings', onOpenSettings);
+      window.removeEventListener('peep:open-publish', onOpenPublish);
     };
   }, []);
 
@@ -85,6 +90,8 @@ export default function App() {
         onClose={() => setNewProjectOpen(false)}
         onCreated={() => undefined}
       />
+
+      <PublishModal open={publishOpen} onClose={() => setPublishOpen(false)} />
 
       <KeyboardHelp open={helpOpen} onClose={() => setHelpOpen(false)} />
 

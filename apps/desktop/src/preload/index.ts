@@ -97,6 +97,22 @@ const api: IpcApi = {
   onGitChanged: (callback) => subscribe<void>(IPC_EVENTS.GIT_CHANGED, callback),
   onUpdateStatus: (callback) => subscribe<UpdateInfo>(IPC_EVENTS.APP_UPDATE_STATUS, callback),
   getPerformanceInfo: () => ipcRenderer.invoke(IPC_CHANNELS.AUDIT_PERFORMANCE),
+  publishGetStatus: () => ipcRenderer.invoke(IPC_CHANNELS.PUBLISH_GET_STATUS),
+  publishBuildDeploy: (options: {
+    projectPath: string;
+    platform: 'flutter' | 'react-native';
+    target: 'vercel' | 'netlify';
+    token?: string;
+  }) => ipcRenderer.invoke(IPC_CHANNELS.PUBLISH_BUILD_DEPLOY, options),
+  publishEasBuild: (options: { projectPath: string }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PUBLISH_EAS_BUILD, options),
+  publishCancel: () => ipcRenderer.invoke(IPC_CHANNELS.PUBLISH_CANCEL),
+  onPublishStatus: (callback: (status: any) => void) =>
+    subscribe<any>(IPC_EVENTS.PUBLISH_STATUS, callback),
+  onPublishLog: (callback: (line: string) => void) =>
+    subscribe<string>(IPC_EVENTS.PUBLISH_LOG, callback),
+  onOpenFile: (callback: (file: any) => void) =>
+    subscribe<any>('workspace:open-file', callback),
 };
 
 contextBridge.exposeInMainWorld('peep', api);

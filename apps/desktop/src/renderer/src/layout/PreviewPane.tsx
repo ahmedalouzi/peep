@@ -134,6 +134,15 @@ export function PreviewPane() {
               >
                 ↗ Detach
               </button>
+
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => window.dispatchEvent(new CustomEvent('peep:open-publish'))}
+                title="Publish or Deploy App"
+              >
+                🚀 Publish
+              </button>
             </>
           )}
         </div>

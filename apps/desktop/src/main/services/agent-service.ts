@@ -15,6 +15,13 @@ import { searchContent } from './content-search';
 const RN_SYSTEM_ADDENDUM = `
 This is a React Native / Expo project.
 Key rules:
+- **PLANNING**: For requests that require writing, modifying, or scaffolding code files, you MUST first create or update a file named \`.peep/plan.md\` in the project root. This file must contain a clean, simple, bulleted and summarized checklist of the features/tasks you plan to implement. Do NOT edit code files in the same turn as writing/updating the plan. Instead, instruct the user to click the "Proceed with Implementation" button in the plan tab. Only when the user says "Proceed with implementation" should you propose the actual code edits.
+- **AUTONOMY**: Never ask the user conversational questions or ask for permission when a coding task is requested. For coding requests, immediately write/update the \`.peep/plan.md\` file using the tool call and tell the user they can click "Proceed" to start. Once they click/say "Proceed with implementation", you MUST NOT update the plan or ask for confirmation again. You MUST immediately execute the code edits via \`propose_file_edit\` in that same response.
+- **CONVERSATIONAL CHAT**: If the user's message is a greeting (e.g., "hi", "hello"), a general question, or a discussion that does NOT ask you to write, edit, or scaffold code, respond conversationally, politely, and briefly. In this case, do NOT call any tools, do NOT create/update the plan, and do NOT ask them to click "Proceed".
+- **WALKTHROUGH**: After completing the code edits (in the same turn you propose the code changes), you MUST also create or update a file named \`.peep/walkthrough.md\` in the project root via the tool call. This file must contain a clear, professional summary of the changes made, the files created/modified, and details on how the developer can verify the new features.
+- **CODE PRESERVATION**: When modifying or refactoring files, you MUST preserve all existing features, UI elements, handlers, imports, and business logic unless explicitly requested to remove or replace them. Never drop progress indicators, buttons, state properties, or helper methods during subsequent feature additions.
+- **NO CODEBLOCKS IN CHAT**: Do NOT output full code files or code blocks in your chat responses. All code additions/modifications must be proposed via tool calls. Your text response should only describe/summarize the changes.
+- **MULTI-FILE WRITES**: Write or modify ALL files associated with a feature/request in a single turn. Do not propose one file and wait for the user to say "proceed" to propose the next one. Use sequential tool calls in the same response.
 - Keep StyleSheet objects at the BOTTOM of each file.
 - Use FlatList for lists, not map() inside ScrollView.
 - Navigation: use useNavigation() hook (React Navigation) or expo-router Link/useRouter.
@@ -119,6 +126,7 @@ export class AgentService {
   }
 
   async send(options: AgentSendOptions): Promise<void> {
+    const projectPath = options.projectPath;
     const settings = this.db.getSettingsRaw();
     if (!settings.apiKey) {
       this.emitStream({ type: 'error', content: 'Add your OpenAI API key in Settings (gear icon).' });
@@ -136,34 +144,36 @@ export class AgentService {
     let packageJson: string | undefined;
     let appEntry: string | undefined;
 
-    // Detect platform by checking for pubspec.yaml vs package.json
-    try {
-      await access(join(options.projectPath, 'pubspec.yaml'));
-      // Flutter project
-      pubspec = await this.workspace.readFile(join(options.projectPath, 'pubspec.yaml')).catch(() => undefined);
-      mainDart = await this.workspace.readFile(join(options.projectPath, 'lib', 'main.dart')).catch(() => undefined);
-    } catch {
-      const fullText = (options.history?.map(h => h.content).join(' ') || '') + ' ' + options.message;
-      if (fullText.toLowerCase().includes('flutter')) {
-        isReactNative = false;
-        // User explicitly asked for Flutter, check if SDK is installed
-        const flutterSdk = await this.flutter.detectSdk();
-        if (!flutterSdk) {
-          this.emitStream({ type: 'error', content: 'Flutter SDK is not detected. Please install Flutter and add the path in Settings, or ask me to build it with React Native instead.' });
-          return;
+    if (projectPath) {
+      // Detect platform by checking for pubspec.yaml vs package.json
+      try {
+        await access(join(projectPath, 'pubspec.yaml'));
+        // Flutter project
+        pubspec = await this.workspace.readFile(join(projectPath, 'pubspec.yaml')).catch(() => undefined);
+        mainDart = await this.workspace.readFile(join(projectPath, 'lib', 'main.dart')).catch(() => undefined);
+      } catch {
+        const fullText = (options.history?.map(h => h.content).join(' ') || '') + ' ' + options.message;
+        if (fullText.toLowerCase().includes('flutter')) {
+          isReactNative = false;
+          // User explicitly asked for Flutter, check if SDK is installed
+          const flutterSdk = await this.flutter.detectSdk();
+          if (!flutterSdk) {
+            this.emitStream({ type: 'error', content: 'Flutter SDK is not detected. Please install Flutter and add the path in Settings, or ask me to build it with React Native instead.' });
+            return;
+          }
+        } else {
+          isReactNative = true;
         }
-      } else {
-        isReactNative = true;
+        
+        packageJson = await this.workspace.readFile(join(projectPath, 'package.json')).catch(() => undefined);
+        // Try common RN entry points
+        appEntry = await this.workspace.readFile(join(projectPath, 'App.tsx')).catch(() =>
+          this.workspace.readFile(join(projectPath, 'App.js')).catch(() => undefined)
+        );
       }
-      
-      packageJson = await this.workspace.readFile(join(options.projectPath, 'package.json')).catch(() => undefined);
-      // Try common RN entry points
-      appEntry = await this.workspace.readFile(join(options.projectPath, 'App.tsx')).catch(() =>
-        this.workspace.readFile(join(options.projectPath, 'App.js')).catch(() => undefined)
-      );
     }
 
-    const treeSummary = await this.buildTreeSummary(options.projectPath);
+    const treeSummary = projectPath ? await this.buildTreeSummary(projectPath) : '';
 
     const rnAddendum = isReactNative ? RN_SYSTEM_ADDENDUM : '';
     const systemContext =
@@ -201,30 +211,57 @@ export class AgentService {
 
     const executor = {
       execute: async (name: string, args: Record<string, unknown>): Promise<string> => {
+        if (!projectPath) {
+          throw new Error('No project workspace open. Please open a project first.');
+        }
+
         switch (name) {
           case 'read_file': {
-            const path = this.resolvePath(options.projectPath, String(args.path));
+            const path = this.resolvePath(projectPath, String(args.path));
             const content = await this.workspace.readFile(path);
             return content.length > 12000 ? `${content.slice(0, 12000)}\n...[truncated]` : content;
           }
           case 'list_dir': {
-            const path = this.resolvePath(options.projectPath, String(args.path || '.'));
+            const path = this.resolvePath(projectPath, String(args.path || '.'));
             const entries = await this.workspace.listDir(path, 0, 2);
             return JSON.stringify(entries, null, 2);
           }
           case 'search_files': {
-            const matches = await searchFiles(options.projectPath, String(args.query));
+            const matches = await searchFiles(projectPath, String(args.query));
             return matches.map((m) => m.path).join('\n') || 'No files found';
           }
           case 'search_content': {
-            const matches = await searchContent(options.projectPath, String(args.query));
+            const matches = await searchContent(projectPath, String(args.query));
             return (
               matches.map((m) => `${m.file}:${m.line}: ${m.text}`).join('\n') || 'No matches found'
             );
           }
           case 'propose_file_edit': {
-            const path = this.resolvePath(options.projectPath, String(args.path));
+            const path = this.resolvePath(projectPath, String(args.path));
             const proposedContent = String(args.content);
+
+            if (path.endsWith('.peep/plan.md') || path.endsWith('.peep\\plan.md')) {
+              await this.workspace.writeFile(path, proposedContent);
+              this.mainWindow?.webContents.send('workspace:open-file', {
+                path,
+                name: '📋 Implementation Plan',
+                content: proposedContent,
+                dirty: false,
+              });
+              return `Plan updated successfully. Awaiting user's 'Proceed' confirmation.`;
+            }
+
+            if (path.endsWith('.peep/walkthrough.md') || path.endsWith('.peep\\walkthrough.md')) {
+              await this.workspace.writeFile(path, proposedContent);
+              this.mainWindow?.webContents.send('workspace:open-file', {
+                path,
+                name: '📋 Walkthrough',
+                content: proposedContent,
+                dirty: false,
+              });
+              return `Walkthrough updated successfully.`;
+            }
+
             let originalContent = '';
             try {
               originalContent = await this.workspace.readFile(path);
@@ -245,9 +282,9 @@ export class AgentService {
               
               let diagOutput = '';
               try {
-                const isFlutter = await this.flutter.isFlutterProject(options.projectPath);
+                const isFlutter = await this.flutter.isFlutterProject(projectPath);
                 if (isFlutter) {
-                  const diags = await this.flutter.analyze(options.projectPath);
+                  const diags = await this.flutter.analyze(projectPath);
                   if (diags.length > 0) {
                     diagOutput = '\n\nActive compilation/analysis diagnostics after this change:\n' +
                       diags.map(d => `- [${d.severity}] ${d.file}:${d.line}:${d.column} - ${d.message}`).join('\n');
@@ -255,9 +292,9 @@ export class AgentService {
                     diagOutput = '\n\nAnalysis passed with 0 errors.';
                   }
                 } else if (this.rnService) {
-                  const isRN = await this.rnService.isReactNativeProject(options.projectPath);
+                  const isRN = await this.rnService.isReactNativeProject(projectPath);
                   if (isRN) {
-                    const diags = await this.rnService.analyze(options.projectPath);
+                    const diags = await this.rnService.analyze(projectPath);
                     if (diags.length > 0) {
                       diagOutput = '\n\nActive React Native TS/ESLint diagnostics after this change:\n' +
                         diags.map(d => `- [${d.severity}] ${d.file}:${d.line}:${d.column} - ${d.message}`).join('\n');

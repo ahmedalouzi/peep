@@ -1,4 +1,6 @@
 import { MonacoEditor } from '../features/editor/MonacoEditor';
+import { DiffViewer } from '../features/chat/DiffViewer';
+import { PlanViewer } from '../features/plan/PlanViewer';
 import { NoFileOpenEmptyState, NoProjectEmptyState } from '../features/shared/EmptyState';
 import { useWorkspace } from '../hooks/useWorkspace';
 import './EditorPane.css';
@@ -22,12 +24,19 @@ export function EditorPane() {
     window.dispatchEvent(new CustomEvent('peep:new-project'));
   };
 
+  const isVirtualFile =
+    activeFile?.path === 'peep://proposed-changes' ||
+    activeFile?.path.endsWith('.peep/plan.md') ||
+    activeFile?.path.endsWith('.peep\\plan.md') ||
+    activeFile?.path.endsWith('.peep/walkthrough.md') ||
+    activeFile?.path.endsWith('.peep\\walkthrough.md');
+
   return (
     <section className="panel editor-pane">
       <div className="panel-header">
         <span className="panel-title">Editor</span>
         <div className="panel-actions">
-          {activeFile && (
+          {activeFile && !isVirtualFile && (
             <button type="button" className="btn btn-ghost" onClick={() => void saveActiveFile()}>
               Save
             </button>
@@ -67,6 +76,12 @@ export function EditorPane() {
           />
         ) : !activeFile ? (
           <NoFileOpenEmptyState />
+        ) : activeFile.path === 'peep://proposed-changes' ? (
+          <DiffViewer />
+        ) : activeFile.path.endsWith('.peep/plan.md') || activeFile.path.endsWith('.peep\\plan.md') ? (
+          <PlanViewer content={activeFile.content} mode="plan" />
+        ) : activeFile.path.endsWith('.peep/walkthrough.md') || activeFile.path.endsWith('.peep\\walkthrough.md') ? (
+          <PlanViewer content={activeFile.content} mode="walkthrough" />
         ) : (
           <MonacoEditor
             key={activeFile.path}

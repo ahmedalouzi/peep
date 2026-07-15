@@ -10,9 +10,15 @@ export function buildAgentContext(input: AgentContextInput): string {
   const parts = [
     FLUTTER_SYSTEM_PROMPT,
     '',
-    `Project root: ${input.projectPath}`,
-    `Project structure:\n${input.treeSummary}`,
   ];
+
+  if (input.projectPath) {
+    parts.push(`Project root: ${input.projectPath}`);
+  }
+
+  if (input.treeSummary) {
+    parts.push(`Project structure:\n${input.treeSummary}`);
+  }
 
   if (input.pubspec) {
     parts.push('', 'pubspec.yaml:', '```yaml', truncate(input.pubspec, 3000), '```');

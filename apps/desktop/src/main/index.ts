@@ -50,6 +50,10 @@ function createWindow(): void {
 app.whenReady().then(() => {
   if (process.platform === 'win32') {
     app.setAppUserModelId('com.peep.desktop');
+    // Terminate any orphaned dart processes to release active sockets and lockfiles
+    import('node:child_process').then(({ exec }) => {
+      exec('taskkill /f /im dart.exe', () => {});
+    });
   }
 
   void registerIpcHandlers().then((services) => {

@@ -20,6 +20,22 @@ interface ChatState {
   clearMessages: () => void;
 }
 
+function stripCodeBlocks(text: string): string {
+  // Strip introductory lines pointing to code files
+  let cleaned = text.replace(
+    /(?:Here's the updated content for|Here are the proposed contents|Proposed Code for|### Updated|### Proposed Code)[^:\n]*:?/gi,
+    ''
+  );
+  // Replace complete code blocks with empty string
+  cleaned = cleaned.replace(/```[a-zA-Z]*[\s\S]*?```/g, '');
+  // Handle streaming state: if there is an open code block, truncate it
+  const openBlockIndex = cleaned.indexOf('```');
+  if (openBlockIndex >= 0) {
+    cleaned = cleaned.slice(0, openBlockIndex);
+  }
+  return cleaned.trim();
+}
+
 export const useChatStore = create<ChatState>((set, get) => ({
   messages: [
     {
@@ -37,7 +53,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
   proposedEdits: [],
 
   setInput: (input) => set({ input }),
-  addMessage: (message) => set((state) => ({ messages: [...state.messages, message] })),
+  addMessage: (message) =>
+    set((state) => ({
+      messages: [
+        ...state.messages,
+        message.role === 'assistant'
+          ? { ...message, content: stripCodeBlocks(message.content) }
+          : message,
+      ],
+    })),
 
   startStreaming: (messageId) =>
     set({
@@ -52,7 +76,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (!streamingMessageId) return;
     set({
       messages: messages.map((m) =>
-        m.id === streamingMessageId ? { ...m, content: m.content + delta } : m,
+        m.id === streamingMessageId
+          ? { ...m, content: stripCodeBlocks(m.content + delta) }
+          : m
       ),
     });
   },

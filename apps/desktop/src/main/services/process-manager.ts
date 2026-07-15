@@ -1,5 +1,6 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, exec, type ChildProcess } from 'node:child_process';
 import { platform } from 'node:os';
+import { join } from 'node:path';
 
 export interface ProcessInfo {
   id: number;
@@ -10,14 +11,29 @@ export interface ProcessInfo {
 export class ProcessManager {
   private processes = new Map<number, ProcessInfo>();
   private nextId = 1;
+  private flutterSdkPath?: string;
+
+  setFlutterSdkPath(path: string | undefined): void {
+    this.flutterSdkPath = path;
+  }
 
   spawn(command: string, args: string[], cwd: string): ProcessInfo {
     const shell = platform() === 'win32';
+    const customEnv = { ...process.env };
+    if (this.flutterSdkPath) {
+      const binPath = join(this.flutterSdkPath, 'bin');
+      const pathKeyActual = Object.keys(customEnv).find(k => k.toLowerCase() === 'path') || 'PATH';
+      const existingPath = customEnv[pathKeyActual] || '';
+      customEnv[pathKeyActual] = platform() === 'win32'
+        ? `${binPath};${existingPath}`
+        : `${binPath}:${existingPath}`;
+    }
+
     const child = spawn(command, args, {
       cwd,
       shell,
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env },
+      env: customEnv,
     });
 
     const info: ProcessInfo = {
@@ -46,7 +62,18 @@ export class ProcessManager {
     const info = this.processes.get(id);
     if (!info) return false;
 
-    info.process.kill();
+    const pid = info.process.pid;
+    if (pid && platform() === 'win32') {
+      exec(`taskkill /pid ${pid} /f /t`, (err) => {
+        if (err) {
+          console.error(`Failed to kill process tree for PID ${pid}:`, err);
+          info.process.kill();
+        }
+      });
+    } else {
+      info.process.kill();
+    }
+
     this.processes.delete(id);
     return true;
   }
@@ -57,7 +84,12 @@ export class ProcessManager {
 
   killAll(): void {
     for (const info of this.processes.values()) {
-      info.process.kill();
+      const pid = info.process.pid;
+      if (pid && platform() === 'win32') {
+        exec(`taskkill /pid ${pid} /f /t`);
+      } else {
+        info.process.kill();
+      }
     }
     this.processes.clear();
   }

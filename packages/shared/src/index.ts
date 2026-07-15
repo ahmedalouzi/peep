@@ -64,7 +64,7 @@ export interface Settings {
   flutterSdkPath?: string;
   theme: 'dark' | 'light';
   autoSave: boolean;
-  apiProvider?: 'openai' | 'anthropic';
+  apiProvider?: 'openai' | 'anthropic' | 'google';
   apiKey?: string;
   apiModel?: string;
   apiKeyConfigured?: boolean;
@@ -89,7 +89,7 @@ export interface SdkInfo {
 export interface AgentSendOptions {
   message: string;
   history?: Array<{ role: 'user' | 'assistant'; content: string }>;
-  projectPath: string;
+  projectPath?: string;
   openFilePath?: string;
   openFileContent?: string;
   diagnostics?: Diagnostic[];
@@ -209,6 +209,11 @@ export const IPC_CHANNELS = {
   PREVIEW_DETACH: 'preview:detach',
   PREVIEW_ATTACH: 'preview:attach',
   PREVIEW_IS_DETACHED: 'preview:isDetached',
+  // Publish
+  PUBLISH_GET_STATUS: 'publish:getStatus',
+  PUBLISH_BUILD_DEPLOY: 'publish:buildDeploy',
+  PUBLISH_EAS_BUILD: 'publish:easBuild',
+  PUBLISH_CANCEL: 'publish:cancel',
 } as const;
 
 export const IPC_EVENTS = {
@@ -221,6 +226,8 @@ export const IPC_EVENTS = {
   TERMINAL_EXIT: 'terminal:exit',
   GIT_CHANGED: 'git:changed',
   APP_UPDATE_STATUS: 'app:updateStatus',
+  PUBLISH_STATUS: 'publish:status',
+  PUBLISH_LOG: 'publish:log',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
@@ -274,6 +281,10 @@ export interface IpcApi {
   getUpdateStatus: () => Promise<UpdateInfo>;
   completeOnboarding: () => Promise<void>;
   getPerformanceInfo?: () => Promise<{ heapUsedMB: number; rssMemMB: number }>;
+  publishGetStatus: () => Promise<any>;
+  publishBuildDeploy: (options: { projectPath: string, platform: 'flutter' | 'react-native', target: 'vercel' | 'netlify', token?: string }) => Promise<void>;
+  publishEasBuild: (options: { projectPath: string }) => Promise<void>;
+  publishCancel: () => Promise<void>;
   onPreviewStatus: (callback: (session: PreviewSession) => void) => () => void;
   onDiagnostics: (callback: (diagnostics: Diagnostic[]) => void) => () => void;
   onPreviewLog: (callback: (line: string) => void) => () => void;
@@ -283,6 +294,9 @@ export interface IpcApi {
   onTerminalExit: (callback: (payload: { id: string; code: number }) => void) => () => void;
   onGitChanged: (callback: () => void) => () => void;
   onUpdateStatus: (callback: (info: UpdateInfo) => void) => () => void;
+  onPublishStatus: (callback: (status: any) => void) => () => void;
+  onPublishLog: (callback: (line: string) => void) => () => void;
+  onOpenFile: (callback: (file: any) => void) => () => void;
 }
 
 declare global {

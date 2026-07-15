@@ -3,7 +3,7 @@ import type { ChatMessage, ToolCall } from './types';
 
 export interface AgentConfig {
   apiKey: string;
-  provider: 'openai' | 'anthropic';
+  provider: 'openai' | 'anthropic' | 'google';
   model?: string;
 }
 
@@ -20,24 +20,32 @@ export interface AgentToolExecutor {
 
 const MAX_ITERATIONS = 8;
 
+const getApiUrl = (config: AgentConfig) => {
+  if (config.provider === 'google') {
+    return 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
+  }
+  return 'https://api.openai.com/v1/chat/completions';
+};
+
 async function callOpenAI(
   config: AgentConfig,
   messages: ChatMessage[],
   signal: AbortSignal,
 ): Promise<ChatMessage> {
-  const model = config.model ?? 'gpt-4o-mini';
+  const model = config.model ?? (config.provider === 'google' ? 'gemini-1.5-flash' : 'gpt-4o-mini');
+  const cleanKey = config.apiKey.replace(/[^\x20-\x7E]/g, '');
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch(getApiUrl(config), {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${config.apiKey}`,
+      Authorization: `Bearer ${cleanKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
       model,
       messages: messages.map((m) => {
         if (m.role === 'tool') {
-          return { role: 'tool', content: m.content, tool_call_id: m.tool_call_id };
+          return { role: 'tool', content: m.content, tool_call_id: m.tool_call_id, name: m.name };
         }
         if (m.role === 'assistant' && m.tool_calls) {
           return { role: 'assistant', content: m.content || null, tool_calls: m.tool_calls };
@@ -52,7 +60,7 @@ async function callOpenAI(
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(body || `OpenAI API error ${response.status}`);
+    throw new Error(body || `${config.provider} API error ${response.status}`);
   }
 
   const data = (await response.json()) as {
@@ -68,19 +76,20 @@ async function streamOpenAISummary(
   callbacks: AgentCallbacks,
   signal: AbortSignal,
 ): Promise<string> {
-  const model = config.model ?? 'gpt-4o-mini';
+  const model = config.model ?? (config.provider === 'google' ? 'gemini-1.5-flash' : 'gpt-4o-mini');
+  const cleanKey = config.apiKey.replace(/[^\x20-\x7E]/g, '');
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch(getApiUrl(config), {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${config.apiKey}`,
+      Authorization: `Bearer ${cleanKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
       model,
       messages: messages.map((m) => {
         if (m.role === 'tool') {
-          return { role: 'tool', content: m.content, tool_call_id: m.tool_call_id };
+          return { role: 'tool', content: m.content, tool_call_id: m.tool_call_id, name: m.name };
         }
         return { role: m.role, content: m.content };
       }),
@@ -141,26 +150,34 @@ async function executeToolCalls(
 
   for (const call of toolCalls) {
     const name = call.function.name;
-    callbacks.onStatus(`Running ${name}…`);
-
     let args: Record<string, unknown> = {};
     try {
       args = JSON.parse(call.function.arguments) as Record<string, unknown>;
     } catch {
-      results.push({
-        role: 'tool',
-        tool_call_id: call.id,
-        content: 'Error: invalid tool arguments JSON',
-      });
-      continue;
+      // ignore
     }
+
+    let statusMsg = `Running ${name}…`;
+    if (name === 'read_file') {
+      statusMsg = `Reading file: ${args.path || ''}`;
+    } else if (name === 'propose_file_edit') {
+      statusMsg = `Proposing edits to: ${args.path || ''}`;
+    } else if (name === 'search_files') {
+      statusMsg = `Searching files matching: "${args.query || ''}"`;
+    } else if (name === 'search_content') {
+      statusMsg = `Searching content for: "${args.query || ''}"`;
+    } else if (name === 'list_dir') {
+      statusMsg = `Listing directory: ${args.path || '.'}`;
+    }
+
+    callbacks.onStatus(statusMsg);
 
     try {
       const output = await executor.execute(name, args);
-      results.push({ role: 'tool', tool_call_id: call.id, content: output });
+      results.push({ role: 'tool', tool_call_id: call.id, name, content: output });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      results.push({ role: 'tool', tool_call_id: call.id, content: `Error: ${message}` });
+      results.push({ role: 'tool', tool_call_id: call.id, name, content: `Error: ${message}` });
     }
   }
 
@@ -175,8 +192,8 @@ export async function runAgentLoop(
   callbacks: AgentCallbacks,
   signal: AbortSignal,
 ): Promise<string> {
-  if (config.provider !== 'openai') {
-    throw new Error('Only OpenAI provider is supported in this version. Set provider to openai in Settings.');
+  if (config.provider !== 'openai' && config.provider !== 'google') {
+    throw new Error('Only OpenAI and Google Gemini providers are supported in this version. Set provider in Settings.');
   }
 
   const messages: ChatMessage[] = [
@@ -189,6 +206,10 @@ export async function runAgentLoop(
 
     callbacks.onStatus(i === 0 ? 'Thinking…' : 'Continuing…');
     const assistantMessage = await callOpenAI(config, messages, signal);
+
+    if (assistantMessage.content) {
+      callbacks.onStatus(assistantMessage.content.trim());
+    }
 
     if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
       messages.push(assistantMessage);

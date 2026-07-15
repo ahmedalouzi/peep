@@ -1,0 +1,122 @@
+import { useChatStore } from '../../stores/chat-store';
+import { useWorkspaceStore } from '../../stores/workspace-store';
+import { useDiagnosticsStore } from '../../stores/preview-store';
+import './PlanViewer.css';
+
+interface PlanViewerProps {
+  content: string;
+  mode?: 'plan' | 'walkthrough';
+}
+
+export function PlanViewer({ content, mode = 'plan' }: PlanViewerProps) {
+  const project = useWorkspaceStore((s) => s.project);
+
+  const handleProceed = () => {
+    const chatStore = useChatStore.getState();
+    const diagnostics = useDiagnosticsStore.getState().items;
+
+    if (!project) return;
+
+    const msgId = crypto.randomUUID();
+    chatStore.addMessage({
+      id: msgId,
+      role: 'user',
+      content: 'Proceed with implementation',
+      createdAt: new Date().toISOString(),
+    });
+
+    chatStore.startStreaming(crypto.randomUUID());
+
+    void window.peep.sendAgentMessage({
+      message: 'Proceed with implementation',
+      history: chatStore.messages.map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      })),
+      projectPath: project.path,
+      diagnostics,
+    });
+  };
+
+  // Simple Markdown parsing for bullet points, headers, and checkboxes
+  const renderContent = () => {
+    const lines = content.split('\n');
+    return lines.map((line, index) => {
+      const trimmed = line.trim();
+
+      if (trimmed.startsWith('# ')) {
+        return <h1 key={index} className="plan-h1">{trimmed.substring(2)}</h1>;
+      }
+      if (trimmed.startsWith('## ')) {
+        return <h2 key={index} className="plan-h2">{trimmed.substring(3)}</h2>;
+      }
+      if (trimmed.startsWith('### ')) {
+        return <h3 key={index} className="plan-h3">{trimmed.substring(4)}</h3>;
+      }
+      if (trimmed.startsWith('- [ ] ') || trimmed.startsWith('- [  ] ')) {
+        const text = trimmed.replace(/- \[\s*\]\s*/, '');
+        return (
+          <div key={index} className="plan-checkbox-item">
+            <span className="checkbox checkbox--empty">☐</span>
+            <span className="checkbox-text">{text}</span>
+          </div>
+        );
+      }
+      if (trimmed.startsWith('- [x] ') || trimmed.startsWith('- [X] ')) {
+        const text = trimmed.replace(/- \[[xX]\]\s*/, '');
+        return (
+          <div key={index} className="plan-checkbox-item plan-checkbox-item--checked">
+            <span className="checkbox checkbox--checked">☑</span>
+            <span className="checkbox-text">{text}</span>
+          </div>
+        );
+      }
+      if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+        return (
+          <div key={index} className="plan-bullet-item">
+            <span className="bullet-dot">•</span>
+            <span className="bullet-text">{trimmed.substring(2)}</span>
+          </div>
+        );
+      }
+      if (trimmed) {
+        return <p key={index} className="plan-paragraph">{trimmed}</p>;
+      }
+      return <div key={index} className="plan-empty-line" />;
+    });
+  };
+
+  const isWalkthrough = mode === 'walkthrough';
+
+  return (
+    <div className="plan-viewer">
+      <div className="plan-viewer__header">
+        <div className="plan-title-block">
+          <h2>{isWalkthrough ? '📋 Walkthrough' : '📋 Implementation Plan'}</h2>
+          <p>
+            {isWalkthrough
+              ? 'Review the completed feature checklist and manual verification steps below.'
+              : 'Review the tasks below. Once ready, click Proceed to begin coding.'}
+          </p>
+        </div>
+        {!isWalkthrough && (
+          <button type="button" className="btn-proceed" onClick={handleProceed} disabled={!project}>
+            Proceed with Implementation ➔
+          </button>
+        )}
+      </div>
+      <div className="plan-viewer__body">
+        {content ? renderContent() : (
+          <div className="plan-viewer__empty">
+            <h3>{isWalkthrough ? 'No walkthrough found' : 'No implementation plan found'}</h3>
+            <p>
+              {isWalkthrough
+                ? 'Wait for the agent to complete implementation to generate a walkthrough.'
+                : 'Write an implementation plan or ask the agent to create one.'}
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

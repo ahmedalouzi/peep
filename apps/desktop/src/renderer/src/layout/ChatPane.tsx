@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { DiffViewer } from '../features/chat/DiffViewer';
+import { createTwoFilesPatch } from 'diff';
 import { useChatStore } from '../stores/chat-store';
 import { useWorkspaceStore } from '../stores/workspace-store';
 import { useDiagnosticsStore, usePreviewStore } from '../stores/preview-store';
@@ -8,6 +8,25 @@ import './ChatPane.css';
 
 interface ChatPaneProps {
   onOpenSettings: () => void;
+}
+
+function getDiffStats(original: string, proposed: string) {
+  let added = 0;
+  let removed = 0;
+  try {
+    const patch = createTwoFilesPatch('a', 'b', original, proposed);
+    const lines = patch.split('\n');
+    for (const line of lines) {
+      if (line.startsWith('+') && !line.startsWith('+++')) {
+        added++;
+      } else if (line.startsWith('-') && !line.startsWith('---')) {
+        removed++;
+      }
+    }
+  } catch (e) {
+    console.error(e);
+  }
+  return { added, removed };
 }
 
 export function ChatPane({ onOpenSettings }: ChatPaneProps) {
@@ -31,20 +50,42 @@ export function ChatPane({ onOpenSettings }: ChatPaneProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [showModelSelect, setShowModelSelect] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('Gemini 3.1 Pro (High)');
+  const [selectedModel, setSelectedModel] = useState('gpt-4o-mini');
+  const [changesBarExpanded, setChangesBarExpanded] = useState(false);
 
   const MODELS = [
-    { name: 'Gemini 3.5 Flash (Medium)', badge: 'Fast' },
-    { name: 'Gemini 3.5 Flash (High)', badge: 'Fast' },
-    { name: 'Gemini 3.5 Flash (Low)', badge: 'Fast' },
-    { name: 'Gemini 3.1 Pro (Low)' },
-    { name: 'Gemini 3.1 Pro (High)' },
-    { name: 'Claude Sonnet 4.6 (Thinking)', alert: true },
-    { name: 'Claude Opus 4.6 (Thinking)', alert: true },
-    { name: 'GPT-OSS 120B (Medium)', alert: true }
+    { name: 'gemini-3.5-flash', label: 'gemini-3.5-flash', provider: 'google', badge: 'Fast' },
+    { name: 'gemini-3.1-pro', label: 'gemini-3.1-pro', provider: 'google' },
+    { name: 'gemini-3', label: 'gemini-3', provider: 'google' },
+    { name: 'gemini-3-flash', label: 'gemini-3-flash', provider: 'google', badge: 'Fast' },
+    { name: 'gemini-2.5-flash', label: 'gemini-2.5-flash', provider: 'google', badge: 'Fast' },
+    { name: 'gemini-1.5-flash', label: 'gemini-1.5-flash', provider: 'google', badge: 'Fast' },
+    { name: 'gemini-1.5-pro', label: 'gemini-1.5-pro', provider: 'google' },
+    { name: 'gpt-4o-mini', label: 'gpt-4o-mini', provider: 'openai', badge: 'Fast' },
+    { name: 'gpt-4o', label: 'gpt-4o', provider: 'openai' },
+    { name: 'gpt-3.5-turbo', label: 'gpt-3.5-turbo', provider: 'openai' },
+    { name: 'o1-mini', label: 'o1-mini', provider: 'openai', badge: 'Reasoning' },
+    { name: 'o3-mini', label: 'o3-mini', provider: 'openai', badge: 'Reasoning' },
+    { name: 'claude-3-5-sonnet', label: 'claude-3-5-sonnet', provider: 'openai', badge: 'Coding' },
+    { name: 'claude-3-5-haiku', label: 'claude-3-5-haiku', provider: 'openai', badge: 'Fast' },
+    { name: 'claude-3-opus', label: 'claude-3-opus', provider: 'openai' },
+    { name: 'llama-3.3-70b', label: 'llama-3.3-70b', provider: 'openai' },
+    { name: 'codestral', label: 'codestral', provider: 'openai', badge: 'Coding' },
   ];
 
   const activeFile = openFiles.find((f) => f.path === activeFilePath);
+
+  const fetchSettings = () => {
+    void window.peep.getSettings().then((s) => {
+      setSelectedModel(s.apiModel ?? 'gpt-4o-mini');
+    });
+  };
+
+  useEffect(() => {
+    fetchSettings();
+    window.addEventListener('peep:settings-closed', fetchSettings);
+    return () => window.removeEventListener('peep:settings-closed', fetchSettings);
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -54,16 +95,6 @@ export function ChatPane({ onOpenSettings }: ChatPaneProps) {
     event.preventDefault();
     const trimmed = input.trim();
     if (!trimmed || isStreaming) return;
-
-    if (!project) {
-      addMessage({
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: 'Open a Flutter project first.',
-        createdAt: new Date().toISOString(),
-      });
-      return;
-    }
 
     addMessage({
       id: crypto.randomUUID(),
@@ -79,7 +110,7 @@ export function ChatPane({ onOpenSettings }: ChatPaneProps) {
     void window.peep.sendAgentMessage({
       message: trimmed,
       history: messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-      projectPath: project.path,
+      projectPath: project?.path,
       openFilePath: activeFile?.path,
       openFileContent: activeFile?.content,
       diagnostics,
@@ -135,24 +166,127 @@ export function ChatPane({ onOpenSettings }: ChatPaneProps) {
           </div>
         ) : (
           <>
-            {messages.map((message) => (
-              <div key={message.id} className={`chat-message chat-message--${message.role}`}>
-                <span className="chat-message__role">{message.role === 'user' ? 'You' : 'Agent'}</span>
-                <p>{message.content || (isStreaming && message.role === 'assistant' ? '…' : '')}</p>
-              </div>
-            ))}
-            {isStreaming && streamStatus && (
-              <div className="chat-status">{streamStatus}</div>
-            )}
+            {messages.map((message, idx) => {
+              const isLastAssistantMessage = message.role === 'assistant' && idx === messages.length - 1;
+              return (
+                <div key={message.id} className={`chat-message chat-message--${message.role}`}>
+                  <span className="chat-message__role">{message.role === 'user' ? 'You' : 'Agent'}</span>
+                  <p>{message.content || (isStreaming && message.role === 'assistant' ? '…' : '')}</p>
+                  
+                  {isLastAssistantMessage && proposedEdits.length > 0 && (
+                    <div className="proposed-changes-chat-card" onClick={(e) => e.stopPropagation()}>
+                      <div className="proposed-card-header">
+                        <span className="proposed-card-icon">📄</span>
+                        <span className="proposed-card-title">Proposed Code Edits</span>
+                      </div>
+                      <div className="proposed-card-files">
+                        {proposedEdits.map((edit) => {
+                          const stats = getDiffStats(edit.originalContent, edit.proposedContent);
+                          return (
+                            <div key={edit.id} className="proposed-card-file-row">
+                              <span className="file-name">{edit.path.split(/[\\/]/).pop()}</span>
+                              <span className="file-stats">
+                                <span className="additions">+{stats.added}</span>
+                                <span className="deletions">-{stats.removed}</span>
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="proposed-card-actions">
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-reject-proposed"
+                          onClick={() => handleReject(proposedEdits.map((e) => e.id))}
+                        >
+                          Reject
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-apply-proposed"
+                          onClick={() => handleApply(proposedEdits.map((e) => e.id))}
+                        >
+                          Apply Changes
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </>
         )}
         <div ref={messagesEndRef} />
       </div>
 
-      <DiffViewer edits={proposedEdits} onApply={handleApply} onReject={handleReject} />
+      {proposedEdits.length > 0 && (
+        <div className="changes-summary-bar-container">
+          {changesBarExpanded && (
+            <div className="changes-summary-dropdown">
+              {proposedEdits.map((edit) => {
+                const stats = getDiffStats(edit.originalContent, edit.proposedContent);
+                return (
+                  <div
+                    key={edit.id}
+                    className="changes-summary-row"
+                    onClick={() => {
+                      openFile({
+                        path: edit.path,
+                        name: edit.path.split(/[\\/]/).pop() ?? edit.path,
+                        content: edit.proposedContent,
+                        dirty: true,
+                      });
+                    }}
+                  >
+                    <span className="changes-row-dot">●</span>
+                    <span className="changes-row-stats">
+                      <span className="additions">+{stats.added}</span>
+                      <span className="deletions">-{stats.removed}</span>
+                    </span>
+                    <span className="changes-row-filename">{edit.path.split(/[\\/]/).pop()}</span>
+                    <span className="changes-row-path">{edit.path}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div className="changes-summary-bar">
+            <span className="summary-left" onClick={() => setChangesBarExpanded(!changesBarExpanded)}>
+              📄 {proposedEdits.length} Files With Changes
+            </span>
+            <div className="summary-right">
+              <button
+                type="button"
+                className="btn btn-ghost summary-btn-reject"
+                onClick={() => handleReject(proposedEdits.map((e) => e.id))}
+              >
+                Reject all
+              </button>
+              <button
+                type="button"
+                className="summary-btn-accept"
+                onClick={() => handleApply(proposedEdits.map((e) => e.id))}
+              >
+                Accept all
+              </button>
+              <button
+                type="button"
+                className="summary-chevron-btn"
+                onClick={() => setChangesBarExpanded(!changesBarExpanded)}
+              >
+                {changesBarExpanded ? '▼' : '▲'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <form className="chat-pane__input-wrapper" onSubmit={handleSubmit}>
-        
+        {isStreaming && streamStatus && (
+          <div className="agent-streaming-status-bar">
+            <span className="spinner">◌</span> {streamStatus}
+          </div>
+        )}
         {showModelSelect && (
           <div className="model-dropdown">
             <div className="model-dropdown__header">Model</div>
@@ -162,14 +296,17 @@ export function ChatPane({ onOpenSettings }: ChatPaneProps) {
                   key={m.name}
                   type="button"
                   className={`model-option ${selectedModel === m.name ? 'model-option--active' : ''}`}
-                  onClick={() => {
+                  onClick={async () => {
                     setSelectedModel(m.name);
                     setShowModelSelect(false);
+                    await window.peep.setSettings({
+                      apiModel: m.name,
+                      apiProvider: m.provider as any,
+                    });
                   }}
                 >
-                  <span className="model-name">{m.name}</span>
-                  {m.badge && <span className="model-badge">{m.badge} ⓘ</span>}
-                  {m.alert && <span className="model-alert">⚠</span>}
+                  <span className="model-name">{m.label}</span>
+                  {m.badge && <span className="model-badge">{m.badge}</span>}
                 </button>
               ))}
             </div>

@@ -1,65 +1,76 @@
+/* ═══════════════════════════════════════════════════════════════════
+   TITLE BAR  — reference UI style
+═══════════════════════════════════════════════════════════════════ */
 .title-bar {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  height: 36px;
-  padding: 0 12px;
+  height: 34px;
+  padding: 0 10px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-surface);
   -webkit-app-region: drag;
   flex-shrink: 0;
   color: var(--text-secondary);
+  font-size: 12px;
 }
 
 .title-bar__left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .title-bar__logo-svg {
   color: var(--accent);
   flex-shrink: 0;
+  opacity: 0.9;
 }
 
 .title-bar__menus {
   display: flex;
   align-items: center;
+  gap: 0;
   -webkit-app-region: no-drag;
 }
 
 .title-menu-item {
   background: transparent;
   border: none;
-  color: var(--text-primary);
-  font-size: 13px;
-  padding: 4px 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 4px 9px;
   border-radius: 4px;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.12s, color 0.12s;
+  -webkit-app-region: no-drag;
 }
 
-.title-menu-item:hover, .title-menu-item.active {
-  background: rgba(255, 255, 255, 0.1);
+.title-menu-item:hover,
+.title-menu-item.active {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+/* ── Dropdown ──────────────────────────────────────────────────── */
+.title-menu-wrapper {
+  position: relative;
+  -webkit-app-region: no-drag;
 }
 
 .title-menu-dropdown {
   position: absolute;
-  top: 100%;
+  top: calc(100% + 2px);
   left: 0;
-  background: var(--bg-surface);
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 4px;
   min-width: 200px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0,0,0,0.3);
   z-index: 1000;
   display: flex;
   flex-direction: column;
-}
-
-.title-menu-wrapper {
-  position: relative;
   -webkit-app-region: no-drag;
 }
 
@@ -67,25 +78,25 @@
   background: transparent;
   border: none;
   color: var(--text-primary);
-  font-size: 13px;
-  padding: 6px 12px;
+  font-size: 12.5px;
+  padding: 5px 10px;
   border-radius: 4px;
   cursor: pointer;
   text-align: left;
-  transition: background 0.1s;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  transition: background 0.1s;
 }
 
 .dropdown-item:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.07);
 }
 
 .dropdown-separator {
   height: 1px;
   background: var(--border);
-  margin: 4px 0;
+  margin: 3px 4px;
 }
 
 .dropdown-shortcut {
@@ -93,6 +104,7 @@
   font-size: 11px;
 }
 
+/* ── Center title ──────────────────────────────────────────────── */
 .title-bar__center {
   font-size: 12px;
   color: var(--text-muted);
@@ -100,8 +112,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  letter-spacing: 0.01em;
 }
 
+/* ── Right controls ────────────────────────────────────────────── */
 .title-bar__right {
   display: flex;
   align-items: center;
@@ -112,7 +126,7 @@
 .title-bar__layout-controls {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
 }
 
 .layout-btn {
@@ -120,13 +134,13 @@
   align-items: center;
   justify-content: center;
   width: 28px;
-  height: 28px;
+  height: 26px;
   background: transparent;
   border: none;
   color: var(--text-muted);
   border-radius: 4px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background 0.12s, color 0.12s;
 }
 
 .layout-btn svg {
@@ -135,6 +149,6 @@
 }
 
 .layout-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--text-primary);
 }

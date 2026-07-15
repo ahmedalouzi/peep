@@ -1,3 +1,6 @@
+/* ═══════════════════════════════════════════════════════════════════
+   FILE TREE  — reference UI style
+═══════════════════════════════════════════════════════════════════ */
 .file-tree {
   margin: 0;
   padding: 0;
@@ -11,13 +14,17 @@
 .file-tree__row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   width: 100%;
-  padding: 4px 12px 4px 8px;
+  padding: 3px 10px 3px 6px;
   border: none;
   background: transparent;
   color: var(--text-secondary);
   text-align: left;
+  font-size: 12.5px;
+  border-radius: 0;
+  transition: background 0.1s, color 0.1s;
+  user-select: none;
 }
 
 .file-tree__row--file,
@@ -33,25 +40,37 @@
   color: var(--text-primary);
 }
 
+.file-tree__row--file.active {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+
 .file-tree__row--dir {
-  color: var(--text-muted);
-  font-weight: 600;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.file-tree__row--dir:hover {
+  color: var(--text-primary);
 }
 
 .file-tree__arrow {
   width: 12px;
-  font-size: 10px;
+  flex-shrink: 0;
+  font-size: 9px;
   color: var(--text-muted);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.15s ease;
+  transition: transform 0.12s ease;
 }
 
 .file-tree__icon {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+  opacity: 0.75;
 }
 
 .file-tree__icon svg {
@@ -65,4 +84,5 @@
   white-space: nowrap;
   font-family: var(--font-mono);
   font-size: 12px;
+  letter-spacing: -0.01em;
 }

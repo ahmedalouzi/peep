@@ -36,7 +36,7 @@ export class TerminalService {
 
   private getShell(): { command: string; args: string[] } {
     if (platform() === 'win32') {
-      return { command: 'cmd.exe', args: [] };
+      return { command: 'powershell.exe', args: ['-NoLogo'] };
     }
     return { command: process.env.SHELL ?? '/bin/bash', args: ['-i'] };
   }
@@ -64,13 +64,13 @@ export class TerminalService {
     child.stdout?.on('data', (chunk: Buffer) => {
       const output = chunk.toString();
       console.log(`[TerminalService] stdout: ${JSON.stringify(output)}`);
-      emit(output);
+      emit(output.replace(/\r?\n/g, '\r\n'));
     });
     
     child.stderr?.on('data', (chunk: Buffer) => {
       const output = chunk.toString();
       console.log(`[TerminalService] stderr: ${JSON.stringify(output)}`);
-      emit(output);
+      emit(output.replace(/\r?\n/g, '\r\n'));
     });
 
     child.on('exit', (code) => {
@@ -87,15 +87,7 @@ export class TerminalService {
       emit(`\r\n[terminal error] ${error.message}\r\n`);
     });
 
-    emit(`\r\nPeep terminal — ${cwd}\r\n`);
 
-    // Trigger initial command prompt by writing a newline to stdin
-    if (child.stdin?.writable) {
-      console.log('[TerminalService] Writing initial newline to trigger prompt');
-      child.stdin.write('\r\n');
-    } else {
-      console.warn('[TerminalService] child.stdin is not writable on spawn!');
-    }
   }
 
   write(id: string, data: string): void {

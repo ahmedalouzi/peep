@@ -3,30 +3,72 @@
   flex-direction: column;
   width: 100vw;
   height: 100vh;
-  background: #0d1117;
-  color: #c9d1d9;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background: transparent;
+  color: var(--text-primary, #e8eaf0);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   overflow: hidden;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 8px 16px;
+  box-sizing: border-box;
 }
 
 .detached-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 16px;
-  background: #161b22;
-  border-bottom: 1px solid #30363d;
-  height: 40px;
-  min-height: 40px;
+  padding: 0 14px;
+  background: rgba(40, 40, 40, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  height: 44px;
+  min-height: 44px;
+  width: 100%;
+  max-width: 360px;
+  flex-shrink: 0;
+  backdrop-filter: blur(10px);
+  margin-bottom: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-.detached-title {
+.mac-dots {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.mac-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.mac-dot:hover {
+  opacity: 0.7;
+}
+
+.mac-dot.close { background: #ff5f56; }
+.mac-dot.min { background: #ffbd2e; }
+.mac-dot.max { background: #27c93f; }
+
+.detached-title-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.2;
+}
+
+.title-device {
   font-size: 13px;
   font-weight: 600;
-  color: #e6edf3;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  color: #fff;
+}
+
+.title-os {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .detached-actions {
@@ -35,51 +77,44 @@
   gap: 8px;
 }
 
-.detached-btn {
-  background: #21262d;
-  border: 1px solid #30363d;
-  border-radius: 4px;
-  color: #c9d1d9;
-  font-size: 12px;
-  padding: 4px 10px;
+.detached-icon-btn {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
   cursor: pointer;
-  transition: all 0.2s ease-in-out;
-  display: inline-flex;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
   align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
 }
 
-.detached-btn:hover {
-  background: #30363d;
-  border-color: #8b949e;
-  color: #e6edf3;
-}
-
-.detached-btn--primary {
-  background: #238636;
-  border-color: #2ea44f;
-  color: #ffffff;
-}
-
-.detached-btn--primary:hover {
-  background: #2ea44f;
-  border-color: #3fb950;
-  color: #ffffff;
+.detached-icon-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .detached-body {
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 16px;
-  background: #090c10;
-  overflow: auto;
+  justify-content: flex-start;
+  width: 100%;
+  height: 100%;
+  padding-top: 0px;
 }
 
-/* Custom size override for floating window phone-frame to fill height beautifully */
-.phone-frame--detached {
-  width: 375px;
-  height: 760px;
-  max-height: 90vh;
-  margin: auto;
+.detached-phone-slot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.detached-phone-transform {
+  position: absolute;
+  top: 0;
+  left: 0;
 }

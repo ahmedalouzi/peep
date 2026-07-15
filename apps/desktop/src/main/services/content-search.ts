@@ -1,22 +1,68 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { join, extname } from 'node:path';
 
-const IGNORED = new Set(['.git', 'node_modules', '.dart_tool', 'build', '.peep']);
-const TEXT_EXTENSIONS = new Set(['.dart', '.yaml', '.yml', '.json', '.md', '.txt', '.html', '.css', '.xml']);
+const IGNORED = new Set(['.git', 'node_modules', '.dart_tool', 'build', '.peep', 'dist', '.next', '.expo', 'ios', 'android', 'coverage', '__pycache__', '.venv']);
+const TEXT_EXTENSIONS = new Set([
+  '.dart', '.yaml', '.yml', '.json', '.md', '.txt', '.html', '.css', '.xml',
+  '.ts', '.tsx', '.js', '.jsx', '.py', '.swift', '.kt', '.java', '.sh', '.env',
+  '.toml', '.ini', '.conf', '.gradle', '.rs', '.go', '.rb', '.php', '.vue', '.svelte',
+]);
 
 export interface ContentMatch {
   file: string;
   line: number;
+  col: number;
   text: string;
+}
+
+export interface SearchContentOptions {
+  projectPath: string;
+  query: string;
+  caseSensitive?: boolean;
+  isRegex?: boolean;
+  maxResults?: number;
 }
 
 export async function searchContent(
   rootPath: string,
   query: string,
-  maxResults = 20,
+  maxResults?: number,
+): Promise<ContentMatch[]>;
+export async function searchContent(
+  opts: SearchContentOptions,
+): Promise<ContentMatch[]>;
+export async function searchContent(
+  rootPathOrOpts: string | SearchContentOptions,
+  queryArg?: string,
+  maxResultsArg = 200,
 ): Promise<ContentMatch[]> {
-  const normalized = query.trim().toLowerCase();
-  if (!normalized) return [];
+  let rootPath: string;
+  let query: string;
+  let caseSensitive = false;
+  let isRegex = false;
+  let maxResults = maxResultsArg;
+
+  if (typeof rootPathOrOpts === 'string') {
+    rootPath = rootPathOrOpts;
+    query = queryArg ?? '';
+  } else {
+    rootPath = rootPathOrOpts.projectPath;
+    query = rootPathOrOpts.query;
+    caseSensitive = rootPathOrOpts.caseSensitive ?? false;
+    isRegex = rootPathOrOpts.isRegex ?? false;
+    maxResults = rootPathOrOpts.maxResults ?? 200;
+  }
+
+  if (!query.trim()) return [];
+
+  let regex: RegExp;
+  try {
+    const pattern = isRegex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const flags = caseSensitive ? 'g' : 'gi';
+    regex = new RegExp(pattern, flags);
+  } catch {
+    return [];
+  }
 
   const results: ContentMatch[] = [];
 
@@ -54,12 +100,15 @@ export async function searchContent(
       const lines = content.split(/\r?\n/);
       for (let i = 0; i < lines.length; i++) {
         if (results.length >= maxResults) break;
-        if (lines[i].toLowerCase().includes(normalized)) {
+        const match = regex.exec(lines[i]);
+        if (match) {
           results.push({
             file: fullPath,
             line: i + 1,
+            col: match.index + 1,
             text: lines[i].trim(),
           });
+          regex.lastIndex = 0; // reset for non-global flags
         }
       }
     }

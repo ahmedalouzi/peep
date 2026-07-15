@@ -1,4 +1,5 @@
 import './EmptyState.css';
+import { useState } from 'react';
 import { useWorkspaceStore } from '../../stores/workspace-store';
 import { useWorkspace } from '../../hooks/useWorkspace';
 
@@ -38,7 +39,7 @@ export function EmptyState({ icon, title, description, action, secondaryAction, 
   );
 }
 
-/* ── Antigravity-style "No Project" welcome screen ─────────────────── */
+/* ── Synkro-style "No Project" welcome screen ─────────────────── */
 
 export function NoProjectEmptyState({
   onOpen,
@@ -49,81 +50,105 @@ export function NoProjectEmptyState({
 }) {
   const recentProjects = useWorkspaceStore((s) => s.recentProjects);
   const { openProjectByPath } = useWorkspace();
+  const [showAllRecent, setShowAllRecent] = useState(false);
 
   return (
-    <div className="antigravity-empty-state">
-      <div className="antigravity-hero">
-        {/* Logo — identical 'A' chevron shape as Antigravity */}
-        <svg
-          width="48"
-          height="48"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="antigravity-logo"
-        >
-          <path d="M4 19L12 5L20 19" />
-          <path d="M7.5 13.5L16.5 13.5" />
-        </svg>
-        <h1 className="antigravity-title">Antigravity IDE</h1>
+    <div className="synkro-empty-state">
+      <div className="synkro-hero">
+        
+        {/* Brand Header */}
+        <div className="synkro-brand-header">
+          <div className="synkro-logo-title-row">
+            <svg 
+              width="42" 
+              height="42" 
+              viewBox="0 0 32 32" 
+              fill="none"
+              className="synkro-logo"
+            >
+              <circle cx="16" cy="16" r="15" fill="#1e1e26" />
+              <g stroke="#93c5fd" strokeWidth="1.5" fill="none" strokeLinecap="round">
+                <ellipse cx="16" cy="16" rx="5" ry="10.5" transform="rotate(0 16 16)" />
+                <ellipse cx="16" cy="16" rx="5" ry="10.5" transform="rotate(60 16 16)" />
+                <ellipse cx="16" cy="16" rx="5" ry="10.5" transform="rotate(120 16 16)" />
+              </g>
+              <circle cx="16" cy="16" r="1.5" fill="#93c5fd" />
+              <circle cx="16" cy="5.5" r="2" fill="#93c5fd" />
+              <circle cx="6.9" cy="21.25" r="2" fill="#93c5fd" />
+              <circle cx="25.1" cy="21.25" r="2" fill="#93c5fd" />
+            </svg>
+            <h1 className="synkro-title">SYNKRO</h1>
+          </div>
+          <div className="synkro-subtitle">
+            <span>Free Plan</span>
+            <span className="synkro-dot">•</span>
+            <a href="#" className="synkro-link">Upgrade</a>
+          </div>
+        </div>
 
-        {/* Primary actions */}
-        <div className="antigravity-actions">
-          <button className="antigravity-btn antigravity-btn-primary" onClick={onOpen}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        {/* Action Cards */}
+        <div className="synkro-actions">
+          <button className="synkro-action-card" onClick={onOpen}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
             </svg>
-            Open Folder
+            <span>Open project</span>
           </button>
-          <button className="antigravity-btn antigravity-btn-secondary" onClick={onNew}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          
+          <button className="synkro-action-card" onClick={onNew}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="17 8 12 3 7 8" />
-              <line x1="12" y1="3" x2="12" y2="15" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
-            Clone Repository
+            <span>Clone repo</span>
+          </button>
+          
+          <button className="synkro-action-card">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <polyline points="4 17 10 11 4 5"></polyline>
+              <line x1="12" y1="19" x2="20" y2="19"></line>
+            </svg>
+            <span>Connect via SSH</span>
           </button>
         </div>
 
-        {/* Recent workspaces */}
-        <div className="antigravity-section">
-          <h3 className="antigravity-section-title">Workspaces</h3>
-          <div className="antigravity-list">
-            {recentProjects.length === 0 && (
-              <div className="antigravity-list-item empty">No recent workspaces</div>
+        {/* Recent Projects List */}
+        <div className="synkro-recent-section">
+          <div className="synkro-recent-header">
+            <h3>Recent projects</h3>
+            {recentProjects.length > 5 && (
+              <button className="synkro-view-all" onClick={() => setShowAllRecent(!showAllRecent)}>
+                {showAllRecent ? 'Show less' : `View all (${recentProjects.length})`}
+              </button>
             )}
-            {recentProjects.slice(0, 3).map((p) => (
+          </div>
+          
+          <div className="synkro-recent-list">
+            {recentProjects.length === 0 && (
+              <div className="synkro-recent-item empty">No recent projects</div>
+            )}
+            {(showAllRecent ? recentProjects : recentProjects.slice(0, 5)).map((p) => (
               <button
                 key={p.id}
-                className="antigravity-list-item"
+                className="synkro-recent-item"
                 title={p.path}
                 onClick={() => void openProjectByPath(p.path)}
               >
-                <strong>{p.name}</strong>
-                <span>{p.path}</span>
+                <span className="synkro-recent-name">{p.name}</span>
+                <span className="synkro-recent-path">{p.path}</span>
               </button>
             ))}
           </div>
-          {recentProjects.length > 3 && (
-            <button className="antigravity-show-more">Show More...</button>
-          )}
         </div>
 
-        {/* Extensions section — mirrors Antigravity */}
-        <div className="antigravity-section extensions-section">
-          <h3 className="antigravity-section-title">Google Extensions</h3>
-          <div className="antigravity-extension-card">
-            <div className="ext-icon">☁️</div>
-            <div className="ext-info">
-              <strong>Google Data Cloud</strong>
-              <span>Google Data Cloud for your intelligent IDE.</span>
-            </div>
-            <button className="ext-download">Download</button>
-          </div>
+        {/* Bottom Banner */}
+        <div className="synkro-bottom-banner">
+          <button onClick={() => void window.peep.newWindow()} className="synkro-banner-link" style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit' }}>
+            Try a new window for running parallel agents ↗
+          </button>
         </div>
+
       </div>
     </div>
   );
@@ -131,14 +156,45 @@ export function NoProjectEmptyState({
 
 /* ── Other presets ──────────────────────────────────────────────────── */
 
-export function NoFileOpenEmptyState({ hint }: { hint?: string }) {
+export function NoFileOpenEmptyState() {
   return (
-    <EmptyState
-      icon="📝"
-      title="No file open"
-      description="Select a file from the explorer or press Ctrl+P to search."
-      hint={hint ?? 'Tip: Click any file in the sidebar to open it in the editor.'}
-    />
+    <div className="synkro-empty-state" style={{ 
+      display: 'flex', flexDirection: 'column', alignItems: 'center', 
+      justifyContent: 'center', height: '100%', width: '100%' 
+    }}>
+      <div style={{ opacity: 0.15, marginBottom: '30px' }}>
+        <svg width="64" height="64" viewBox="0 0 32 32" fill="none">
+          <circle cx="16" cy="16" r="15" fill="#1e1e26" />
+          <g stroke="#93c5fd" strokeWidth="1.5" fill="none" strokeLinecap="round">
+            <ellipse cx="16" cy="16" rx="5" ry="10.5" transform="rotate(0 16 16)" />
+            <ellipse cx="16" cy="16" rx="5" ry="10.5" transform="rotate(60 16 16)" />
+            <ellipse cx="16" cy="16" rx="5" ry="10.5" transform="rotate(120 16 16)" />
+          </g>
+          <circle cx="16" cy="16" r="1.5" fill="#93c5fd" />
+          <circle cx="16" cy="5.5" r="2" fill="#93c5fd" />
+          <circle cx="6.9" cy="21.25" r="2" fill="#93c5fd" />
+          <circle cx="25.1" cy="21.25" r="2" fill="#93c5fd" />
+        </svg>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {[
+          { label: 'New Agent', shortcut: 'Ctrl + Shift + L' },
+          { label: 'Hide Terminal', shortcut: 'Ctrl + `' },
+          { label: 'Search Files', shortcut: 'Ctrl + P' },
+          { label: 'Open Browser', shortcut: 'Ctrl + Shift + B' },
+          { label: 'Maximize Chat', shortcut: 'Ctrl + Alt + E' },
+        ].map(item => (
+          <div key={item.label} style={{ 
+            display: 'flex', justifyContent: 'space-between', 
+            width: '280px', fontSize: '13px', color: 'var(--text-muted)' 
+          }}>
+            <span>{item.label}</span>
+            <span style={{ opacity: 0.7 }}>{item.shortcut}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

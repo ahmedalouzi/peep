@@ -148,18 +148,46 @@ export interface RunCommandResult {
   exitCode: number;
 }
 
+export interface ExtensionInfo {
+  id: string;           // "ms-python.python"
+  name: string;
+  namespace: string;
+  version: string;
+  displayName?: string;
+  description?: string;
+  iconUrl?: string;
+  downloadCount?: number;
+  averageRating?: number;
+  downloadUrl?: string;
+  installed: boolean;
+}
+
+export interface ExtensionSearchResult {
+  extensions: ExtensionInfo[];
+  totalSize: number;
+  offset: number;
+}
+
 export const IPC_CHANNELS = {
   WORKSPACE_OPEN_FOLDER: 'workspace:openFolder',
   WORKSPACE_GET_RECENT: 'workspace:getRecent',
   WORKSPACE_LIST_DIR: 'workspace:listDir',
   WORKSPACE_READ_FILE: 'workspace:readFile',
+  WORKSPACE_READ_IMAGE: 'workspace:readImage',
   WORKSPACE_WRITE_FILE: 'workspace:writeFile',
   WORKSPACE_GET_PROJECT: 'workspace:getProject',
   WORKSPACE_SEARCH_FILES: 'workspace:searchFiles',
+  WORKSPACE_SEARCH_CONTENT: 'workspace:searchContent',
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
   APP_GET_VERSION: 'app:getVersion',
+  APP_NEW_WINDOW: 'app:newWindow',
+  APP_EXIT: 'app:exit',
+  APP_MINIMIZE: 'app:minimize',
+  APP_MAXIMIZE: 'app:maximize',
   DIALOG_OPEN_FOLDER: 'dialog:openFolder',
+  DIALOG_OPEN_FILE: 'dialog:openFile',
+  DIALOG_SAVE_FILE: 'dialog:saveFile',
   FLUTTER_DETECT_SDK: 'flutter:detectSdk',
   FLUTTER_ANALYZE: 'flutter:analyze',
   FLUTTER_PUB_GET: 'flutter:pubGet',
@@ -177,6 +205,10 @@ export const IPC_CHANNELS = {
   GIT_UNSTAGE: 'git:unstage',
   GIT_COMMIT: 'git:commit',
   GIT_DIFF: 'git:diff',
+  GIT_PULL: 'git:pull',
+  GIT_PUSH: 'git:push',
+  GIT_CHECKOUT: 'git:checkout',
+  GIT_BRANCH: 'git:branch',
   TERMINAL_CREATE: 'terminal:create',
   TERMINAL_WRITE: 'terminal:write',
   TERMINAL_DESTROY: 'terminal:destroy',
@@ -209,6 +241,12 @@ export const IPC_CHANNELS = {
   PREVIEW_DETACH: 'preview:detach',
   PREVIEW_ATTACH: 'preview:attach',
   PREVIEW_IS_DETACHED: 'preview:isDetached',
+  // Extensions
+  EXTENSIONS_SEARCH: 'extensions:search',
+  EXTENSIONS_INSTALLED: 'extensions:installed',
+  EXTENSIONS_INSTALL: 'extensions:install',
+  EXTENSIONS_UNINSTALL: 'extensions:uninstall',
+  EXTENSIONS_DETAILS: 'extensions:details',
 } as const;
 
 export const IPC_EVENTS = {
@@ -228,13 +266,21 @@ export type IpcEvent = (typeof IPC_EVENTS)[keyof typeof IPC_EVENTS];
 
 export interface IpcApi {
   openFolder: () => Promise<ProjectInfo | null>;
+  openFile: () => Promise<{ path: string; content: string } | null>;
+  saveFileAs: (defaultPath?: string, content?: string) => Promise<string | null>;
+  newWindow: () => Promise<void>;
+  exitApp: () => Promise<void>;
+  minimizeWindow: () => Promise<void>;
+  maximizeWindow: () => Promise<void>;
   openProjectByPath: (path: string) => Promise<ProjectInfo>;
   getRecentProjects: () => Promise<ProjectInfo[]>;
   listDir: (dirPath: string) => Promise<FileEntry[]>;
   readFile: (filePath: string) => Promise<string>;
+  readImage: (filePath: string) => Promise<string>;
   writeFile: (filePath: string, content: string) => Promise<void>;
   getProject: () => Promise<ProjectInfo | null>;
   searchFiles: (rootPath: string, query: string) => Promise<FileEntry[]>;
+  searchContent: (opts: { projectPath: string; query: string; caseSensitive?: boolean; isRegex?: boolean; maxResults?: number }) => Promise<any[]>;
   getSettings: () => Promise<Settings>;
   setSettings: (settings: Partial<Settings>) => Promise<Settings>;
   getVersion: () => Promise<string>;
@@ -259,6 +305,10 @@ export interface IpcApi {
   gitUnstage: (projectPath: string, files: string[]) => Promise<void>;
   gitCommit: (projectPath: string, message: string) => Promise<void>;
   gitDiff: (projectPath: string, filePath: string) => Promise<GitDiffResult>;
+  gitPull: (projectPath: string) => Promise<void>;
+  gitPush: (projectPath: string) => Promise<void>;
+  gitCheckout: (projectPath: string, branch: string) => Promise<void>;
+  gitBranch: (projectPath: string, branch: string) => Promise<void>;
   createTerminal: (options: TerminalCreateOptions) => Promise<void>;
   writeTerminal: (id: string, data: string) => Promise<void>;
   destroyTerminal: (id: string) => Promise<void>;
@@ -283,6 +333,12 @@ export interface IpcApi {
   onTerminalExit: (callback: (payload: { id: string; code: number }) => void) => () => void;
   onGitChanged: (callback: () => void) => () => void;
   onUpdateStatus: (callback: (info: UpdateInfo) => void) => () => void;
+  // Extensions
+  searchExtensions: (query: string, offset?: number, size?: number) => Promise<ExtensionSearchResult>;
+  getInstalledExtensions: () => Promise<ExtensionInfo[]>;
+  installExtension: (extensionId: string, downloadUrl?: string) => Promise<void>;
+  uninstallExtension: (extensionId: string) => Promise<void>;
+  getExtensionDetails: (extensionId: string) => Promise<any>;
 }
 
 declare global {

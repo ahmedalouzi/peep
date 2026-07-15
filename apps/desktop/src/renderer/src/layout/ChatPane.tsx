@@ -4,7 +4,6 @@ import { DiffViewer } from '../features/chat/DiffViewer';
 import { useChatStore } from '../stores/chat-store';
 import { useWorkspaceStore } from '../stores/workspace-store';
 import { useDiagnosticsStore, usePreviewStore } from '../stores/preview-store';
-import './ChatPane.css';
 
 interface ChatPaneProps {
   onOpenSettings: () => void;
@@ -29,19 +28,20 @@ export function ChatPane({ onOpenSettings }: ChatPaneProps) {
   const openFile = useWorkspaceStore((s) => s.openFile);
   const diagnostics = useDiagnosticsStore((s) => s.items);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const [showModelSelect, setShowModelSelect] = useState(false);
   const [selectedModel, setSelectedModel] = useState('Gemini 3.1 Pro (High)');
+  const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
 
-  const MODELS = [
-    { name: 'Gemini 3.5 Flash (Medium)', badge: 'Fast' },
-    { name: 'Gemini 3.5 Flash (High)', badge: 'Fast' },
-    { name: 'Gemini 3.5 Flash (Low)', badge: 'Fast' },
-    { name: 'Gemini 3.1 Pro (Low)' },
-    { name: 'Gemini 3.1 Pro (High)' },
-    { name: 'Claude Sonnet 4.6 (Thinking)', alert: true },
-    { name: 'Claude Opus 4.6 (Thinking)', alert: true },
-    { name: 'GPT-OSS 120B (Medium)', alert: true }
+  const AI_MODELS = [
+    { id: 'gemini-3.5-flash-medium', name: 'Gemini 3.5 Flash (Medium)', badge: 'Fast ⓘ' },
+    { id: 'gemini-3.5-flash-high', name: 'Gemini 3.5 Flash (High)', badge: 'Fast ⓘ' },
+    { id: 'gemini-3.5-flash-low', name: 'Gemini 3.5 Flash (Low)', badge: 'Fast ⓘ' },
+    { id: 'gemini-3.1-pro-low', name: 'Gemini 3.1 Pro (Low)' },
+    { id: 'gemini-3.1-pro-high', name: 'Gemini 3.1 Pro (High)' },
+    { id: 'claude-sonnet-4.6', name: 'Claude Sonnet 4.6 (Thinking)' },
+    { id: 'claude-opus-4.6', name: 'Claude Opus 4.6 (Thinking)' },
+    { id: 'gpt-oss-120b', name: 'GPT-OSS 120B (Medium)' },
   ];
 
   const activeFile = openFiles.find((f) => f.path === activeFilePath);
@@ -49,6 +49,16 @@ export function ChatPane({ onOpenSettings }: ChatPaneProps) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamStatus, proposedEdits]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsModelDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -59,7 +69,7 @@ export function ChatPane({ onOpenSettings }: ChatPaneProps) {
       addMessage({
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: 'Open a Flutter project first.',
+        content: 'Open a project first.',
         createdAt: new Date().toISOString(),
       });
       return;
@@ -108,97 +118,121 @@ export function ChatPane({ onOpenSettings }: ChatPaneProps) {
   };
 
   return (
-    <section className="panel chat-pane">
-      <div className="panel-header">
-        <span className="panel-title">Agent</span>
-        <div className="panel-actions">
-          {isStreaming && (
-            <button type="button" className="btn btn-ghost" title="Stop" onClick={() => void window.peep.cancelAgent()}>
-              ◼
-            </button>
-          )}
-          <button type="button" className="btn btn-ghost" title="New conversation"
-            onClick={() => { useChatStore.getState().clearMessages?.(); }}
+    <div className="agent-panel">
+      <div className="agent-header">
+        <span className="agent-title">Agent</span>
+        <div style={{ position: 'relative' }} ref={dropdownRef}>
+          <div 
+            className="agent-model-badge" 
+            onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+            style={{ cursor: 'pointer', userSelect: 'none' }}
           >
-            +
-          </button>
-          <button type="button" className="btn btn-ghost" title="Settings" onClick={onOpenSettings}>
-            ⚙
-          </button>
+            <div className="agent-ai-dot"></div>
+            {selectedModel}
+            <svg style={{width:'9px',height:'9px',stroke:'currentColor',fill:'none',strokeWidth:'2',marginLeft:'4px'}} viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></svg>
+          </div>
+          {isModelDropdownOpen && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              marginTop: '4px',
+              background: '#0d1117',
+              border: '1px solid #30363d',
+              borderRadius: '6px',
+              padding: '4px 0',
+              zIndex: 100,
+              width: 'max-content',
+              minWidth: '180px',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+            }}>
+              <div style={{ padding: '2px 10px', fontSize: '10px', color: '#8b949e', marginBottom: '2px' }}>Model</div>
+              {AI_MODELS.map(model => (
+                <div 
+                  key={model.id}
+                  onClick={() => { setSelectedModel(model.name); setIsModelDropdownOpen(false); }}
+                  style={{
+                    padding: '6px 10px',
+                    fontSize: '11px',
+                    color: selectedModel === model.name ? 'var(--gold)' : '#c9d1d9',
+                    background: selectedModel === model.name ? 'var(--gold-dim)' : 'transparent',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px',
+                    whiteSpace: 'nowrap',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = selectedModel === model.name ? 'var(--gold-dim)' : 'rgba(255,255,255,0.04)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = selectedModel === model.name ? 'var(--gold-dim)' : 'transparent'}
+                >
+                  <span>{model.name}</span>
+                  {model.badge && (
+                    <span style={{
+                      fontSize: '9px',
+                      background: 'rgba(255,255,255,0.06)',
+                      padding: '2px 4px',
+                      borderRadius: '8px',
+                      color: selectedModel === model.name ? 'var(--gold)' : '#8b949e',
+                    }}>{model.badge}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="panel-body chat-pane__messages">
+      <div className="agent-messages">
         {messages.length === 0 ? (
-          <div className="chat-empty-state">
-            Ask anything, @ to mention, / for actions.
+          <div className="msg-system">
+            <div className="msg-avatar">Ag</div>
+            <div className="msg-body">
+              <div className="msg-sender">Antigravity AI</div>
+              <div className="msg-text">
+                Ask anything. Use <code style={{color:'var(--gold)',fontFamily:'var(--font-code)',fontSize:'10px',background:'var(--gold-dim)',padding:'1px 4px',borderRadius:'3px'}}>@</code> to mention context, <code style={{color:'var(--gold)',fontFamily:'var(--font-code)',fontSize:'10px',background:'var(--gold-dim)',padding:'1px 4px',borderRadius:'3px'}}>/</code> for actions.
+              </div>
+              <div className="msg-hint">Powered by Gemini 3.1 Pro - Context-aware - Multimodal</div>
+            </div>
           </div>
         ) : (
-          <>
-            {messages.map((message) => (
-              <div key={message.id} className={`chat-message chat-message--${message.role}`}>
-                <span className="chat-message__role">{message.role === 'user' ? 'You' : 'Agent'}</span>
-                <p>{message.content || (isStreaming && message.role === 'assistant' ? '…' : '')}</p>
+          messages.map((message) => (
+            <div key={message.id} className="msg-system">
+              <div className="msg-avatar" style={message.role === 'user' ? {background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)'} : {}}>
+                {message.role === 'user' ? 'U' : 'Ag'}
               </div>
-            ))}
-            {isStreaming && streamStatus && (
-              <div className="chat-status">{streamStatus}</div>
-            )}
-          </>
+              <div className="msg-body">
+                <div className="msg-sender" style={message.role === 'user' ? {color: 'var(--text-secondary)'} : {}}>
+                  {message.role === 'user' ? 'You' : 'Antigravity AI'}
+                </div>
+                <div className="msg-text" style={message.role === 'user' ? {borderColor: 'var(--border-bright)'} : {}}>
+                  {message.content || (isStreaming && message.role === 'assistant' ? '…' : '')}
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+        {isStreaming && streamStatus && (
+          <div className="msg-hint" style={{textAlign: 'center'}}>{streamStatus}</div>
         )}
         <div ref={messagesEndRef} />
       </div>
 
       <DiffViewer edits={proposedEdits} onApply={handleApply} onReject={handleReject} />
 
-      <form className="chat-pane__input-wrapper" onSubmit={handleSubmit}>
-        
-        {showModelSelect && (
-          <div className="model-dropdown">
-            <div className="model-dropdown__header">Model</div>
-            <div className="model-dropdown__list">
-              {MODELS.map(m => (
-                <button
-                  key={m.name}
-                  type="button"
-                  className={`model-option ${selectedModel === m.name ? 'model-option--active' : ''}`}
-                  onClick={() => {
-                    setSelectedModel(m.name);
-                    setShowModelSelect(false);
-                  }}
-                >
-                  <span className="model-name">{m.name}</span>
-                  {m.badge && <span className="model-badge">{m.badge} ⓘ</span>}
-                  {m.alert && <span className="model-alert">⚠</span>}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+      <div className="agent-quick-actions">
+        <button className="quick-action" onClick={() => { useChatStore.getState().clearMessages?.(); }}>+ New Chat</button>
+        <button className="quick-action" onClick={onOpenSettings}>⚙ Settings</button>
+        {isStreaming && <button className="quick-action" onClick={() => void window.peep.cancelAgent()}>◼ Stop</button>}
+      </div>
 
-        <div className="chat-pane__input">
-          <div className="chat-pane__input-toolbar">
-            <button type="button" className="icon-btn" title="Attach context">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-            </button>
-            <button 
-              type="button" 
-              className="model-select-btn"
-              onClick={() => setShowModelSelect(!showModelSelect)}
-              title="Select Model (Ctrl+/)"
-            >
-              {selectedModel}
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9" /></svg>
-            </button>
-            <div className="spacer" />
-            <button type="button" className="icon-btn" title="Voice input">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="22" /><line x1="8" y1="22" x2="16" y2="22" /></svg>
-            </button>
-          </div>
-
-          <textarea
+      <form className="agent-input-area" onSubmit={handleSubmit}>
+        <div className="agent-input-wrap">
+          <textarea 
+            className="agent-input" 
+            placeholder="Ask the agent..."
             value={input}
-            placeholder="Open a project to start..."
             rows={1}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
@@ -206,17 +240,14 @@ export function ChatPane({ onOpenSettings }: ChatPaneProps) {
                 e.preventDefault();
                 handleSubmit(e);
               }
-              if ((e.ctrlKey || e.metaKey) && e.key === '/') {
-                e.preventDefault();
-                setShowModelSelect(s => !s);
-              }
             }}
-          />
-          <button type="submit" className="btn btn-primary chat-submit" disabled={!input.trim() || isStreaming}>
-            Send
+          ></textarea>
+          <button type="submit" className="agent-send" disabled={!input.trim() || isStreaming}>
+            <svg style={{width:'14px',height:'14px'}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 2L11 13 M22 2l-7 20-4-9-9-4 20-7z"/></svg>
           </button>
         </div>
+        <div className="agent-footer-text">{selectedModel} · Context: {activeFile?.name ?? 'None'}</div>
       </form>
-    </section>
+    </div>
   );
 }

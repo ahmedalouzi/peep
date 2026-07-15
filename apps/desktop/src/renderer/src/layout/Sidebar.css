@@ -1,26 +1,36 @@
+/* ═══════════════════════════════════════════════════════════════════
+   SIDEBAR  — reference UI style
+═══════════════════════════════════════════════════════════════════ */
 .sidebar__body {
-  padding: 8px 0;
+  padding: 4px 0;
+  overflow-y: auto;
+  height: 100%;
 }
 
+/* ── Welcome / empty ──────────────────────────────────────────── */
 .sidebar__welcome {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
+  gap: 10px;
+  padding: 14px;
   color: var(--text-secondary);
+  font-size: 12px;
 }
 
+/* ── Recent projects ──────────────────────────────────────────── */
 .sidebar__recent {
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
 .sidebar__recent-label {
   display: block;
-  margin-bottom: 6px;
-  font-size: 11px;
+  margin-bottom: 4px;
+  padding: 0 14px;
+  font-size: 10.5px;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   color: var(--text-muted);
+  font-weight: 600;
 }
 
 .sidebar__recent ul {
@@ -31,12 +41,14 @@
 
 .sidebar__recent-item {
   width: 100%;
-  padding: 6px 8px;
+  padding: 5px 14px;
   border: none;
-  border-radius: 6px;
+  border-radius: 0;
   background: transparent;
   color: var(--text-secondary);
   text-align: left;
+  font-size: 12px;
+  transition: background 0.1s, color 0.1s;
 }
 
 .sidebar__recent-item:hover {

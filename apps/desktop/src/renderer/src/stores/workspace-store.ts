@@ -17,6 +17,8 @@ interface WorkspaceState {
   bottomPanelOpen: boolean;
   sidebarOpen: boolean;
   agentPaneOpen: boolean;
+  previewPaneOpen: boolean;
+  sidebarView: 'explorer' | 'extensions' | 'search' | 'git';
   bottomPanelTab: 'problems' | 'logs' | 'terminal' | 'git';
   isLoading: boolean;
 
@@ -29,7 +31,9 @@ interface WorkspaceState {
   closeFile: (path: string) => void;
   toggleBottomPanel: () => void;
   toggleSidebar: () => void;
+  setSidebarView: (view: 'explorer' | 'extensions' | 'search' | 'git') => void;
   toggleAgentPane: () => void;
+  setPreviewPaneOpen: (open: boolean) => void;
   setBottomPanelTab: (tab: 'problems' | 'logs' | 'terminal' | 'git') => void;
   setLoading: (loading: boolean) => void;
 }
@@ -42,7 +46,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   activeFilePath: null,
   bottomPanelOpen: true,
   sidebarOpen: true,
+  sidebarView: 'explorer',
   agentPaneOpen: true,
+  previewPaneOpen: true,
   bottomPanelTab: 'problems',
   isLoading: false,
 
@@ -85,7 +91,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   toggleBottomPanel: () => set({ bottomPanelOpen: !get().bottomPanelOpen }),
   toggleSidebar: () => set({ sidebarOpen: !get().sidebarOpen }),
+  setSidebarView: (sidebarView) => set({ sidebarView, sidebarOpen: true }),
   toggleAgentPane: () => set({ agentPaneOpen: !get().agentPaneOpen }),
+  setPreviewPaneOpen: (previewPaneOpen) => set({ previewPaneOpen }),
   setBottomPanelTab: (bottomPanelTab) => set({ bottomPanelTab, bottomPanelOpen: true }),
   setLoading: (isLoading) => set({ isLoading }),
 }));

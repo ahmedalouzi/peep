@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { platform } from 'node:os';
+import { platform, homedir } from 'node:os';
 import { join } from 'node:path';
+import { existsSync } from 'node:fs';
 import type { BrowserWindow } from 'electron';
 import { IPC_EVENTS } from '@peep/shared';
 import type { RunCommandResult } from '@peep/shared';
@@ -48,6 +49,10 @@ export class TerminalService {
   }
 
   create(id: string, cwd: string): void {
+    if (!cwd || !existsSync(cwd)) {
+      console.warn(`[TerminalService] Provided cwd '${cwd}' does not exist. Falling back to homedir.`);
+      cwd = homedir();
+    }
     console.log(`[TerminalService] Creating terminal session for id: ${id}, cwd: ${cwd}`);
     this.destroy(id);
 

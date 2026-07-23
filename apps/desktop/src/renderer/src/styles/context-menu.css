@@ -1,0 +1,24 @@
+/* ── CONTEXT MENU ── */
+.context-menu-item {
+  padding: 6px 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  transition: background 0.1s;
+}
+
+.context-menu-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.context-menu-item.text-error:hover {
+  background: #c23b3b;
+  color: white;
+}
+
+.context-menu-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 4px 0;
+}

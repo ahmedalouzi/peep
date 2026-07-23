@@ -143,5 +143,8 @@ export function useWorkspace() {
     closeFolder,
     toggleSidebar: store.toggleSidebar,
     toggleAgentPane: store.toggleAgentPane,
+    renameItem: window.peep.renameItem,
+    deleteItem: window.peep.deleteItem,
+    revealItem: window.peep.revealItem,
   };
 }

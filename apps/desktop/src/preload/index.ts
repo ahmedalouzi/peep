@@ -14,6 +14,7 @@ import type {
   Settings,
   TerminalCreateOptions,
   UpdateInfo,
+  ConnectedDevice,
 } from '@peep/shared';
 
 function subscribe<T>(channel: string, callback: (payload: T) => void): () => void {
@@ -38,10 +39,14 @@ const api: IpcApi = {
   readImage: (filePath: string) => ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_READ_IMAGE, filePath) as Promise<string>,
   writeFile: (filePath: string, content: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_WRITE_FILE, filePath, content),
+  createDir: (dirPath: string) => ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_CREATE_DIR, dirPath),
+  renameItem: (oldPath: string, newPath: string) => ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_RENAME_ITEM, oldPath, newPath),
+  deleteItem: (path: string) => ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_DELETE_ITEM, path),
+  revealItem: (path: string) => ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_REVEAL_ITEM, path),
   getProject: () => ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_GET_PROJECT),
   searchFiles: (rootPath: string, query: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_SEARCH_FILES, rootPath, query),
-  searchContent: (opts: { projectPath: string; query: string; caseSensitive?: boolean; isRegex?: boolean; maxResults?: number }) =>
+  searchContent: (opts) =>
     ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_SEARCH_CONTENT, opts),
   getSettings: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET) as Promise<Settings>,
   setSettings: (settings: Partial<Settings>) =>
@@ -53,8 +58,12 @@ const api: IpcApi = {
   pubGet: (projectPath: string) => ipcRenderer.invoke(IPC_CHANNELS.FLUTTER_PUB_GET, projectPath),
   startPreview: (projectPath: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.PREVIEW_START, projectPath) as Promise<PreviewSession>,
+  rnStartPreview: (projectPath: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.RN_START_PREVIEW, projectPath) as Promise<PreviewSession>,
   stopPreview: () => ipcRenderer.invoke(IPC_CHANNELS.PREVIEW_STOP),
+  rnStopPreview: (processId: number) => ipcRenderer.invoke(IPC_CHANNELS.RN_STOP_PREVIEW, processId),
   reloadPreview: () => ipcRenderer.invoke(IPC_CHANNELS.PREVIEW_RELOAD),
+  rnReloadPreview: (processId: number) => ipcRenderer.invoke(IPC_CHANNELS.RN_RELOAD_PREVIEW, processId),
   getPreviewSession: () =>
     ipcRenderer.invoke(IPC_CHANNELS.PREVIEW_GET_SESSION) as Promise<PreviewSession | null>,
   detachPreview: (deviceId?: string) => ipcRenderer.invoke(IPC_CHANNELS.PREVIEW_DETACH, deviceId) as Promise<void>,
@@ -98,7 +107,14 @@ const api: IpcApi = {
   checkForUpdates: () => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_CHECK),
   downloadAndInstall: () => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_INSTALL),
   getUpdateStatus: () => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_GET_STATUS) as Promise<UpdateInfo>,
-  completeOnboarding: () => ipcRenderer.invoke(IPC_CHANNELS.ONBOARDING_COMPLETE),
+  completeOnboarding: () => ipcRenderer.invoke(IPC_CHANNELS.ONBOARDING_COMPLETE), // Wait, ONBOARDING_COMPLETE
+  getPerformanceInfo: () => ipcRenderer.invoke(IPC_CHANNELS.AUDIT_PERFORMANCE),
+  publishGetStatus: () => ipcRenderer.invoke(IPC_CHANNELS.PUBLISH_GET_STATUS) as Promise<import('@peep/shared').PublishStatus>,
+  publishDeploy: (projectPath: string, platform: 'flutter' | 'react-native', target: 'vercel' | 'netlify', token?: string) => ipcRenderer.invoke(IPC_CHANNELS.PUBLISH_DEPLOY, projectPath, platform, target, token) as Promise<void>,
+  publishCancel: () => ipcRenderer.invoke(IPC_CHANNELS.PUBLISH_CANCEL) as Promise<void>,
+  getConnectedDevices: () => ipcRenderer.invoke(IPC_CHANNELS.DEVICE_GET_LIST) as Promise<ConnectedDevice[]>,
+  startDeviceRun: (deviceId: string, platformTarget: string, projectPath: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.DEVICE_RUN, deviceId, platformTarget, projectPath) as Promise<{ processId: number }>,
   onPreviewStatus: (callback) => subscribe<PreviewSession>(IPC_EVENTS.PREVIEW_STATUS, callback),
   onDiagnostics: (callback) => subscribe<Diagnostic[]>(IPC_EVENTS.DIAGNOSTICS_UPDATED, callback),
   onPreviewLog: (callback) => subscribe<string>(IPC_EVENTS.PREVIEW_LOG, callback),
@@ -109,32 +125,15 @@ const api: IpcApi = {
   onTerminalExit: (callback) => subscribe<{ id: string; code: number }>(IPC_EVENTS.TERMINAL_EXIT, callback),
   onGitChanged: (callback) => subscribe<void>(IPC_EVENTS.GIT_CHANGED, callback),
   onUpdateStatus: (callback) => subscribe<UpdateInfo>(IPC_EVENTS.APP_UPDATE_STATUS, callback),
-  getPerformanceInfo: () => ipcRenderer.invoke(IPC_CHANNELS.AUDIT_PERFORMANCE),
-  publishGetStatus: () => ipcRenderer.invoke(IPC_CHANNELS.PUBLISH_GET_STATUS),
-  publishBuildDeploy: (options: {
-    projectPath: string;
-    platform: 'flutter' | 'react-native';
-    target: 'vercel' | 'netlify';
-    token?: string;
-  }) => ipcRenderer.invoke(IPC_CHANNELS.PUBLISH_BUILD_DEPLOY, options),
-  publishEasBuild: (options: { projectPath: string }) =>
-    ipcRenderer.invoke(IPC_CHANNELS.PUBLISH_EAS_BUILD, options),
-  publishCancel: () => ipcRenderer.invoke(IPC_CHANNELS.PUBLISH_CANCEL),
-  onPublishStatus: (callback: (status: any) => void) =>
-    subscribe<any>(IPC_EVENTS.PUBLISH_STATUS, callback),
-  onPublishLog: (callback: (line: string) => void) =>
-    subscribe<string>(IPC_EVENTS.PUBLISH_LOG, callback),
-  onOpenFile: (callback: (file: any) => void) =>
-    subscribe<any>('workspace:open-file', callback),
   // Extensions
   searchExtensions: (query, offset, size) => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_SEARCH, query, offset, size) as Promise<import('@peep/shared').ExtensionSearchResult>,
   getInstalledExtensions: () => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_INSTALLED) as Promise<import('@peep/shared').ExtensionInfo[]>,
   installExtension: (id, url) => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_INSTALL, id, url) as Promise<void>,
   uninstallExtension: (id) => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_UNINSTALL, id) as Promise<void>,
   getExtensionDetails: (id) => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_DETAILS, id) as Promise<any>,
-  getConnectedDevices: () => ipcRenderer.invoke(IPC_CHANNELS.DEVICE_GET_LIST) as Promise<import('@peep/shared').ConnectedDevice[]>,
-  startDeviceRun: (deviceId: string, platformTarget: string, projectPath: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.DEVICE_RUN, deviceId, platformTarget, projectPath) as Promise<{ processId: number }>,
+  onPublishStatus: (callback: (status: import('@peep/shared').PublishStatus) => void) => subscribe<import('@peep/shared').PublishStatus>(IPC_EVENTS.PUBLISH_STATUS, callback),
+  onPublishLog: (callback: (line: string) => void) => subscribe<string>(IPC_EVENTS.PUBLISH_LOG, callback),
+  onOpenFile: (callback: (payload: { path: string; name: string; content: string; dirty: boolean }) => void) => subscribe<{ path: string; name: string; content: string; dirty: boolean }>('open:file', callback),
 };
 
 contextBridge.exposeInMainWorld('peep', {

@@ -224,6 +224,8 @@
   font-size: 13px;
   line-height: 1.5;
   min-height: 44px;
+  max-height: 250px;
+  overflow-y: auto;
 }
 
 .chat-pane__input textarea::placeholder {
@@ -618,4 +620,85 @@
   overflow: hidden;
   text-overflow: ellipsis;
   flex: 1;
+}
+/* ── Model Selector Dropdown ────────────────────────────────────────── */
+.model-dropdown {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  width: 200px;
+  max-height: 250px;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 6px 0;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+}
+
+.model-dropdown__header {
+  padding: 2px 12px;
+  font-size: 10px;
+  color: #8b949e;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.model-dropdown__list {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.model-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  font-size: 11.5px;
+  color: #c9d1d9;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, color 0.15s;
+}
+
+.model-option:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.model-option--active {
+  color: var(--gold);
+  background: var(--gold-dim);
+}
+
+.model-option--active:hover {
+  background: var(--gold-dim);
+}
+
+.model-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.model-badge {
+  font-size: 9px;
+  background: rgba(255,255,255,0.1);
+  padding: 2px 5px;
+  border-radius: 8px;
+  color: #8b949e;
+  margin-left: 6px;
+}
+
+.model-option--active .model-badge {
+  color: var(--gold);
+  background: rgba(210, 153, 34, 0.15);
 }

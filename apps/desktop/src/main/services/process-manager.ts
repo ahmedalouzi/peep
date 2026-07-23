@@ -17,9 +17,9 @@ export class ProcessManager {
     this.flutterSdkPath = path;
   }
 
-  spawn(command: string, args: string[], cwd: string): ProcessInfo {
+  spawn(command: string, args: string[], cwd: string, envOverrides?: Record<string, string>): ProcessInfo {
     const shell = platform() === 'win32';
-    const customEnv = { ...process.env };
+    const customEnv = { ...process.env, ...envOverrides };
     if (this.flutterSdkPath) {
       const binPath = join(this.flutterSdkPath, 'bin');
       const pathKeyActual = Object.keys(customEnv).find(k => k.toLowerCase() === 'path') || 'PATH';

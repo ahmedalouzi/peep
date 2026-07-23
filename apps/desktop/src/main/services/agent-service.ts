@@ -291,7 +291,7 @@ export class AgentService {
                 content: proposedContent,
                 dirty: false,
               });
-              return `Plan updated successfully. Awaiting user's 'Proceed' confirmation.`;
+              return `Plan updated successfully.`;
             }
 
             if (path.endsWith('.peep/walkthrough.md') || path.endsWith('.peep\\walkthrough.md')) {
@@ -382,8 +382,12 @@ export class AgentService {
     try {
       await runAgentLoop(
         {
-          apiKey: settings.apiKey,
           provider: settings.apiProvider ?? 'openai',
+          apiKey: settings.apiKey || (
+            (settings.apiProvider === 'google') ? process.env.GOOGLE_API_KEY :
+            (settings.apiProvider === 'anthropic') ? process.env.ANTHROPIC_API_KEY :
+            process.env.OPENAI_API_KEY
+          ) || '',
           model: settings.apiModel,
         },
         systemContext,

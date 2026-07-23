@@ -30,6 +30,8 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [showKeys, setShowKeys] = useState(false);
   const [aiSaved, setAiSaved] = useState(false);
 
+
+
   useEffect(() => {
     if (!open) return;
     void window.peep.getSettings().then((s) => {
@@ -66,17 +68,27 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const handleSave = async () => {
     setSaving(true);
     try {
+      // Determine which key to send based on the current apiProvider
+      let keyToSend = apiKey;
+      if (!keyToSend) {
+        if (apiProvider === 'google' && geminiKey.trim()) keyToSend = geminiKey.trim();
+        else if (apiProvider === 'anthropic' && anthropicKey.trim()) keyToSend = anthropicKey.trim();
+        else if (apiProvider === 'openai' && openaiKey.trim()) keyToSend = openaiKey.trim();
+      }
+
       const partial: Partial<Settings> = {
         flutterSdkPath: flutterPath || undefined,
         apiProvider,
         apiModel,
       };
-      if (apiKey.trim()) {
-        partial.apiKey = apiKey.trim();
+      if (keyToSend) {
+        partial.apiKey = keyToSend;
       }
+      
       const nextSettings = await window.peep.setSettings(partial);
       setApiKeyConfigured(!!nextSettings.apiKeyConfigured);
       setApiKey('');
+      handleSaveAiKeys(); // also save locally
       handleClose();
     } finally {
       setSaving(false);

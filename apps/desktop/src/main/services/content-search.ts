@@ -88,7 +88,11 @@ export async function searchContent(
       }
 
       const ext = extname(entry.name).toLowerCase();
-      if (!TEXT_EXTENSIONS.has(ext)) continue;
+      const isAllowed = TEXT_EXTENSIONS.has(ext) 
+        || entry.name.startsWith('.env') 
+        || entry.name === 'Dockerfile' 
+        || entry.name.startsWith('.git');
+      if (!isAllowed) continue;
 
       let content: string;
       try {

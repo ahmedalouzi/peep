@@ -1,5 +1,5 @@
-import { access, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { access, readFile, readdir } from 'node:fs/promises';
+import { join, dirname } from 'node:path';
 import type { Diagnostic } from '@peep/shared';
 import type { ProcessManager } from './process-manager';
 
@@ -34,7 +34,38 @@ export class ReactNativeService {
 
   // ── Project detection ────────────────────────────────────────────────────
 
-  async isReactNativeProject(root: string): Promise<boolean> {
+  async findRnRoot(dir: string): Promise<string> {
+    const isDirect = await this.isReactNativeProjectDirect(dir);
+    if (isDirect) return dir;
+
+    // Scan subdirectories up to depth 3
+    const queue: { path: string; depth: number }[] = [{ path: dir, depth: 0 }];
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      if (current.depth > 3) continue;
+
+      if (await this.isReactNativeProjectDirect(current.path)) {
+        return current.path;
+      }
+
+      try {
+        const entries = await readdir(current.path, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.isDirectory()) {
+            const name = entry.name;
+            if (name === 'node_modules' || name === '.git' || name === '.expo' || name === 'build' || name === 'dist' || name === '.peep' || name === '.next' || name === 'Pods' || name === '.idea' || name === '.vscode') {
+              continue;
+            }
+            queue.push({ path: join(current.path, name), depth: current.depth + 1 });
+          }
+        }
+      } catch {}
+    }
+
+    return dir;
+  }
+
+  private async isReactNativeProjectDirect(root: string): Promise<boolean> {
     try {
       const raw = await readFile(join(root, 'package.json'), 'utf-8');
       const pkg = JSON.parse(raw) as Record<string, unknown>;
@@ -46,6 +77,11 @@ export class ReactNativeService {
     } catch {
       return false;
     }
+  }
+
+  async isReactNativeProject(root: string): Promise<boolean> {
+    const rnRoot = await this.findRnRoot(root);
+    return this.isReactNativeProjectDirect(rnRoot);
   }
 
   async detectSdk(): Promise<RnSdkInfo | null> {
@@ -66,14 +102,15 @@ export class ReactNativeService {
 
   async getProjectInfo(root: string): Promise<RnSdkInfo> {
     try {
-      const raw = await readFile(join(root, 'package.json'), 'utf-8');
+      const rnRoot = await this.findRnRoot(root);
+      const raw = await readFile(join(rnRoot, 'package.json'), 'utf-8');
       const pkg = JSON.parse(raw) as Record<string, unknown>;
       const deps = {
         ...((pkg.dependencies as Record<string, unknown>) ?? {}),
         ...((pkg.devDependencies as Record<string, unknown>) ?? {}),
       };
 
-      const nodeOut = await this.run(['node', '--version'], root).catch(() => 'unknown');
+      const nodeOut = await this.run(['node', '--version'], rnRoot).catch(() => 'unknown');
 
       return {
         nodeVersion: nodeOut.trim(),
@@ -89,24 +126,58 @@ export class ReactNativeService {
 
   // ── Package management ───────────────────────────────────────────────────
 
+  private async detectPackageManager(dir: string): Promise<'pnpm' | 'npm'> {
+    let current = dir;
+    for (let i = 0; i < 4; i++) {
+      try {
+        await access(join(current, 'pnpm-lock.yaml'));
+        return 'pnpm';
+      } catch {}
+      try {
+        await access(join(current, 'pnpm-workspace.yaml'));
+        return 'pnpm';
+      } catch {}
+      const parent = dirname(current);
+      if (parent === current) break;
+      current = parent;
+    }
+    return 'npm';
+  }
+
   async install(projectRoot: string): Promise<void> {
-    await this.run([this.getNpmBin(), 'install'], projectRoot);
+    const rnRoot = await this.findRnRoot(projectRoot);
+    const pm = await this.detectPackageManager(rnRoot);
+    if (pm === 'pnpm') {
+      const pnpmBin = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
+      if (process.platform === 'win32') {
+        await this.run([pnpmBin, 'install', '--ignore-scripts', '--config.confirmModulesPurge=false'], rnRoot);
+      } else {
+        await this.run([pnpmBin, 'install', '--config.confirmModulesPurge=false'], rnRoot);
+      }
+    } else {
+      if (process.platform === 'win32') {
+        await this.run([this.getNpmBin(), 'install', '--ignore-scripts'], rnRoot);
+      } else {
+        await this.run([this.getNpmBin(), 'install'], rnRoot);
+      }
+    }
   }
 
   // ── Diagnostics ──────────────────────────────────────────────────────────
 
   async analyze(projectRoot: string): Promise<Diagnostic[]> {
+    const rnRoot = await this.findRnRoot(projectRoot);
     const diagnostics: Diagnostic[] = [];
 
     // TypeScript check
     try {
-      await access(join(projectRoot, 'tsconfig.json'));
+      await access(join(rnRoot, 'tsconfig.json'));
       const tsOut = await this.run(
         [this.getNpxBin(), 'tsc', '--noEmit', '--pretty', 'false'],
-        projectRoot,
+        rnRoot,
       ).catch((e: Error) => e.message);
 
-      diagnostics.push(...parseTscOutput(tsOut, projectRoot));
+      diagnostics.push(...parseTscOutput(tsOut, rnRoot));
     } catch {
       // No tsconfig — skip TS check
     }
@@ -115,10 +186,10 @@ export class ReactNativeService {
     try {
       const eslintOut = await this.run(
         [this.getNpxBin(), 'eslint', '.', '--ext', '.ts,.tsx,.js,.jsx', '-f', 'compact'],
-        projectRoot,
+        rnRoot,
       ).catch((e: Error) => e.message);
 
-      diagnostics.push(...parseEslintOutput(eslintOut, projectRoot));
+      diagnostics.push(...parseEslintOutput(eslintOut, rnRoot));
     } catch {
       // ESLint not configured — skip
     }
@@ -143,8 +214,10 @@ export class ReactNativeService {
   async startWebPreview(
     projectRoot: string,
     port = PREVIEW_PORT,
+    onLog?: (log: string) => void,
   ): Promise<{ url: string; processId: number; logs: string[] }> {
-    const projectInfo = await this.getProjectInfo(projectRoot);
+    const rnRoot = await this.findRnRoot(projectRoot);
+    const projectInfo = await this.getProjectInfo(rnRoot);
 
     if (!projectInfo.hasExpo) {
       throw new Error(
@@ -169,7 +242,8 @@ export class ReactNativeService {
     const info = this.processManager.spawn(
       bin,
       args,
-      projectRoot,
+      rnRoot,
+      { BROWSER: 'none' }
     );
 
     const url = `http://localhost:${port}`;
@@ -186,15 +260,20 @@ export class ReactNativeService {
 
       const handleOutput = (chunk: Buffer) => {
         const text = chunk.toString();
+        if (onLog) onLog(text);
+        
         for (const line of text.split(/\r?\n/)) {
           if (line.trim()) logs.push(line);
         }
 
+        const fullText = logs.join('\n');
+
         if (
-          text.includes('Webpack compiled') ||
-          text.includes('Starting Metro') ||
-          text.includes(`localhost:${port}`) ||
-          text.includes('Web is waiting')
+          fullText.includes('Webpack compiled') ||
+          fullText.includes('Starting Metro') ||
+          fullText.includes(`localhost:${port}`) ||
+          fullText.includes('Web is waiting') ||
+          fullText.includes('Waiting on http')
         ) {
           clearTimeout(timeout);
           resolve({ url, processId: info.id, logs });

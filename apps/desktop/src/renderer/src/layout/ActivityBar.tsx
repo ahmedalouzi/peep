@@ -33,6 +33,13 @@ export function ActivityBar() {
       <div className="activity-icon" title="AI Assistant" onClick={() => useWorkspaceStore.getState().toggleAgentPane()}>
         <svg className="icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
       </div>
+      <div className="activity-icon" title="Publish Application" onClick={() => window.dispatchEvent(new CustomEvent('peep:open-publish'))}>
+        <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4.5 16.5c-1.5 1.25-2.5 3.5-2.5 3.5s2.25-1 3.5-2.5"/>
+          <path d="M12 15c-1.5-1.5-2.5-3-2.5-3L2 19.5l7.5-7.5s1.5 1 2.5 2.5z"/>
+          <path d="M13.5 10.5c.75.75 1.5 2.5 1.5 2.5L22 6.5l-7-7-6 6s1.75 1.5 2.5 2.5z"/>
+        </svg>
+      </div>
 
       <div className="activity-spacer"></div>
       

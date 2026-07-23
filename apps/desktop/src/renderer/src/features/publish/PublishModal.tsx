@@ -7,11 +7,10 @@ interface PublishModalProps {
   onClose: () => void;
 }
 
-type Tab = 'web' | 'native';
+
 
 export function PublishModal({ open, onClose }: PublishModalProps) {
   const project = useWorkspaceStore((s) => s.project);
-  const [activeTab, setActiveTab] = useState<Tab>('web');
   const [target, setTarget] = useState<'vercel' | 'netlify'>('vercel');
   const [token, setToken] = useState('');
   const [status, setStatus] = useState<any>({ status: 'idle', message: 'Ready to deploy', logs: [] });
@@ -47,18 +46,12 @@ export function PublishModal({ open, onClose }: PublishModalProps) {
   const platform = project.platform === 'react-native' || project.platform === 'expo' ? 'react-native' : 'flutter';
 
   const handlePublishWeb = () => {
-    void window.peep.publishBuildDeploy({
-      projectPath: project.path,
+    void window.peep.publishDeploy(
+      project.path,
       platform,
       target,
-      token: token.trim() || undefined,
-    });
-  };
-
-  const handlePublishEas = () => {
-    void window.peep.publishEasBuild({
-      projectPath: project.path,
-    });
+      token.trim() || undefined
+    );
   };
 
   const handleCancel = () => {
@@ -82,91 +75,55 @@ export function PublishModal({ open, onClose }: PublishModalProps) {
         <div className="publish-tabs">
           <button
             type="button"
-            className={`publish-tab ${activeTab === 'web' ? 'publish-tab--active' : ''}`}
-            onClick={() => setActiveTab('web')}
+            className="publish-tab publish-tab--active"
           >
             🌐 Web / PWA Hosting
-          </button>
-          <button
-            type="button"
-            className={`publish-tab ${activeTab === 'native' ? 'publish-tab--active' : ''}`}
-            disabled={platform !== 'react-native'}
-            onClick={() => setActiveTab('native')}
-          >
-            📱 Native Build (Expo EAS)
           </button>
         </div>
 
         {/* Body */}
         <div className="publish-modal__body">
-          {activeTab === 'web' ? (
-            <div className="publish-panel">
-              <p className="publish-desc">
-                Compile your app for mobile web browsers and publish it as a Progressive Web App (PWA). 
-                Users can load this in Safari/Chrome and click "Add to Home Screen" to install it.
-              </p>
+          <div className="publish-panel">
+            <p className="publish-desc">
+              Easily host your application on the web using a static deployment provider.
+              This allows you to share your project instantly as a web application or Progressive Web App (PWA).
+            </p>
 
-              <div className="publish-form-row">
-                <label className="publish-field">
-                  <span>Hosting Provider</span>
-                  <select
-                    value={target}
-                    onChange={(e) => setTarget(e.target.value as 'vercel' | 'netlify')}
-                    disabled={isWorking}
-                  >
-                    <option value="vercel">Vercel (Zero Config)</option>
-                    <option value="netlify">Netlify</option>
-                  </select>
-                </label>
-
-                <label className="publish-field">
-                  <span>API Token (Optional)</span>
-                  <input
-                    type="password"
-                    placeholder="Leave blank to log in via browser"
-                    value={token}
-                    onChange={(e) => setToken(e.target.value)}
-                    disabled={isWorking}
-                  />
-                </label>
-              </div>
-
-              {!isWorking && status.status !== 'completed' && status.status !== 'error' && (
-                <button
-                  type="button"
-                  className="btn btn-primary publish-action-btn"
-                  onClick={handlePublishWeb}
+            <div className="publish-form-group">
+              <label className="publish-field">
+                <span>Target Provider</span>
+                <select
+                  value={target}
+                  onChange={(e: any) => setTarget(e.target.value)}
+                  disabled={isWorking}
                 >
-                  Go Live (Build & Deploy)
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="publish-panel">
-              <p className="publish-desc">
-                Package your React Native project into native iOS (.ipa) or Android (.apk) binaries 
-                completely in the cloud using Expo Application Services (EAS). No local Xcode/Android Studio required.
-              </p>
+                  <option value="vercel">Vercel (Zero Config)</option>
+                  <option value="netlify">Netlify</option>
+                </select>
+              </label>
 
-              <div className="eas-info-card">
-                <strong>Requirements:</strong>
-                <ul>
-                  <li>✓ An Expo account configured in your project.</li>
-                  <li>✓ Setup `eas.json` or run `eas build:configure` once.</li>
-                </ul>
-              </div>
-
-              {!isWorking && status.status !== 'completed' && status.status !== 'error' && (
-                <button
-                  type="button"
-                  className="btn btn-primary publish-action-btn"
-                  onClick={handlePublishEas}
-                >
-                  Trigger EAS Native Cloud Build
-                </button>
-              )}
+              <label className="publish-field">
+                <span>API Token (Optional)</span>
+                <input
+                  type="password"
+                  placeholder="Leave blank to log in via browser"
+                  value={token}
+                  onChange={(e) => setToken(e.target.value)}
+                  disabled={isWorking}
+                />
+              </label>
             </div>
-          )}
+
+            {!isWorking && status.status !== 'completed' && status.status !== 'error' && (
+              <button
+                type="button"
+                className="btn btn-primary publish-action-btn"
+                onClick={handlePublishWeb}
+              >
+                Go Live (Build & Deploy)
+              </button>
+            )}
+          </div>
 
           {/* Progress / Status Visuals */}
           {status.status !== 'idle' && (
@@ -197,23 +154,17 @@ export function PublishModal({ open, onClose }: PublishModalProps) {
                     {status.url}
                   </a>
 
-                  {activeTab === 'web' ? (
-                    <div className="pwa-install-tip">
-                      <p>📱 Scan this layout link on your phone to install it as a PWA app.</p>
-                      {/* Generates a simple visual mock-up representation of QR code */}
-                      <div className="mock-qrcode">
-                        <div className="mock-qrcode__dots">
-                          {[...Array(64)].map((_, i) => (
-                            <span key={i} className={i % 3 === 0 || i % 7 === 0 ? 'active' : ''} />
-                          ))}
-                        </div>
+                  <div className="pwa-install-tip">
+                    <p>📱 Scan this layout link on your phone to install it as a PWA app.</p>
+                    {/* Generates a simple visual mock-up representation of QR code */}
+                    <div className="mock-qrcode">
+                      <div className="mock-qrcode__dots">
+                        {[...Array(64)].map((_, i) => (
+                          <span key={i} className={i % 3 === 0 || i % 7 === 0 ? 'active' : ''} />
+                        ))}
                       </div>
                     </div>
-                  ) : (
-                    <div className="pwa-install-tip">
-                      <p>📲 Scan with Expo Go app or install binary from the link above.</p>
-                    </div>
-                  )}
+                  </div>
                 </div>
               )}
 

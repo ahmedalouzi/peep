@@ -7,36 +7,52 @@ import './PreviewPane.css';
 
 /* ── Device catalogue ─────────────────────────────────────────────── */
 export const DEVICES = [
-  { id: 'iphone-15' as const, label: 'iPhone 15', w: 290, h: 600 },
-  { id: 'iphone-15-pro' as const, label: 'iPhone 15 Pro', w: 290, h: 600 },
-  { id: 'iphone-se' as const, label: 'iPhone SE', w: 250, h: 510 },
-  { id: 'pixel-8' as const, label: 'Pixel 8', w: 270, h: 570 },
-  { id: 'pixel-fold' as const, label: 'Pixel Fold', w: 380, h: 520 },
-  { id: 'galaxy-s24' as const, label: 'Galaxy S24', w: 268, h: 560 },
+  { id: 'iphone-15' as const, label: 'iPhone 15', w: 290, h: 600, padding: 6, lw: 393 },
+  { id: 'iphone-15-pro' as const, label: 'iPhone 15 Pro', w: 290, h: 600, padding: 6, lw: 393 },
+  { id: 'iphone-se' as const, label: 'iPhone SE', w: 250, h: 510, padding: 4, lw: 375 },
+  { id: 'pixel-8' as const, label: 'Pixel 8', w: 270, h: 570, padding: 3, lw: 412 },
+  { id: 'pixel-fold' as const, label: 'Pixel Fold', w: 380, h: 520, padding: 3, lw: 840 },
+  { id: 'galaxy-s24' as const, label: 'Galaxy S24', w: 268, h: 560, padding: 3, lw: 360 },
 ] as const;
 
 function getPlatformLabel(p: string) {
   if (p === 'react-native') return 'RN';
   if (p === 'expo') return 'Expo';
-  return 'Flutter';
+  if (p === 'flutter') return 'Flutter';
+  return 'Web / Other';
 }
 function getPlatformColor(p: string) {
-  return p === 'flutter' ? '#2d7dd2' : '#7c5cbf';
+  if (p === 'flutter') return '#2d7dd2';
+  if (p === 'react-native') return '#7c5cbf';
+  if (p === 'expo') return '#4630eb';
+  return '#10b981';
 }
 function getIdleMsg(p: string) {
-  return (p === 'react-native' || p === 'expo')
-    ? 'Open a React Native project to auto-start Expo Web preview, or press Start.'
-    : 'Open a Flutter project to auto-start preview, or press Start.';
+  if (p === 'react-native' || p === 'expo') {
+    return 'Open a React Native project to auto-start Expo Web preview, or press Start.';
+  }
+  if (p === 'flutter') {
+    return 'Open a Flutter project to auto-start preview, or press Start.';
+  }
+  return 'Web or general project opened. Automated previews are not supported for this project type.';
 }
 function getStartingMsg(p: string) {
-  return (p === 'react-native' || p === 'expo')
-    ? 'Running npm install and starting Expo Web… This may take a minute.'
-    : 'Running flutter pub get and web server. This may take a minute.';
+  if (p === 'react-native' || p === 'expo') {
+    return 'Running npm install and starting Expo Web… This may take a minute.';
+  }
+  if (p === 'flutter') {
+    return 'Running flutter pub get and web server. This may take a minute.';
+  }
+  return 'Starting preview…';
 }
 function getStoppedMsg(p: string) {
-  return (p === 'react-native' || p === 'expo')
-    ? 'Press Start to launch Expo Web again.'
-    : 'Press Start to launch Flutter Web again.';
+  if (p === 'react-native' || p === 'expo') {
+    return 'Press Start to launch Expo Web again.';
+  }
+  if (p === 'flutter') {
+    return 'Press Start to launch Flutter Web again.';
+  }
+  return 'Preview stopped.';
 }
 
 export function PreviewPane() {
@@ -172,10 +188,23 @@ Please modify this element as follows: `);
         status: 'running',
       });
     } else {
-      void window.peep.startPreview(project.path);
+      if (platform === 'react-native' || platform === 'expo') {
+        void window.peep.rnStartPreview(project.path);
+      } else {
+        void window.peep.startPreview(project.path);
+      }
     }
   };
-  const handleRefresh = () => { void window.peep.reloadPreview(); usePreviewStore.getState().bumpIframe(); };
+  const handleRefresh = () => {
+    if (platform === 'react-native' || platform === 'expo') {
+      if (session?.processId) {
+        void window.peep.rnReloadPreview(session.processId);
+      }
+    } else {
+      void window.peep.reloadPreview();
+    }
+    usePreviewStore.getState().bumpIframe();
+  };
   const handleDetach = () => void window.peep.detachPreview(deviceId);
   const handleAutoHeal = () => {
     if (!project || !session?.error) return;
@@ -194,7 +223,7 @@ Please modify this element as follows: `);
   };
 
   return (
-    <section className="panel preview-pane" ref={paneRef}>
+    <section className="preview-panel" ref={paneRef}>
 
       {/* ── Header ── */}
       <div className="preview-header">
@@ -265,8 +294,8 @@ Please modify this element as follows: `);
                   type="button"
                   className="preview-action-btn preview-action-btn--start"
                   onClick={handleStart}
-                  disabled={!project}
-                  title={`Start ${getPlatformLabel(platform)} preview`}
+                  disabled={!project || platform === 'unknown'}
+                  title={platform === 'unknown' ? 'Previews are not supported' : `Start ${getPlatformLabel(platform)} preview`}
                 >
                   ▶ Start
                 </button>

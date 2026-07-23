@@ -2,12 +2,23 @@ import { useState, useEffect } from 'react';
 import { MonacoEditor } from '../features/editor/MonacoEditor';
 import { DiffViewer } from '../features/chat/DiffViewer';
 import { PlanViewer } from '../features/plan/PlanViewer';
+
 import { NoFileOpenEmptyState, NoProjectEmptyState } from '../features/shared/EmptyState';
 import { useWorkspaceStore } from '../stores/workspace-store';
 import { useWorkspace } from '../hooks/useWorkspace';
 import { ExtensionDetailsView } from '../features/extensions/ExtensionDetailsView';
 import { GitDiffView } from '../features/git/GitDiffView';
 import { getFileIcon } from '../features/explorer/FileIcons';
+
+function isVirtualPath(path: string): boolean {
+  return path.startsWith('git-diff://') ||
+    path.startsWith('extension://') ||
+    path === 'peep://proposed-changes' ||
+    path.endsWith('.peep/plan.md') ||
+    path.endsWith('.peep\\plan.md') ||
+    path.endsWith('.peep/walkthrough.md') ||
+    path.endsWith('.peep\\walkthrough.md');
+}
 
 /** File extensions treated as images */
 const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'ico', 'bmp', 'tiff', 'avif']);
@@ -99,12 +110,7 @@ export function EditorPane() {
     window.dispatchEvent(new CustomEvent('peep:new-project'));
   };
 
-  const isVirtualFile =
-    activeFile?.path === 'peep://proposed-changes' ||
-    activeFile?.path.endsWith('.peep/plan.md') ||
-    activeFile?.path.endsWith('.peep\\plan.md') ||
-    activeFile?.path.endsWith('.peep/walkthrough.md') ||
-    activeFile?.path.endsWith('.peep\\walkthrough.md');
+
 
   return (
     <div className="editor-area">
@@ -136,7 +142,7 @@ export function EditorPane() {
               <svg style={{ width: '10px', height: '10px', stroke: 'currentColor', fill: 'none', strokeWidth: '2' }} viewBox="0 0 16 16"><path d="M8 2v4l3 3" /><circle cx="8" cy="8" r="6" /></svg>
               {activeFile.name.split('.').pop()?.toUpperCase() ?? 'TEXT'}
             </span>
-            {!isVirtualFile && (
+            {!isVirtualPath(activeFile.path) && (
               <button className="toolbar-btn" onClick={() => void saveActiveFile()}>
                 <svg style={{ width: '11px', height: '11px', stroke: 'currentColor', fill: 'none', strokeWidth: '2' }} viewBox="0 0 16 16"><path d="M1 4h14M1 8h14M1 12h8" /></svg>
                 Save

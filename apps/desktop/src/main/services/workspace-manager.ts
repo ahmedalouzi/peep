@@ -1,10 +1,55 @@
-import { readdir, readFile, writeFile, mkdir, stat } from 'node:fs/promises';
+import { readdir, readFile, writeFile, mkdir, stat, rename, rm } from 'node:fs/promises';
 import { basename, join, relative, dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { FileEntry, ProjectInfo } from '@peep/shared';
 import type { DatabaseService } from './db';
+import { shell } from 'electron';
 
-const IGNORED = new Set(['.git', 'node_modules', '.dart_tool', 'build', '.peep', 'dist', '.next', '.expo', 'Pods', '.idea', '.vscode']);
+const IGNORED = new Set(['.git', 'node_modules', '.dart_tool', 'build', '.peep', 'dist', '.next', '.expo', 'Pods', '.idea', '.vscode', '.keep', '.gitkeep']);
+
+async function detectPlatformRecursively(dir: string, depth = 0): Promise<'flutter' | 'react-native' | 'expo' | 'unknown'> {
+  if (depth > 3) return 'unknown';
+
+  // 1. Check Flutter pubspec.yaml
+  try {
+    await stat(join(dir, 'pubspec.yaml'));
+    return 'flutter';
+  } catch {}
+
+  // 2. Check React Native / Expo in package.json
+  try {
+    const rawPkg = await readFile(join(dir, 'package.json'), 'utf-8');
+    const pkg = JSON.parse(rawPkg) as Record<string, any>;
+    const deps = {
+      ...(pkg.dependencies ?? {}),
+      ...(pkg.devDependencies ?? {}),
+    };
+    if ('expo' in deps) {
+      return 'expo';
+    } else if ('react-native' in deps) {
+      return 'react-native';
+    }
+  } catch {}
+
+  // 3. Scan subdirectories
+  try {
+    const entries = await readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const name = entry.name;
+        if (name === 'node_modules' || name === '.git' || name === '.expo' || name === 'build' || name === 'dist' || name === '.peep' || name === '.next' || name === 'Pods' || name === '.idea' || name === '.vscode') {
+          continue;
+        }
+        const subPlat = await detectPlatformRecursively(join(dir, name), depth + 1);
+        if (subPlat !== 'unknown') {
+          return subPlat;
+        }
+      }
+    }
+  } catch {}
+
+  return 'unknown';
+}
 
 export class WorkspaceManager {
   private project: ProjectInfo | null = null;
@@ -16,14 +61,7 @@ export class WorkspaceManager {
   }
 
   async openFolder(folderPath: string): Promise<ProjectInfo> {
-    let platform: 'flutter' | 'react-native' = 'react-native'; // default to RN for empty folders
-    try {
-      await stat(join(folderPath, 'pubspec.yaml'));
-      // If pubspec exists, it's definitely Flutter
-      platform = 'flutter';
-    } catch {
-      // Keep as react-native by default
-    }
+    const platform = await detectPlatformRecursively(folderPath);
 
     const project: ProjectInfo = {
       id: randomUUID(),
@@ -89,6 +127,26 @@ export class WorkspaceManager {
   async writeFile(filePath: string, content: string): Promise<void> {
     await mkdir(dirname(filePath), { recursive: true });
     await writeFile(filePath, content, 'utf-8');
+  }
+
+  async createDir(dirPath: string): Promise<void> {
+    await mkdir(dirPath, { recursive: true });
+  }
+
+  async renameItem(oldPath: string, newPath: string): Promise<void> {
+    await rename(oldPath, newPath);
+  }
+
+  async deleteItem(path: string): Promise<void> {
+    try {
+      await shell.trashItem(path);
+    } catch {
+      await rm(path, { recursive: true, force: true });
+    }
+  }
+
+  async revealItem(path: string): Promise<void> {
+    shell.showItemInFolder(path);
   }
 
   async ensurePeepDir(): Promise<string | null> {

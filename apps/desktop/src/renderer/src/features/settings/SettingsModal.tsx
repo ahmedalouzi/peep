@@ -18,6 +18,11 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [version, setVersion] = useState<string>('');
   const [perfInfo, setPerfInfo] = useState<{ heapUsedMB: number; rssMemMB: number } | null>(null);
 
+  const [apiProvider, setApiProvider] = useState<'openai' | 'anthropic' | 'google'>('openai');
+  const [apiModel, setApiModel] = useState('gpt-4o-mini');
+  const [_apiKeyConfigured, setApiKeyConfigured] = useState(false);
+  const [apiKey, setApiKey] = useState('');
+
   // AI Keys
   const [geminiKey, setGeminiKey] = useState('');
   const [anthropicKey, setAnthropicKey] = useState('');

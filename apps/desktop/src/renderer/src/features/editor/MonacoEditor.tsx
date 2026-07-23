@@ -94,6 +94,14 @@ export function MonacoEditor({ path, value, onChange, onSave }: MonacoEditorProp
         onSave?.();
       });
 
+      editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, () => {
+        window.dispatchEvent(
+          new CustomEvent('peep:open-composer', {
+            detail: { filePath: path },
+          })
+        );
+      });
+
       editorInstance.focus();
 
       /* ── Bridge Monaco markers → DiagnosticsStore ── */

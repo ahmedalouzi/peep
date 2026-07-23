@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { join, isAbsolute, normalize } from 'node:path';
 import { access } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
 import type { BrowserWindow } from 'electron';
 import { IPC_EVENTS } from '@peep/shared';
 import type { ProposedEdit, AgentStreamEvent, AgentSendOptions } from '@peep/shared';
@@ -16,11 +17,13 @@ const RN_SYSTEM_ADDENDUM = `
 This is a React Native / Expo project.
 Key rules:
 - **PLANNING**: For requests that require writing, modifying, or scaffolding code files, you MUST first create or update a file named \`.peep/plan.md\` in the project root. This file must contain a clean, simple, bulleted and summarized checklist of the features/tasks you plan to implement. Do NOT edit code files in the same turn as writing/updating the plan. Instead, instruct the user to click the "Proceed with Implementation" button in the plan tab. Only when the user says "Proceed with implementation" should you propose the actual code edits.
-- **AUTONOMY**: Never ask the user conversational questions or ask for permission when a coding task is requested. For coding requests, immediately write/update the \`.peep/plan.md\` file using the tool call and tell the user they can click "Proceed" to start. Once they click/say "Proceed with implementation", you MUST NOT update the plan or ask for confirmation again. You MUST immediately execute the code edits via \`propose_file_edit\` in that same response.
+- **AUTONOMY**: Never ask conversational questions or request permission for coding tasks. On initial request, immediately write/update the \`.peep/plan.md\` file and tell the user to click "Proceed". Once they click or say "Proceed with implementation", you have full authority to execute ALL edits, run terminal commands, compile/typecheck, and self-correct diagnostics. You MUST NOT update the plan, stop, or ask for confirmation again. Execute all necessary tool calls and finish the task completely in that same run-loop.
 - **CONVERSATIONAL CHAT**: If the user's message is a greeting (e.g., "hi", "hello"), a general question, or a discussion that does NOT ask you to write, edit, or scaffold code, respond conversationally, politely, and briefly. In this case, do NOT call any tools, do NOT create/update the plan, and do NOT ask them to click "Proceed".
 - **WALKTHROUGH**: After completing the code edits (in the same turn you propose the code changes), you MUST also create or update a file named \`.peep/walkthrough.md\` in the project root via the tool call. This file must contain a clear, professional summary of the changes made, the files created/modified, and details on how the developer can verify the new features.
 - **CODE PRESERVATION**: When modifying or refactoring files, you MUST preserve all existing features, UI elements, handlers, imports, and business logic unless explicitly requested to remove or replace them. Never drop progress indicators, buttons, state properties, or helper methods during subsequent feature additions.
 - **NO CODEBLOCKS IN CHAT**: Do NOT output full code files or code blocks in your chat responses. All code additions/modifications must be proposed via tool calls. Your text response should only describe/summarize the changes.
+- **RUNNING COMMANDS**: You possess the \`run_command\` tool. Use it to install dependencies, run linting checks, typechecks, compiler diagnostics, and unit tests (e.g., \`pnpm install\`, \`pnpm typecheck\`, \`pnpm test\`, etc.) to verify your changes and resolve issues.
+- **CHAT FORMATTING STYLE**: Your text responses in the chat must be extremely concise, clean, and conversational. Do NOT output bulleted lists of changed files, markdown lists with asterisks, or duplicate the walkthrough/implementation plan. Speak directly in clean, professional, short paragraphs. Describe the high-level intent/behavior of your change instead of listing files.
 - **MULTI-FILE WRITES**: Write or modify ALL files associated with a feature/request in a single turn. Do not propose one file and wait for the user to say "proceed" to propose the next one. Use sequential tool calls in the same response.
 - Keep StyleSheet objects at the BOTTOM of each file.
 - Use FlatList for lists, not map() inside ScrollView.
@@ -86,10 +89,17 @@ export class AgentService {
     return [...this.pendingEdits];
   }
 
-  rejectEdits(editIds?: string[]): void {
+  async rejectEdits(editIds?: string[]): Promise<void> {
     if (!editIds || editIds.length === 0) {
+      for (const edit of this.pendingEdits) {
+        await this.workspace.writeFile(edit.path, edit.originalContent);
+      }
       this.pendingEdits = [];
     } else {
+      const toRevert = this.pendingEdits.filter((e) => editIds.includes(e.id));
+      for (const edit of toRevert) {
+        await this.workspace.writeFile(edit.path, edit.originalContent);
+      }
       this.pendingEdits = this.pendingEdits.filter((e) => !editIds.includes(e.id));
     }
     this.emitEdits();
@@ -98,11 +108,6 @@ export class AgentService {
   async applyEdits(editIds: string[]): Promise<void> {
     const project = this.workspace.getProject();
     if (!project) throw new Error('No project open');
-
-    const toApply = this.pendingEdits.filter((e) => editIds.includes(e.id));
-    for (const edit of toApply) {
-      await this.workspace.writeFile(edit.path, edit.proposedContent);
-    }
 
     this.pendingEdits = this.pendingEdits.filter((e) => !editIds.includes(e.id));
     this.emitEdits();
@@ -193,6 +198,7 @@ export class AgentService {
           severity: d.severity,
         })),
         userMessage: options.message,
+        previewError: options.previewError,
       });
 
     const messages: ChatMessage[] = [
@@ -207,9 +213,10 @@ export class AgentService {
 
     messages.push({ role: 'user', content: options.message });
 
-    const autoApply = options.autoApplyEdits ?? false;
+
 
     const executor = {
+      lastOriginalContent: '',
       execute: async (name: string, args: Record<string, unknown>): Promise<string> => {
         if (!projectPath) {
           throw new Error('No project workspace open. Please open a project first.');
@@ -235,6 +242,42 @@ export class AgentService {
             return (
               matches.map((m) => `${m.file}:${m.line}: ${m.text}`).join('\n') || 'No matches found'
             );
+          }
+          case 'run_command': {
+            const commandStr = String(args.command);
+            return new Promise<string>((resolve) => {
+              const shell = process.platform === 'win32';
+              const child = spawn(commandStr, {
+                cwd: projectPath,
+                shell,
+                env: process.env,
+              });
+
+              let stdout = '';
+              let stderr = '';
+
+              child.stdout?.on('data', (chunk) => {
+                stdout += chunk.toString();
+              });
+              child.stderr?.on('data', (chunk) => {
+                stderr += chunk.toString();
+              });
+
+              const timeout = setTimeout(() => {
+                child.kill();
+                resolve(`Command timed out after 120s.\nStdout:\n${stdout}\nStderr:\n${stderr}`);
+              }, 120000);
+
+              child.on('close', (code) => {
+                clearTimeout(timeout);
+                resolve(`Command exited with code ${code}.\nStdout:\n${stdout}\nStderr:\n${stderr}`);
+              });
+
+              child.on('error', (err) => {
+                clearTimeout(timeout);
+                resolve(`Command execution error: ${err.message}\nStdout:\n${stdout}\nStderr:\n${stderr}`);
+              });
+            });
           }
           case 'propose_file_edit': {
             const path = this.resolvePath(projectPath, String(args.path));
@@ -269,6 +312,8 @@ export class AgentService {
               originalContent = '';
             }
 
+            executor.lastOriginalContent = originalContent;
+
             const edit: ProposedEdit = {
               id: randomUUID(),
               path,
@@ -277,54 +322,62 @@ export class AgentService {
               description: args.description ? String(args.description) : undefined,
             };
 
-            if (autoApply) {
-              await this.workspace.writeFile(path, proposedContent);
-              
-              let diagOutput = '';
-              try {
-                const isFlutter = await this.flutter.isFlutterProject(projectPath);
-                if (isFlutter) {
-                  const diags = await this.flutter.analyze(projectPath);
-                  if (diags.length > 0) {
-                    diagOutput = '\n\nActive compilation/analysis diagnostics after this change:\n' +
-                      diags.map(d => `- [${d.severity}] ${d.file}:${d.line}:${d.column} - ${d.message}`).join('\n');
-                  } else {
-                    diagOutput = '\n\nAnalysis passed with 0 errors.';
-                  }
-                } else if (this.rnService) {
-                  const isRN = await this.rnService.isReactNativeProject(projectPath);
-                  if (isRN) {
-                    const diags = await this.rnService.analyze(projectPath);
-                    if (diags.length > 0) {
-                      diagOutput = '\n\nActive React Native TS/ESLint diagnostics after this change:\n' +
-                        diags.map(d => `- [${d.severity}] ${d.file}:${d.line}:${d.column} - ${d.message}`).join('\n');
-                    } else {
-                      diagOutput = '\n\nAnalysis passed with 0 errors.';
-                    }
-                  }
-                }
-              } catch (e) {
-                // Ignore errors
-              }
-
-              return `Applied edit to ${path}.${diagOutput}`;
-            }
+            // Write the proposed content to disk immediately so simulator hot-reloads and user reviews live!
+            await this.workspace.writeFile(path, proposedContent);
 
             const existingIndex = this.pendingEdits.findIndex((e) => e.path === path);
             if (existingIndex >= 0) {
+              // Preserve the first original content for full rollback capability
+              edit.originalContent = this.pendingEdits[existingIndex].originalContent;
               this.pendingEdits[existingIndex] = edit;
             } else {
               this.pendingEdits.push(edit);
             }
 
             this.emitEdits();
-            return `Proposed edit for ${path}. Waiting for user approval.`;
+
+            let diagOutput = '';
+            try {
+              const isFlutter = await this.flutter.isFlutterProject(projectPath);
+              if (isFlutter) {
+                const diags = await this.flutter.analyze(projectPath);
+                if (diags.length > 0) {
+                  diagOutput = '\n\nActive compilation/analysis diagnostics after this change:\n' +
+                    diags.map(d => `- [${d.severity}] ${d.file}:${d.line}:${d.column} - ${d.message}`).join('\n');
+                } else {
+                  diagOutput = '\n\nAnalysis passed with 0 errors.';
+                }
+              } else if (this.rnService) {
+                const isRN = await this.rnService.isReactNativeProject(projectPath);
+                if (isRN) {
+                  const diags = await this.rnService.analyze(projectPath);
+                  if (diags.length > 0) {
+                    diagOutput = '\n\nActive React Native TS/ESLint diagnostics after this change:\n' +
+                      diags.map(d => `- [${d.severity}] ${d.file}:${d.line}:${d.column} - ${d.message}`).join('\n');
+                  } else {
+                    diagOutput = '\n\nAnalysis passed with 0 errors.';
+                  }
+                }
+              }
+            } catch (e) {
+              // Ignore errors
+            }
+
+            return `Proposed edit applied to ${path}.${diagOutput}`;
           }
           default:
             throw new Error(`Unknown tool: ${name}`);
         }
       },
     };
+
+    const isComplex = !!(
+      options.scaffoldMode || 
+      (options.diagnostics && options.diagnostics.length > 0) ||
+      options.previewError ||
+      options.openFilePath ||
+      /\b(create|add|implement|change|write|refactor|fix|composer|build|error|debug|inspect)\b/i.test(options.message)
+    );
 
     try {
       await runAgentLoop(
@@ -334,7 +387,7 @@ export class AgentService {
           model: settings.apiModel,
         },
         systemContext,
-        messages.slice(1), // Exclude the first one since it's the system message we just added above, but wait: runAgentLoop will prepend systemContext. Let's just pass the user/assistant messages array.
+        messages.slice(1),
         executor,
         {
           onStatus: (message) => this.emitStream({ type: 'status', content: message }),
@@ -343,6 +396,7 @@ export class AgentService {
           onDone: () => this.emitStream({ type: 'done', content: '' }),
         },
         signal,
+        isComplex
       );
     } catch (error) {
       if (signal.aborted) {

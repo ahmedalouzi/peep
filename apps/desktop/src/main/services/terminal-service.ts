@@ -80,12 +80,14 @@ export class TerminalService {
     child.stdout?.on('data', (chunk: Buffer) => {
       const output = chunk.toString();
       console.log(`[TerminalService] stdout: ${JSON.stringify(output)}`);
+      this.checkAndAutoRespond(id, output, child);
       emit(output.replace(/\r?\n/g, '\r\n'));
     });
     
     child.stderr?.on('data', (chunk: Buffer) => {
       const output = chunk.toString();
       console.log(`[TerminalService] stderr: ${JSON.stringify(output)}`);
+      this.checkAndAutoRespond(id, output, child);
       emit(output.replace(/\r?\n/g, '\r\n'));
     });
 
@@ -228,5 +230,33 @@ export class TerminalService {
         resolve({ stdout, stderr, exitCode: code ?? 1 });
       });
     });
+  }
+
+  private checkAndAutoRespond(id: string, text: string, child: ChildProcess): void {
+    const trimmed = text.trim();
+    const promptRegexes = [
+      /\(y\/n\)\??\s*$/i,
+      /\[y\/n\]\??\s*$/i,
+      /yes\/no\??\s*$/i,
+      /proceed\??\s*$/i,
+      /terminate\??\s*$/i,
+      /y\/n\s*$/i
+    ];
+    
+    const isPrompt = promptRegexes.some(regex => regex.test(trimmed));
+    if (isPrompt) {
+      console.log(`[TerminalService] Interactive prompt detected in session ${id}: ${trimmed}`);
+      if (child.stdin?.writable) {
+        console.log(`[TerminalService] Auto-responding 'y' to session ${id}`);
+        child.stdin.write('y\r\n');
+        
+        setTimeout(() => {
+          this.mainWindow?.webContents.send(IPC_EVENTS.TERMINAL_OUTPUT, {
+            id,
+            data: '\r\n[peep auto-respond] y\r\n'
+          });
+        }, 100);
+      }
+    }
   }
 }

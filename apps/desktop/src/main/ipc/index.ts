@@ -21,11 +21,14 @@ import { ReactNativeService } from '../services/react-native-service';
 import { PlatformRegistry } from '../services/platform-registry';
 import { buildAuditReport, capturePerformanceSnapshot } from '../services/audit-service';
 import { ExtensionService } from '../services/extension-service';
+import { PublishService } from '../services/publish-service';
+import { DeviceService } from '../services/device-service';
 
 let db: DatabaseService | null = null;
 let mainWindow: BrowserWindow | null = null;
 let previewWindow: BrowserWindow | null = null;
 let agentService: AgentService | null = null;
+let publishService: PublishService | null = null;
 
 const previewManager = new PreviewManager();
 const fileWatcher = new FileWatcherService();
@@ -146,6 +149,43 @@ export async function registerIpcHandlers(): Promise<{
   agentService = new AgentService(db, workspace, flutter, rnService);
   agentService.setMainWindow(mainWindow);
   const projectService = new ProjectService(flutter, workspace);
+  const deviceService = new DeviceService();
+
+  ipcMain.handle(IPC_CHANNELS.DEVICE_GET_LIST, async () => {
+    const sdkPath = db?.getSettingsRaw().flutterSdkPath;
+    return deviceService.listDevices(sdkPath);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.DEVICE_RUN, async (_event, deviceId: string, platformTarget: string, projectPath: string) => {
+    const flutterBin = process.platform === 'win32' ? 'flutter.bat' : 'flutter';
+    const sdkPath = db?.getSettingsRaw().flutterSdkPath;
+    const command = sdkPath
+      ? require('node:path').join(sdkPath, 'bin', flutterBin)
+      : flutterBin;
+
+    let args: string[] = [];
+    if (platformTarget === 'flutter') {
+      args = ['run', '-d', deviceId];
+    } else {
+      args = ['run-android', '--deviceId', deviceId];
+    }
+
+    const info = processManager.spawn(command, args, projectPath);
+
+    const handleData = (chunk: Buffer) => {
+      const text = chunk.toString();
+      for (const line of text.split(/\r?\n/)) {
+        if (line.trim() && mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(IPC_EVENTS.PREVIEW_LOG, line);
+        }
+      }
+    };
+
+    info.process.stdout?.on('data', handleData);
+    info.process.stderr?.on('data', handleData);
+
+    return { processId: info.id };
+  });
 
   ipcMain.handle(IPC_CHANNELS.DIALOG_SELECT_FOLDER, async () => {
     const options = {
@@ -427,8 +467,21 @@ export async function registerIpcHandlers(): Promise<{
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.AGENT_REJECT_EDITS, (_event, editIds?: string[]) => {
-    agentService!.rejectEdits(editIds);
+  ipcMain.handle(IPC_CHANNELS.AGENT_REJECT_EDITS, async (_event, editIds?: string[]) => {
+    await agentService!.rejectEdits(editIds);
+    const project = workspace.getProject();
+    if (project) {
+      const isFlutter = await flutter.isFlutterProject(project.path);
+      const isRN = !isFlutter && (await rnService!.isReactNativeProject(project.path));
+      if (isFlutter) {
+        previewManager.reload(flutter);
+      } else if (isRN) {
+        const session = previewManager.getSession();
+        if (session && session.processId && session.status === 'running') {
+          rnService!.reloadPreview(session.processId);
+        }
+      }
+    }
   });
 
   ipcMain.handle(IPC_CHANNELS.AGENT_GET_PENDING_EDITS, () => {
@@ -654,5 +707,6 @@ export function cleanupServices(flutter: FlutterService): void {
   fileWatcher.stop();
   previewManager.stop(flutter);
   agentService?.cancel();
+  publishService?.cancel();
   terminalService.destroyAll();
 }

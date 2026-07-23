@@ -72,4 +72,18 @@ export const OPENAI_TOOLS = [
       },
     },
   },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'run_command',
+      description: 'Run a shell/terminal command in the project root directory (e.g. "pnpm install", "pnpm typecheck", "pnpm test", "flutter pub get", "flutter analyze", etc.). Returns stdout and stderr outputs.',
+      parameters: {
+        type: 'object',
+        properties: {
+          command: { type: 'string', description: 'The exact shell command line string to execute' },
+        },
+        required: ['command'],
+      },
+    },
+  },
 ];

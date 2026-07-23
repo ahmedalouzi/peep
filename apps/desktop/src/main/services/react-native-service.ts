@@ -126,6 +126,18 @@ export class ReactNativeService {
     return diagnostics;
   }
 
+  private async getPackageManager(root: string): Promise<string> {
+    try {
+      await access(join(root, 'pnpm-lock.yaml'));
+      return 'pnpm';
+    } catch {}
+    try {
+      await access(join(root, 'yarn.lock'));
+      return 'yarn';
+    } catch {}
+    return 'npm';
+  }
+
   // ── Preview (Expo Web) ───────────────────────────────────────────────────
 
   async startWebPreview(
@@ -140,9 +152,23 @@ export class ReactNativeService {
       );
     }
 
+    process.env.EXPO_NO_BROWSER = '1';
+
+    const pm = await this.getPackageManager(projectRoot);
+    let bin = this.getNpxBin();
+    let args = ['expo', 'start', '--web', '--port', String(port)];
+
+    if (pm === 'pnpm') {
+      bin = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
+      args = ['expo', 'start', '--web', '--port', String(port)];
+    } else if (pm === 'yarn') {
+      bin = process.platform === 'win32' ? 'yarn.cmd' : 'yarn';
+      args = ['expo', 'start', '--web', '--port', String(port)];
+    }
+
     const info = this.processManager.spawn(
-      this.getNpxBin(),
-      ['expo', 'start', '--web', '--port', String(port)],
+      bin,
+      args,
       projectRoot,
     );
 

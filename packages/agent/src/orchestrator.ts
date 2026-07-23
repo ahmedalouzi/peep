@@ -27,12 +27,60 @@ const getApiUrl = (config: AgentConfig) => {
   return 'https://api.openai.com/v1/chat/completions';
 };
 
+export function getRoutedModel(config: AgentConfig, isComplex: boolean): string {
+  if (config.model && config.model !== 'auto') {
+    return config.model;
+  }
+  if (config.provider === 'google') {
+    return isComplex ? 'gemini-1.5-pro' : 'gemini-3.5-flash';
+  } else if (config.provider === 'openai') {
+    return isComplex ? 'gpt-4o' : 'gpt-4o-mini';
+  }
+  return 'gpt-4o-mini';
+}
+
+function estimateTokens(text: string): number {
+  return Math.ceil((text || '').length / 4);
+}
+
+function calculateCost(model: string, inputTokens: number, outputTokens: number) {
+  let inputRate = 0;
+  let outputRate = 0;
+  const m = model.toLowerCase();
+  if (m.includes('gemini-3.5-flash') || m.includes('gemini-1.5-flash')) {
+    inputRate = 0.075 / 1_000_000;
+    outputRate = 0.30 / 1_000_000;
+  } else if (m.includes('gemini-1.5-pro')) {
+    inputRate = 1.25 / 1_000_000;
+    outputRate = 5.00 / 1_000_000;
+  } else if (m.includes('gpt-4o-mini')) {
+    inputRate = 0.15 / 1_000_000;
+    outputRate = 0.60 / 1_000_000;
+  } else if (m.includes('gpt-4o')) {
+    inputRate = 5.00 / 1_000_000;
+    outputRate = 15.00 / 1_000_000;
+  } else {
+    inputRate = 0.15 / 1_000_000;
+    outputRate = 0.60 / 1_000_000;
+  }
+  const cost = (inputTokens * inputRate) + (outputTokens * outputRate);
+  return { inputTokens, outputTokens, cost };
+}
+
+function logCost(model: string, inputString: string, outputString: string) {
+  const inputTokens = estimateTokens(inputString);
+  const outputTokens = estimateTokens(outputString);
+  const usage = calculateCost(model, inputTokens, outputTokens);
+  console.log(`[AI Gateway] Model: ${model} | Input: ${usage.inputTokens} t | Output: ${usage.outputTokens} t | Cost: $${usage.cost.toFixed(6)}`);
+}
+
 async function callOpenAI(
   config: AgentConfig,
   messages: ChatMessage[],
   signal: AbortSignal,
+  isComplex?: boolean,
 ): Promise<ChatMessage> {
-  const model = config.model ?? (config.provider === 'google' ? 'gemini-1.5-flash' : 'gpt-4o-mini');
+  const model = getRoutedModel(config, isComplex ?? false);
   const cleanKey = config.apiKey.replace(/[^\x20-\x7E]/g, '');
 
   const response = await fetch(getApiUrl(config), {
@@ -45,7 +93,7 @@ async function callOpenAI(
       model,
       messages: messages.map((m) => {
         if (m.role === 'tool') {
-          return { role: 'tool', content: m.content, tool_call_id: m.tool_call_id, name: m.name };
+          return { role: 'tool', content: m.content, tool_call_id: m.tool_call_id, name: m.name || 'tool_name' };
         }
         if (m.role === 'assistant' && m.tool_calls) {
           return { role: 'assistant', content: m.content || null, tool_calls: m.tool_calls };
@@ -67,7 +115,14 @@ async function callOpenAI(
     choices: Array<{ message: ChatMessage }>;
   };
 
-  return data.choices[0]?.message ?? { role: 'assistant', content: 'No response.' };
+  const assistantMessage = data.choices[0]?.message ?? { role: 'assistant', content: 'No response.' };
+  
+  // Track tokens and cost
+  const promptText = JSON.stringify(messages);
+  const completionText = assistantMessage.content || JSON.stringify(assistantMessage.tool_calls || '');
+  logCost(model, promptText, completionText);
+
+  return assistantMessage;
 }
 
 async function streamOpenAISummary(
@@ -75,8 +130,9 @@ async function streamOpenAISummary(
   messages: ChatMessage[],
   callbacks: AgentCallbacks,
   signal: AbortSignal,
+  isComplex?: boolean,
 ): Promise<string> {
-  const model = config.model ?? (config.provider === 'google' ? 'gemini-1.5-flash' : 'gpt-4o-mini');
+  const model = getRoutedModel(config, isComplex ?? false);
   const cleanKey = config.apiKey.replace(/[^\x20-\x7E]/g, '');
 
   const response = await fetch(getApiUrl(config), {
@@ -89,7 +145,10 @@ async function streamOpenAISummary(
       model,
       messages: messages.map((m) => {
         if (m.role === 'tool') {
-          return { role: 'tool', content: m.content, tool_call_id: m.tool_call_id, name: m.name };
+          return { role: 'tool', content: m.content, tool_call_id: m.tool_call_id, name: m.name || 'tool_name' };
+        }
+        if (m.role === 'assistant' && m.tool_calls) {
+          return { role: 'assistant', content: m.content || null, tool_calls: m.tool_calls };
         }
         return { role: m.role, content: m.content };
       }),
@@ -138,6 +197,10 @@ async function streamOpenAISummary(
     }
   }
 
+  // Track tokens and cost for streaming summary
+  const promptText = JSON.stringify(messages);
+  logCost(model, promptText, fullText);
+
   return fullText;
 }
 
@@ -184,6 +247,23 @@ async function executeToolCalls(
   return results;
 }
 
+function getDiffStats(original: string, proposed: string) {
+  const origLines = (original || '').split(/\r?\n/);
+  const propLines = (proposed || '').split(/\r?\n/);
+  let added = 0;
+  let removed = 0;
+  const origSet = new Set(origLines);
+  
+  for (const line of propLines) {
+    if (line.trim() && !origSet.has(line)) added++;
+  }
+  const propSet = new Set(propLines);
+  for (const line of origLines) {
+    if (line.trim() && !propSet.has(line)) removed++;
+  }
+  return { added, removed };
+}
+
 export async function runAgentLoop(
   config: AgentConfig,
   systemContext: string,
@@ -191,13 +271,23 @@ export async function runAgentLoop(
   executor: AgentToolExecutor,
   callbacks: AgentCallbacks,
   signal: AbortSignal,
+  isComplex?: boolean,
 ): Promise<string> {
   if (config.provider !== 'openai' && config.provider !== 'google') {
     throw new Error('Only OpenAI and Google Gemini providers are supported in this version. Set provider in Settings.');
   }
 
+  const startTime = Date.now();
+  let toolLogs = '';
+
+  // Inject Planner directive for complex requests
+  let activeContext = systemContext;
+  if (isComplex) {
+    activeContext += `\n\n[PLANNING MODE ACTIVE] You are faced with a complex software engineering task. First, outline a clear step-by-step checklist of actions and files you will edit. Only then proceed to invoke your tools.`;
+  }
+
   const messages: ChatMessage[] = [
-    { role: 'system', content: systemContext },
+    { role: 'system', content: activeContext },
     ...initialMessages,
   ];
 
@@ -205,27 +295,94 @@ export async function runAgentLoop(
     if (signal.aborted) throw new Error('Cancelled');
 
     callbacks.onStatus(i === 0 ? 'Thinking…' : 'Continuing…');
-    const assistantMessage = await callOpenAI(config, messages, signal);
+    const assistantMessage = await callOpenAI(config, messages, signal, isComplex);
 
     if (assistantMessage.content) {
       callbacks.onStatus(assistantMessage.content.trim());
     }
 
     if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+      // Accumulate action log statements
+      for (const call of assistantMessage.tool_calls) {
+        const name = call.function.name;
+        let args: Record<string, unknown> = {};
+        try { args = JSON.parse(call.function.arguments); } catch {}
+        
+        if (name === 'read_file') {
+          toolLogs += `I will view <code>${args.path || ''}</code>.<br/>`;
+        } else if (name === 'propose_file_edit') {
+          toolLogs += `I will edit <code>${args.path || ''}</code> to ${args.description || 'apply code edits'}.<br/>`;
+        } else if (name === 'search_files') {
+          toolLogs += `I will search files matching <code>"${args.query || ''}"</code>.<br/>`;
+        } else if (name === 'list_dir') {
+          toolLogs += `I will list the directory <code>${args.path || '.'}</code>.<br/>`;
+        }
+      }
+
       messages.push(assistantMessage);
       const toolResults = await executeToolCalls(assistantMessage.tool_calls, executor, callbacks);
       messages.push(...toolResults);
+
+      // Accumulate result / completion statements
+      for (let j = 0; j < assistantMessage.tool_calls.length; j++) {
+        const call = assistantMessage.tool_calls[j];
+        const name = call.function.name;
+        let args: Record<string, unknown> = {};
+        try { args = JSON.parse(call.function.arguments); } catch {}
+
+        if (name === 'read_file') {
+          toolLogs += `Explored 1 file &gt;<br/><br/>`;
+        } else if (name === 'propose_file_edit') {
+          const original = (executor as any).lastOriginalContent ?? '';
+          const proposed = args.content ? String(args.content) : '';
+          const stats = getDiffStats(original, proposed);
+          const filename = String(args.path).split(/[\\/]/).pop() || '';
+          toolLogs += `Edited <strong>TS</strong> <code>${filename}</code> <span style="color:#3fb950">+${stats.added}</span> <span style="color:#f85149">-${stats.removed}</span><br/><br/>`;
+        }
+      }
+
+      toolLogs += 'Working.<br/><br/>';
       continue;
     }
 
     const text = assistantMessage.content?.trim();
     if (text) {
-      callbacks.onDelta(text);
-      callbacks.onDone();
-      return text;
+      if (toolLogs) {
+        const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+        const logsBlock = `<details class="agent-activity-dropdown" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; outline: none; display: block; width: 100%;">
+<summary style="cursor: pointer; font-weight: 600; font-size: 12.5px; color: var(--gold); user-select: none; outline: none; list-style: none; display: flex; align-items: center; gap: 6px;">
+  <span>▶</span> Worked for ${duration}s
+</summary>
+<div style="margin-top: 8px; font-size: 11.5px; line-height: 1.6; color: #8b949e; border-left: 2px solid var(--border); padding-left: 8px;">
+  ${toolLogs}
+</div>
+</details>\n\n`;
+        callbacks.onDelta(logsBlock + text);
+        callbacks.onDone();
+        return logsBlock + text;
+      } else {
+        callbacks.onDelta(text);
+        callbacks.onDone();
+        return text;
+      }
     }
 
     break;
+  }
+
+  // Pre-stream the collapsible logs block if tools were run
+  let prefix = '';
+  if (toolLogs) {
+    const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+    prefix = `<details class="agent-activity-dropdown" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; outline: none; display: block; width: 100%;">
+<summary style="cursor: pointer; font-weight: 600; font-size: 12.5px; color: var(--gold); user-select: none; outline: none; list-style: none; display: flex; align-items: center; gap: 6px;">
+  <span>▶</span> Worked for ${duration}s
+</summary>
+<div style="margin-top: 8px; font-size: 11.5px; line-height: 1.6; color: #8b949e; border-left: 2px solid var(--border); padding-left: 8px;">
+  ${toolLogs}
+</div>
+</details>\n\n`;
+    callbacks.onDelta(prefix);
   }
 
   callbacks.onStatus('Summarizing changes…');
@@ -240,8 +397,9 @@ export async function runAgentLoop(
     ],
     callbacks,
     signal,
+    isComplex,
   );
 
   callbacks.onDone();
-  return summary;
+  return prefix + summary;
 }

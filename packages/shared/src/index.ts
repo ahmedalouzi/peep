@@ -95,6 +95,7 @@ export interface AgentSendOptions {
   diagnostics?: Diagnostic[];
   autoApplyEdits?: boolean;
   scaffoldMode?: boolean;
+  previewError?: string;
 }
 
 export interface ProjectTemplateInfo {
@@ -252,7 +253,16 @@ export const IPC_CHANNELS = {
   PUBLISH_BUILD_DEPLOY: 'publish:buildDeploy',
   PUBLISH_EAS_BUILD: 'publish:easBuild',
   PUBLISH_CANCEL: 'publish:cancel',
+  DEVICE_GET_LIST: 'device:getList',
+  DEVICE_RUN: 'device:run',
 } as const;
+
+export interface ConnectedDevice {
+  id: string;
+  name: string;
+  platform: 'android' | 'ios' | 'web' | 'macos' | 'windows' | 'linux';
+  type: 'physical' | 'emulator';
+}
 
 export const IPC_EVENTS = {
   PREVIEW_STATUS: 'preview:status',
@@ -298,7 +308,7 @@ export interface IpcApi {
   stopPreview: () => Promise<void>;
   reloadPreview: () => Promise<void>;
   getPreviewSession: () => Promise<PreviewSession | null>;
-  detachPreview: () => Promise<void>;
+  detachPreview: (deviceId?: string) => Promise<void>;
   attachPreview: () => Promise<void>;
   isPreviewDetached: () => Promise<boolean>;
   sendAgentMessage: (options: AgentSendOptions) => Promise<void>;
@@ -335,6 +345,8 @@ export interface IpcApi {
   publishBuildDeploy: (options: { projectPath: string, platform: 'flutter' | 'react-native', target: 'vercel' | 'netlify', token?: string }) => Promise<void>;
   publishEasBuild: (options: { projectPath: string }) => Promise<void>;
   publishCancel: () => Promise<void>;
+  getConnectedDevices: () => Promise<ConnectedDevice[]>;
+  startDeviceRun: (deviceId: string, platformTarget: string, projectPath: string) => Promise<{ processId: number }>;
   onPreviewStatus: (callback: (session: PreviewSession) => void) => () => void;
   onDiagnostics: (callback: (diagnostics: Diagnostic[]) => void) => () => void;
   onPreviewLog: (callback: (line: string) => void) => () => void;

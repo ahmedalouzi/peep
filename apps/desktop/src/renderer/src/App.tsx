@@ -9,6 +9,7 @@ import { KeyboardHelp } from './features/shared/KeyboardHelp';
 import { usePeepEvents } from './hooks/usePeepEvents';
 import { DetachedPreview } from './features/preview/DetachedPreview';
 import { PublishModal } from './features/publish/PublishModal';
+import { useComposerStore } from './stores/composer-store';
 
 export default function App() {
   usePeepEvents();
@@ -44,6 +45,11 @@ export default function App() {
       if (ctrl && key === 'p') { event.preventDefault(); setGlobalPickerOpen(true); }
       if (ctrl && key === ',') { event.preventDefault(); setSettingsOpen(true); }
       if (ctrl && key === 'n') { event.preventDefault(); setNewProjectOpen(true); }
+      if (ctrl && key === 'i') {
+        event.preventDefault();
+        const { isOpen, setOpen } = useComposerStore.getState();
+        setOpen(!isOpen);
+      }
       if (event.key === 'F1' || (event.shiftKey && key === '?')) {
         event.preventDefault();
         setHelpOpen((v) => !v);
@@ -58,15 +64,23 @@ export default function App() {
     const onOpenPicker = () => setGlobalPickerOpen(true);
     const onOpenSettings = () => setSettingsOpen(true);
     const onOpenPublish = () => setPublishOpen(true);
+    const onOpenComposer = (e: Event) => {
+      const customEvent = e as CustomEvent<{ filePath: string }>;
+      const { stageFile, setOpen } = useComposerStore.getState();
+      stageFile(customEvent.detail.filePath);
+      setOpen(true);
+    };
 
     window.addEventListener('peep:open-picker', onOpenPicker);
     window.addEventListener('peep:open-settings', onOpenSettings);
     window.addEventListener('peep:open-publish', onOpenPublish);
+    window.addEventListener('peep:open-composer', onOpenComposer);
 
     return () => {
       window.removeEventListener('peep:open-picker', onOpenPicker);
       window.removeEventListener('peep:open-settings', onOpenSettings);
       window.removeEventListener('peep:open-publish', onOpenPublish);
+      window.removeEventListener('peep:open-composer', onOpenComposer);
     };
   }, []);
 

@@ -10,7 +10,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "eval": "npx tsx src/evals/runner.ts"
+    "eval": "npx tsx src/evals/runner.ts",
+    "test": "npx tsx tests/test-runner.ts"
   },
   "dependencies": {
     "@peep/platform-core": "workspace:*",

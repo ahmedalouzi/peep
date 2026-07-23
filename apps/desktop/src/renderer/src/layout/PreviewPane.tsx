@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { usePreviewStore } from '../stores/preview-store';
 import { useWorkspaceStore } from '../stores/workspace-store';
 import { PhoneFrame, type DeviceType } from '../features/preview/PhoneFrame';
+import { useComposerStore } from '../stores/composer-store';
 import './PreviewPane.css';
 
 /* ── Device catalogue ─────────────────────────────────────────────── */
@@ -15,7 +16,7 @@ export const DEVICES = [
 ] as const;
 
 function getPlatformLabel(p: string) {
-  if (p === 'react-native') return 'React Native';
+  if (p === 'react-native') return 'RN';
   if (p === 'expo') return 'Expo';
   return 'Flutter';
 }
@@ -39,12 +40,72 @@ function getStoppedMsg(p: string) {
 }
 
 export function PreviewPane() {
-  const [isDetached, setIsDetached] = useState(false);
+  const project = useWorkspaceStore((s) => s.project);
   const [scale, setScale] = useState(0.55);
+  const [connectedDevices, setConnectedDevices] = useState<any[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('browser');
+
+  useEffect(() => {
+    if (project?.path) {
+      (window.peep as any).getConnectedDevices().then((devs: any) => {
+        setConnectedDevices(devs || []);
+      });
+    }
+  }, [project?.path]);
+
+  const [isInspectorActive, setIsInspectorActive] = useState(false);
+  const webviewRef = useRef<any>(null);
+
+  const handleToggleInspector = () => {
+    const nextActive = !isInspectorActive;
+    setIsInspectorActive(nextActive);
+    webviewRef.current?.send('peep:toggle-inspector', nextActive);
+  };
 
   const session = usePreviewStore((s) => s.session);
+  const isRunning = session?.status === 'running' && session.url;
+
+  useEffect(() => {
+    const webview = webviewRef.current;
+    if (!webview) return;
+
+    const handleIpcMessage = (e: any) => {
+      if (e.channel === 'peep:element-selected') {
+        const metadata = e.args[0];
+        setIsInspectorActive(false);
+
+        const { setOpen, stageFile, setPrompt } = useComposerStore.getState();
+        const workspaceStore = useWorkspaceStore.getState();
+        if (workspaceStore.activeFilePath) {
+          stageFile(workspaceStore.activeFilePath);
+        }
+
+        setPrompt(`Here is the selected visual element context:
+- Tag: ${metadata.tagName}
+- Text: ${metadata.text}
+- Markup:
+\`\`\`html
+${metadata.outerHTML}
+\`\`\`
+
+Please modify this element as follows: `);
+        setOpen(true);
+      }
+    };
+
+    webview.addEventListener('ipc-message', handleIpcMessage);
+    return () => {
+      if (webview) {
+        webview.removeEventListener('ipc-message', handleIpcMessage);
+      }
+    };
+  }, [session?.status, isRunning]);
+
+  const [isDetached, setIsDetached] = useState(false);
+
   const iframeKey = usePreviewStore((s) => s.iframeKey);
   const deviceId = usePreviewStore((s) => s.deviceId) as DeviceType;
+  const setDeviceId = usePreviewStore((s) => s.setDeviceId);
 
   /* ── Refs ── */
   // Put on the outermost section — it ALWAYS has proper size from react-resizable-panels
@@ -53,10 +114,8 @@ export function PreviewPane() {
   const deviceRef = useRef(deviceId);
   useEffect(() => { deviceRef.current = deviceId; }, [deviceId]);
 
-  const project = useWorkspaceStore((s) => s.project);
   const setPreviewPaneOpen = useWorkspaceStore((s) => s.setPreviewPaneOpen);
 
-  const isRunning = session?.status === 'running' && session.url;
   const platform = project?.platform ?? 'flutter';
   const platColor = getPlatformColor(platform);
   const device = DEVICES.find((d) => d.id === deviceId) ?? DEVICES[0]!;
@@ -103,9 +162,36 @@ export function PreviewPane() {
     return () => unsub();
   }, []);
 
-  const handleStart = () => { if (project) void window.peep.startPreview(project.path); };
+  const handleStart = () => {
+    if (!project) return;
+    if (selectedDeviceId !== 'browser') {
+      void (window.peep as any).startDeviceRun(selectedDeviceId, platform, project.path);
+      usePreviewStore.getState().setSession({
+        url: '',
+        processId: 9999,
+        status: 'running',
+      });
+    } else {
+      void window.peep.startPreview(project.path);
+    }
+  };
   const handleRefresh = () => { void window.peep.reloadPreview(); usePreviewStore.getState().bumpIframe(); };
   const handleDetach = () => void window.peep.detachPreview(deviceId);
+  const handleAutoHeal = () => {
+    if (!project || !session?.error) return;
+    const { agentPaneOpen, toggleAgentPane } = useWorkspaceStore.getState();
+    if (!agentPaneOpen) {
+      toggleAgentPane();
+    }
+    window.dispatchEvent(
+      new CustomEvent('peep:trigger-agent', {
+        detail: {
+          message: "The application build failed to compile or run. Please examine the codebase, find the bug causing this build failure, and fix the file(s). Make the code changes directly without asking for confirmation.",
+          previewError: session.error,
+        },
+      })
+    );
+  };
 
   return (
     <section className="panel preview-pane" ref={paneRef}>
@@ -133,23 +219,51 @@ export function PreviewPane() {
             <>
               <select
                 className="preview-device-select"
-                value={deviceId}
-                onChange={(e) => setDeviceId(e.target.value as DeviceId)}
-                title="Device frame"
+                value={selectedDeviceId}
+                onChange={(e) => setSelectedDeviceId(e.target.value)}
+                title="Select running target"
+                style={{ marginRight: '8px' }}
               >
-                {DEVICES.map((d) => (
-                  <option key={d.id} value={d.id}>{d.label}</option>
+                <option value="browser">🌐 Web Browser</option>
+                {connectedDevices.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.platform === 'android' ? '🤖' : '🍎'} {d.name}
+                  </option>
                 ))}
               </select>
 
+              {selectedDeviceId === 'browser' && (
+                <select
+                  className="preview-device-select"
+                  value={deviceId}
+                  onChange={(e) => setDeviceId(e.target.value as DeviceType)}
+                  title="Device frame"
+                >
+                  {DEVICES.map((d) => (
+                    <option key={d.id} value={d.id}>{d.label}</option>
+                  ))}
+                </select>
+              )}
+
+              {isRunning && selectedDeviceId === 'browser' && (
+                <button
+                  type="button"
+                  className={`preview-action-btn ${isInspectorActive ? 'preview-action-btn--primary' : ''}`}
+                  style={isInspectorActive ? { background: 'var(--gold)', color: '#000', borderColor: 'var(--gold)' } : {}}
+                  onClick={handleToggleInspector}
+                  title="Select element to inspect/edit style"
+                >
+                  🔍 {isInspectorActive ? 'Inspecting…' : 'Inspect'}
+                </button>
+              )}
               {isRunning ? (
-                <button type="button" className="btn btn-ghost" onClick={handleRefresh} title="Hot reload">
+                <button type="button" className="preview-action-btn" onClick={handleRefresh} title="Hot reload">
                   ↺ Refresh
                 </button>
               ) : (
                 <button
                   type="button"
-                  className="btn btn-primary"
+                  className="preview-action-btn preview-action-btn--start"
                   onClick={handleStart}
                   disabled={!project}
                   title={`Start ${getPlatformLabel(platform)} preview`}
@@ -160,20 +274,11 @@ export function PreviewPane() {
 
               <button
                 type="button"
-                className="btn btn-ghost"
+                className="preview-action-btn"
                 onClick={handleDetach}
                 title="Detach preview to floating window"
               >
                 ↗ Detach
-              </button>
-
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={() => window.dispatchEvent(new CustomEvent('peep:open-publish'))}
-                title="Publish or Deploy App"
-              >
-                🚀 Publish
               </button>
             </>
           )}
@@ -229,11 +334,38 @@ export function PreviewPane() {
                         <p>{session.error ?? `Could not start ${getPlatformLabel(platform)} preview.`}</p>
                         <button type="button" className="preview-retry-btn"
                           onClick={handleStart} disabled={!project}>Retry</button>
+                        <button type="button" className="preview-retry-btn"
+                          onClick={handleAutoHeal} disabled={!project}
+                          style={{ marginLeft: '8px', background: 'var(--gold)', color: '#000', borderColor: 'var(--gold)' }}
+                        >
+                          ✨ Auto-Fix Build
+                        </button>
                       </div>
                     )}
-                    {isRunning && (
-                      <iframe key={iframeKey} className="preview-iframe"
-                        src={session.url} title={`${getPlatformLabel(platform)} preview`} />
+                    {selectedDeviceId !== 'browser' && isRunning && (
+                      <div className="preview-placeholder preview-placeholder--native" style={{ padding: '20px', textAlign: 'center' }}>
+                        <span className="preview-placeholder__icon" style={{ fontSize: '32px' }}>📲</span>
+                        <h3 style={{ margin: '12px 0 6px 0', fontSize: '15px' }}>Natively Deploying</h3>
+                        <p style={{ fontSize: '11px', color: '#8b949e', marginBottom: '8px' }}>
+                          Running app on target device:
+                        </p>
+                        <code style={{ display: 'block', padding: '4px 8px', background: 'rgba(255,255,255,0.06)', borderRadius: '4px', fontSize: '10px', wordBreak: 'break-all' }}>
+                          {selectedDeviceId}
+                        </code>
+                        <p style={{ fontSize: '10px', color: 'var(--gold)', marginTop: '16px' }}>
+                          Check the logs panel below to inspect native compiler output.
+                        </p>
+                      </div>
+                    )}
+                    {selectedDeviceId === 'browser' && isRunning && (
+                      <webview
+                        key={iframeKey}
+                        ref={webviewRef}
+                        className="preview-iframe"
+                        src={session.url}
+                        preload={`file://${(window.peep as any).getInspectorPreloadPath()}`}
+                        style={{ width: '100%', height: '100%', border: 'none' }}
+                      />
                     )}
                     {!session && (
                       <div className="preview-placeholder">

@@ -44,6 +44,10 @@ export function buildAgentContext(input: AgentContextInput): string {
       parts.push(`- [${d.severity}] ${d.file}:${d.line} — ${d.message}`);
     }
   }
+  
+  if (input.previewError) {
+    parts.push('', 'Active Preview/Build Compilation Error:', '```', input.previewError, '```');
+  }
 
   parts.push('', `User request: ${input.userMessage}`);
   return parts.join('\n');

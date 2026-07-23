@@ -29,4 +29,5 @@ export interface AgentContextInput {
     severity: string;
   }>;
   userMessage: string;
+  previewError?: string;
 }

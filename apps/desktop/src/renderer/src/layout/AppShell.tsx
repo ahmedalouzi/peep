@@ -10,6 +10,7 @@ import { StatusBar } from './StatusBar';
 import { NoProjectEmptyState } from '../features/shared/EmptyState';
 import { useWorkspaceStore } from '../stores/workspace-store';
 import { useWorkspace } from '../hooks/useWorkspace';
+import { ComposerOverlay } from '../features/composer/ComposerOverlay';
 import './AppShell.css';
 
 interface AppShellProps {
@@ -111,6 +112,8 @@ export function AppShell({ onOpenSettings, onNewProject }: AppShellProps) {
       {isResizing && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, cursor: 'row-resize' }} />
       )}
+
+      <ComposerOverlay />
     </>
   );
 }

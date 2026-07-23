@@ -136,10 +136,12 @@ export function EditorPane() {
               <svg style={{ width: '10px', height: '10px', stroke: 'currentColor', fill: 'none', strokeWidth: '2' }} viewBox="0 0 16 16"><path d="M8 2v4l3 3" /><circle cx="8" cy="8" r="6" /></svg>
               {activeFile.name.split('.').pop()?.toUpperCase() ?? 'TEXT'}
             </span>
-            <button className="toolbar-btn" onClick={() => void saveActiveFile()}>
-              <svg style={{ width: '11px', height: '11px', stroke: 'currentColor', fill: 'none', strokeWidth: '2' }} viewBox="0 0 16 16"><path d="M1 4h14M1 8h14M1 12h8" /></svg>
-              Save
-            </button>
+            {!isVirtualFile && (
+              <button className="toolbar-btn" onClick={() => void saveActiveFile()}>
+                <svg style={{ width: '11px', height: '11px', stroke: 'currentColor', fill: 'none', strokeWidth: '2' }} viewBox="0 0 16 16"><path d="M1 4h14M1 8h14M1 12h8" /></svg>
+                Save
+              </button>
+            )}
             <button className="toolbar-btn" onClick={() => {
               if (project) {
                 useWorkspaceStore.getState().setBottomPanelTab('problems');
@@ -167,6 +169,12 @@ export function EditorPane() {
           />
         ) : !activeFile ? (
           <NoFileOpenEmptyState />
+        ) : activeFile.path === 'peep://proposed-changes' ? (
+          <DiffViewer />
+        ) : activeFile.path.endsWith('.peep/plan.md') || activeFile.path.endsWith('.peep\\plan.md') ? (
+          <PlanViewer content={activeFile.content} mode="plan" />
+        ) : activeFile.path.endsWith('.peep/walkthrough.md') || activeFile.path.endsWith('.peep\\walkthrough.md') ? (
+          <PlanViewer content={activeFile.content} mode="walkthrough" />
         ) : activeFile.path.startsWith('extension://') ? (
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'auto', background: 'var(--bg-base)' }}>
             <ExtensionDetailsView extensionId={activeFile.path.replace('extension://', '')} />

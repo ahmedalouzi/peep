@@ -408,30 +408,38 @@
 }
 
 .summary-btn-reject {
-  color: var(--text-muted);
-  font-size: 12px;
-  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid #30363d;
+  color: #f85149;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
 
 .summary-btn-reject:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(248, 81, 73, 0.15);
+  border-color: #f85149;
   color: #ff7b72;
 }
 
 .summary-btn-accept {
   background-color: #1f6feb;
   color: #ffffff;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 4px 12px;
   border: 1px solid rgba(240, 246, 252, 0.1);
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.15s ease;
 }
 
 .summary-btn-accept:hover {
   background-color: #388bfd;
+  box-shadow: 0 0 8px rgba(56, 139, 253, 0.4);
 }
 
 .summary-chevron-btn {
@@ -516,30 +524,38 @@
 }
 
 .btn-reject-proposed {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid #30363d;
+  color: #f85149;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 4px;
   padding: 4px 10px;
-  font-size: 11.5px;
-  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
 
 .btn-reject-proposed:hover {
-  background-color: rgba(255, 255, 255, 0.05);
+  background: rgba(248, 81, 73, 0.15);
+  border-color: #f85149;
   color: #ff7b72;
 }
 
 .btn-apply-proposed {
   background-color: #1f6feb;
   color: #ffffff;
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 600;
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 4px 12px;
   border: 1px solid rgba(240, 246, 252, 0.1);
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.15s ease;
 }
 
 .btn-apply-proposed:hover {
   background-color: #388bfd;
+  box-shadow: 0 0 8px rgba(56, 139, 253, 0.4);
 }
 
 /* Expander Dropdown */

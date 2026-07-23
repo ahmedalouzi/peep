@@ -28,7 +28,7 @@ function getDiffStats(original: string, proposed: string) {
   return { added, removed };
 }
 
-export function ChatPane({ onOpenSettings }: ChatPaneProps) {
+export function ChatPane({ onOpenSettings: _onOpenSettings }: ChatPaneProps) {
   const {
     messages,
     input,
@@ -49,9 +49,9 @@ export function ChatPane({ onOpenSettings }: ChatPaneProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const [showModelSelect, setShowModelSelect] = useState(false);
   const [selectedModel, setSelectedModel] = useState('gpt-4o-mini');
   const [changesBarExpanded, setChangesBarExpanded] = useState(false);
+  const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
 
   const MODELS = [
     { name: 'gemini-3.5-flash', label: 'gemini-3.5-flash', provider: 'google', badge: 'Fast' },
@@ -100,6 +100,37 @@ export function ChatPane({ onOpenSettings }: ChatPaneProps) {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    const handleTriggerAgent = (e: Event) => {
+      const customEvent = e as CustomEvent<{ message: string; previewError?: string }>;
+      const { message, previewError } = customEvent.detail;
+
+      addMessage({
+        id: crypto.randomUUID(),
+        role: 'user',
+        content: message,
+        createdAt: new Date().toISOString(),
+      });
+      setInput('');
+
+      const assistantId = crypto.randomUUID();
+      startStreaming(assistantId);
+
+      void window.peep.sendAgentMessage({
+        message,
+        history: messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+        projectPath: project?.path,
+        openFilePath: activeFile?.path,
+        openFileContent: activeFile?.content,
+        diagnostics,
+        previewError,
+      });
+    };
+
+    window.addEventListener('peep:trigger-agent', handleTriggerAgent as EventListener);
+    return () => window.removeEventListener('peep:trigger-agent', handleTriggerAgent as EventListener);
+  }, [messages, project, activeFile, diagnostics]);
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -179,10 +210,17 @@ export function ChatPane({ onOpenSettings }: ChatPaneProps) {
               boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
             }}>
               <div style={{ padding: '2px 10px', fontSize: '10px', color: '#8b949e', marginBottom: '2px' }}>Model</div>
-              {AI_MODELS.map(model => (
+              {MODELS.map(model => (
                 <div
-                  key={model.id}
-                  onClick={() => { setSelectedModel(model.name); setIsModelDropdownOpen(false); }}
+                  key={model.name}
+                  onClick={async () => {
+                    setSelectedModel(model.name);
+                    setIsModelDropdownOpen(false);
+                    await window.peep.setSettings({
+                      apiModel: model.name,
+                      apiProvider: model.provider as any,
+                    });
+                  }}
                   style={{
                     padding: '6px 10px',
                     fontSize: '11px',
@@ -234,7 +272,7 @@ export function ChatPane({ onOpenSettings }: ChatPaneProps) {
               return (
                 <div key={message.id} className={`chat-message chat-message--${message.role}`}>
                   <span className="chat-message__role">{message.role === 'user' ? 'You' : 'Agent'}</span>
-                  <p>{message.content || (isStreaming && message.role === 'assistant' ? '…' : '')}</p>
+                  <p dangerouslySetInnerHTML={{ __html: (message.content || (isStreaming && message.role === 'assistant' ? '…' : '')).replace(/\n/g, '<br />') }} />
 
                   {isLastAssistantMessage && proposedEdits.length > 0 && (
                     <div className="proposed-changes-chat-card" onClick={(e) => e.stopPropagation()}>
@@ -344,51 +382,16 @@ export function ChatPane({ onOpenSettings }: ChatPaneProps) {
         </div>
       )}
 
-      <form className="chat-pane__input-wrapper" onSubmit={handleSubmit}>
+      <div className="chat-pane__input-wrapper">
         {isStreaming && streamStatus && (
           <div className="agent-streaming-status-bar">
             <span className="spinner">◌</span> {streamStatus}
           </div>
         )}
-        {showModelSelect && (
-          <div className="model-dropdown">
-            <div className="model-dropdown__header">Model</div>
-            <div className="model-dropdown__list">
-              {MODELS.map(m => (
-                <button
-                  key={m.name}
-                  type="button"
-                  className={`model-option ${selectedModel === m.name ? 'model-option--active' : ''}`}
-                  onClick={async () => {
-                    setSelectedModel(m.name);
-                    setShowModelSelect(false);
-                    await window.peep.setSettings({
-                      apiModel: m.name,
-                      apiProvider: m.provider as any,
-                    });
-                  }}
-                >
-                  <span className="model-name">{m.label}</span>
-                  {m.badge && <span className="model-badge">{m.badge}</span>}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
         <div className="chat-pane__input">
           <div className="chat-pane__input-toolbar">
             <button type="button" className="icon-btn" title="Attach context">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-            </button>
-            <button
-              type="button"
-              className="model-select-btn"
-              onClick={() => setShowModelSelect(!showModelSelect)}
-              title="Select Model (Ctrl+/)"
-            >
-              {selectedModel}
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9" /></svg>
             </button>
             <div className="spacer" />
             <button type="button" className="icon-btn" title="Voice input">
@@ -418,5 +421,7 @@ export function ChatPane({ onOpenSettings }: ChatPaneProps) {
             <div className="agent-footer-text">{selectedModel} · Context: {activeFile?.name ?? 'None'}</div>
           </form>
         </div>
-        );
+      </div>
+    </div>
+  );
 }

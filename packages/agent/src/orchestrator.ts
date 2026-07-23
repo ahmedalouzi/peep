@@ -222,15 +222,23 @@ async function executeToolCalls(
 
     let statusMsg = `Running ${name}…`;
     if (name === 'read_file') {
-      statusMsg = `Reading file: ${args.path || ''}`;
+      statusMsg = `Reading: ${args.path || ''}`;
     } else if (name === 'propose_file_edit') {
-      statusMsg = `Proposing edits to: ${args.path || ''}`;
+      statusMsg = `Editing: ${args.path || ''}`;
     } else if (name === 'search_files') {
-      statusMsg = `Searching files matching: "${args.query || ''}"`;
+      statusMsg = `Searching files: "${args.query || ''}"`;
     } else if (name === 'search_content') {
-      statusMsg = `Searching content for: "${args.query || ''}"`;
+      statusMsg = `Searching codebase: "${args.query || ''}"`;
     } else if (name === 'list_dir') {
-      statusMsg = `Listing directory: ${args.path || '.'}`;
+      statusMsg = `Exploring: ${args.path || '.'}`;
+    } else if (name === 'run_command') {
+      statusMsg = `Running: ${args.command || ''}`;
+    } else if (name === 'delete_file') {
+      statusMsg = `Deleting: ${args.path || ''}`;
+    } else if (name === 'rename_file') {
+      statusMsg = `Renaming: ${args.oldPath || ''} → ${args.newPath || ''}`;
+    } else if (name === 'update_design_manifest') {
+      statusMsg = `Updating Design Manifest…`;
     }
 
     callbacks.onStatus(statusMsg);
@@ -309,13 +317,23 @@ export async function runAgentLoop(
         try { args = JSON.parse(call.function.arguments); } catch {}
         
         if (name === 'read_file') {
-          toolLogs += `I will view <code>${args.path || ''}</code>.<br/>`;
+          toolLogs += `Reading <code>${args.path || ''}</code>.<br/>`;
         } else if (name === 'propose_file_edit') {
-          toolLogs += `I will edit <code>${args.path || ''}</code> to ${args.description || 'apply code edits'}.<br/>`;
+          toolLogs += `Editing <code>${args.path || ''}</code> — ${args.description || 'applying changes'}.<br/>`;
         } else if (name === 'search_files') {
-          toolLogs += `I will search files matching <code>"${args.query || ''}"</code>.<br/>`;
+          toolLogs += `Searching files: <code>"${args.query || ''}"</code>.<br/>`;
         } else if (name === 'list_dir') {
-          toolLogs += `I will list the directory <code>${args.path || '.'}</code>.<br/>`;
+          toolLogs += `Exploring directory: <code>${args.path || '.'}</code>.<br/>`;
+        } else if (name === 'search_content') {
+          toolLogs += `Searching codebase: <code>"${args.query || ''}"</code>.<br/>`;
+        } else if (name === 'run_command') {
+          toolLogs += `Running command: <code>${args.command || ''}</code>.<br/>`;
+        } else if (name === 'delete_file') {
+          toolLogs += `Deleting file: <code>${args.path || ''}</code>.<br/>`;
+        } else if (name === 'rename_file') {
+          toolLogs += `Renaming: <code>${args.oldPath || ''}</code> → <code>${args.newPath || ''}</code>.<br/>`;
+        } else if (name === 'update_design_manifest') {
+          toolLogs += `Updating Design Manifest (Design DNA).<br/>`;
         }
       }
 

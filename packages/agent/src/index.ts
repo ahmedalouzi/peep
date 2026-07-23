@@ -4,3 +4,10 @@ export { OPENAI_TOOLS } from './tools/definitions';
 export { buildAgentContext } from './context/builder';
 export { runAgentLoop, type AgentCallbacks, type AgentConfig, type AgentToolExecutor } from './orchestrator';
 export type { ChatMessage, ToolCall } from './types';
+export { classifyCommand, type SafetyLevel, type CommandSafetyResult } from './tools/safety';
+export {
+  loadDesignManifest,
+  saveDesignManifest,
+  serializeDesignManifest,
+  type DesignManifest,
+} from './design/manifest';

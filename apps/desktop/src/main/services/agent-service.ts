@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { join, isAbsolute, normalize } from 'node:path';
-import { access } from 'node:fs/promises';
+import { access, unlink, rename as fsRename } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import type { BrowserWindow } from 'electron';
 import { IPC_EVENTS } from '@peep/shared';
 import type { ProposedEdit, AgentStreamEvent, AgentSendOptions } from '@peep/shared';
-import { buildAgentContext, runAgentLoop, SCAFFOLD_SYSTEM_ADDENDUM, type ChatMessage } from '@peep/agent';
+import { buildAgentContext, runAgentLoop, SCAFFOLD_SYSTEM_ADDENDUM, type ChatMessage, classifyCommand, loadDesignManifest, saveDesignManifest, serializeDesignManifest, type DesignManifest } from '@peep/agent';
 import type { DatabaseService } from './db';
 import type { WorkspaceManager } from './workspace-manager';
 import type { FlutterService } from './flutter-service';
@@ -180,10 +180,20 @@ export class AgentService {
 
     const treeSummary = projectPath ? await this.buildTreeSummary(projectPath) : '';
 
+    // Load Design Manifest if it exists — inject into AI context for all UI tasks
+    let designManifestContext = '';
+    if (projectPath) {
+      const designManifest = await loadDesignManifest(projectPath);
+      if (designManifest) {
+        designManifestContext = '\n\n' + serializeDesignManifest(designManifest) + '\n\n';
+      }
+    }
+
     const rnAddendum = isReactNative ? RN_SYSTEM_ADDENDUM : '';
     const systemContext =
       (options.scaffoldMode ? `${SCAFFOLD_SYSTEM_ADDENDUM}\n\n` : '') +
       rnAddendum +
+      designManifestContext +
       buildAgentContext({
         projectPath: options.projectPath,
         treeSummary,
@@ -245,6 +255,38 @@ export class AgentService {
           }
           case 'run_command': {
             const commandStr = String(args.command);
+            const safety = classifyCommand(commandStr);
+
+            if (safety.level === 'blocked') {
+              return `BLOCKED: ${safety.reason}`;
+            }
+
+            if (safety.level === 'dangerous') {
+              // Send a confirmation request to the renderer and wait for response
+              const confirmId = randomUUID();
+              const confirmed = await new Promise<boolean>((resolve) => {
+                // Emit confirmation request to renderer
+                this.mainWindow?.webContents.send('agent:confirm-command', {
+                  id: confirmId,
+                  command: commandStr,
+                  reason: safety.reason,
+                });
+
+                // Register one-time listener on ipcMain for the response
+                const { ipcMain } = require('electron');
+                ipcMain.once(`agent:confirm-command-response:${confirmId}`, (_: unknown, approved: boolean) => {
+                  resolve(approved);
+                });
+
+                // Auto-reject after 60s
+                setTimeout(() => resolve(false), 60000);
+              });
+
+              if (!confirmed) {
+                return `Command was rejected by user: ${commandStr}`;
+              }
+            }
+
             return new Promise<string>((resolve) => {
               const shell = process.platform === 'win32';
               const child = spawn(commandStr, {
@@ -278,6 +320,57 @@ export class AgentService {
                 resolve(`Command execution error: ${err.message}\nStdout:\n${stdout}\nStderr:\n${stderr}`);
               });
             });
+          }
+          case 'delete_file': {
+            const path = this.resolvePath(projectPath, String(args.path));
+            // Always require user confirmation for file deletion
+            const confirmId = randomUUID();
+            const confirmed = await new Promise<boolean>((resolve) => {
+              this.mainWindow?.webContents.send('agent:confirm-command', {
+                id: confirmId,
+                command: `DELETE FILE: ${args.path}`,
+                reason: `The agent wants to delete ${args.path}. Reason: ${args.reason || 'Not specified'}`,
+              });
+              const { ipcMain } = require('electron');
+              ipcMain.once(`agent:confirm-command-response:${confirmId}`, (_: unknown, approved: boolean) => {
+                resolve(approved);
+              });
+              setTimeout(() => resolve(false), 60000);
+            });
+            if (!confirmed) return `File deletion rejected by user: ${args.path}`;
+            await unlink(path);
+            return `Deleted: ${args.path}`;
+          }
+          case 'rename_file': {
+            const oldPath = this.resolvePath(projectPath, String(args.oldPath));
+            const newPath = this.resolvePath(projectPath, String(args.newPath));
+            await fsRename(oldPath, newPath);
+            return `Renamed: ${args.oldPath} → ${args.newPath}`;
+          }
+          case 'update_design_manifest': {
+            const incoming = args.manifest as Partial<DesignManifest>;
+            const existing = (await loadDesignManifest(projectPath) ?? {}) as Partial<DesignManifest>;
+            // Merge deeply, with the AI's incoming manifest winning over existing fields.
+            // Cast to `unknown` then `DesignManifest` so TS accepts the partial spread.
+            const merged = {
+              ...existing,
+              ...incoming,
+              colors: { ...(existing.colors ?? {}), ...(incoming.colors ?? {}) },
+              typography: { ...(existing.typography ?? {}), ...(incoming.typography ?? {}) },
+              spacing: { ...(existing.spacing ?? {}), ...(incoming.spacing ?? {}) },
+              borderRadius: { ...(existing.borderRadius ?? {}), ...(incoming.borderRadius ?? {}) },
+              elevation: { ...(existing.elevation ?? {}), ...(incoming.elevation ?? {}) },
+              buttons: { ...(existing.buttons ?? {}), ...(incoming.buttons ?? {}) },
+              cards: { ...(existing.cards ?? {}), ...(incoming.cards ?? {}) },
+              navigation: { ...(existing.navigation ?? {}), ...(incoming.navigation ?? {}) },
+              motion: { ...(existing.motion ?? {}), ...(incoming.motion ?? {}) },
+              accessibility: { ...(existing.accessibility ?? {}), ...(incoming.accessibility ?? {}) },
+              generatedAt: (existing as DesignManifest).generatedAt ?? new Date().toISOString(),
+              lastUpdatedAt: new Date().toISOString(),
+              version: ((existing as DesignManifest).version ?? 0) + 1,
+            } as unknown as DesignManifest;
+            await saveDesignManifest(projectPath, merged);
+            return `Design Manifest saved to .peep/design.json (v${merged.version}).`;
           }
           case 'propose_file_edit': {
             const path = this.resolvePath(projectPath, String(args.path));

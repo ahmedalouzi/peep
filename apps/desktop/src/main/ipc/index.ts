@@ -21,6 +21,7 @@ import { ReactNativeService } from '../services/react-native-service';
 import { PlatformRegistry } from '../services/platform-registry';
 import { buildAuditReport, capturePerformanceSnapshot } from '../services/audit-service';
 import { ExtensionService } from '../services/extension-service';
+import { PublishService } from '../services/publish-service';
 
 let db: DatabaseService | null = null;
 let mainWindow: BrowserWindow | null = null;
@@ -36,6 +37,7 @@ let autoUpdateService: AutoUpdateService | null = null;
 let rnService: ReactNativeService | null = null;
 let platformRegistry: PlatformRegistry | null = null;
 const extensionService = new ExtensionService();
+let publishService: PublishService | null = null;
 
 export function setMainWindow(window: BrowserWindow | null): void {
   mainWindow = window;
@@ -43,6 +45,7 @@ export function setMainWindow(window: BrowserWindow | null): void {
   agentService?.setMainWindow(window);
   terminalService.setMainWindow(window);
   autoUpdateService?.setMainWindow(window);
+  publishService?.setMainWindow(window);
 }
 
 function notifyGitChanged(): void {
@@ -105,11 +108,13 @@ async function onProjectOpened(
   } else if (isRN) {
     void runRnAnalyze(projectPath, rnService);
 
-    rnService.startWebPreview(projectPath).then((result) => {
+    rnService.startWebPreview(projectPath, undefined, (text) => {
+      mainWindow?.webContents.send(IPC_EVENTS.PREVIEW_LOG, text);
+    }).then((result) => {
       previewManager.setSession({ url: result.url, processId: result.processId, status: 'running' });
     }).catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
-      mainWindow?.webContents.send(IPC_EVENTS.PREVIEW_LOG, `[preview] ${message}`);
+      mainWindow?.webContents.send(IPC_EVENTS.PREVIEW_LOG, `\r\n[preview error] ${message}\r\n`);
       previewManager.setSession({ url: '', processId: 0, status: 'error', error: message });
     });
   }
@@ -291,6 +296,28 @@ export async function registerIpcHandlers(): Promise<{
       }
       notifyGitChanged();
     }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.WORKSPACE_CREATE_DIR, async (_event, dirPath: string) => {
+    await workspace.createDir(dirPath);
+    const project = workspace.getProject();
+    if (project) {
+      notifyGitChanged();
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.WORKSPACE_RENAME_ITEM, async (_event, oldPath: string, newPath: string) => {
+    await workspace.renameItem(oldPath, newPath);
+    if (workspace.getProject()) notifyGitChanged();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.WORKSPACE_DELETE_ITEM, async (_event, path: string) => {
+    await workspace.deleteItem(path);
+    if (workspace.getProject()) notifyGitChanged();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.WORKSPACE_REVEAL_ITEM, async (_event, path: string) => {
+    await workspace.revealItem(path);
   });
 
   ipcMain.handle(IPC_CHANNELS.WORKSPACE_SEARCH_FILES, async (_event, rootPath: string, query: string) => {
@@ -603,38 +630,18 @@ export async function registerIpcHandlers(): Promise<{
   });
 
   ipcMain.handle(IPC_CHANNELS.RN_START_PREVIEW, async (_event, projectPath: string) => {
-    const result = await rnService!.startWebPreview(projectPath);
-    const session = { url: result.url, processId: result.processId, status: 'running' as const };
-    previewManager.setSession(session);
-    return session;
+    return previewManager.startRn(projectPath, rnService!);
   });
 
-  ipcMain.handle(IPC_CHANNELS.RN_STOP_PREVIEW, async (_event, processId: number) => {
-    rnService!.stopPreview(processId);
-    previewManager.setSession({ url: '', processId: 0, status: 'stopped' });
+  ipcMain.handle(IPC_CHANNELS.RN_STOP_PREVIEW, async (_event, _processId: number) => {
+    previewManager.stopRn(rnService!);
   });
 
   ipcMain.handle(IPC_CHANNELS.RN_RELOAD_PREVIEW, async (_event, processId: number) => {
     rnService!.reloadPreview(processId);
   });
 
-  // ── Publish ──────────────────────────────────────────────────────────────
 
-  ipcMain.handle(IPC_CHANNELS.PUBLISH_GET_STATUS, () => {
-    return publishService!.getStatus();
-  });
-
-  ipcMain.handle(IPC_CHANNELS.PUBLISH_BUILD_DEPLOY, async (_event, options: { projectPath: string, platform: 'flutter' | 'react-native', target: 'vercel' | 'netlify', token?: string }) => {
-    void publishService!.buildAndDeploy(options.projectPath, options.platform, options.target, options.token);
-  });
-
-  ipcMain.handle(IPC_CHANNELS.PUBLISH_EAS_BUILD, async (_event, options: { projectPath: string }) => {
-    void publishService!.easBuild(options.projectPath);
-  });
-
-  ipcMain.handle(IPC_CHANNELS.PUBLISH_CANCEL, () => {
-    publishService!.cancel();
-  });
 
   // ── Audit / Performance ────────────────────────────────────────────────────
 
@@ -645,6 +652,21 @@ export async function registerIpcHandlers(): Promise<{
   ipcMain.handle(IPC_CHANNELS.AUDIT_PROJECT, async (_event, projectPath?: string) => {
     const root = projectPath ?? workspace.getProject()?.path;
     return buildAuditReport(root);
+  });
+
+  // ── Publish ───────────────────────────────────────────────────────────────
+
+  ipcMain.handle(IPC_CHANNELS.PUBLISH_GET_STATUS, () => {
+    return publishService?.getStatus() ?? { status: 'idle', message: 'Publishing not ready', logs: [] };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PUBLISH_CANCEL, () => {
+    publishService?.cancel();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PUBLISH_DEPLOY, async (_event, projectPath: string, platform: 'flutter' | 'react-native', target: 'vercel' | 'netlify', token?: string) => {
+    if (!publishService) throw new Error('Publish service not initialized');
+    return publishService.buildAndDeploy(projectPath, platform, target, token);
   });
 
   return { db, workspace, flutter, processManager, previewManager, agentService, gitService, terminalService, telemetryService, autoUpdateService: autoUpdateService! };

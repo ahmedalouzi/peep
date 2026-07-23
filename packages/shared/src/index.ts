@@ -175,6 +175,10 @@ export const IPC_CHANNELS = {
   WORKSPACE_READ_FILE: 'workspace:readFile',
   WORKSPACE_READ_IMAGE: 'workspace:readImage',
   WORKSPACE_WRITE_FILE: 'workspace:writeFile',
+  WORKSPACE_CREATE_DIR: 'workspace:createDir',
+  WORKSPACE_RENAME_ITEM: 'workspace:renameItem',
+  WORKSPACE_DELETE_ITEM: 'workspace:deleteItem',
+  WORKSPACE_REVEAL_ITEM: 'workspace:revealItem',
   WORKSPACE_GET_PROJECT: 'workspace:getProject',
   WORKSPACE_SEARCH_FILES: 'workspace:searchFiles',
   WORKSPACE_SEARCH_CONTENT: 'workspace:searchContent',
@@ -249,10 +253,87 @@ export const IPC_CHANNELS = {
   EXTENSIONS_DETAILS: 'extensions:details',
   // Publish
   PUBLISH_GET_STATUS: 'publish:getStatus',
-  PUBLISH_BUILD_DEPLOY: 'publish:buildDeploy',
+  PUBLISH_DEPLOY: 'publish:deploy',
   PUBLISH_EAS_BUILD: 'publish:easBuild',
+  PUBLISH_DETECT_DEPS: 'publish:detectDeps',
+  PUBLISH_BUILD: 'publish:build',
   PUBLISH_CANCEL: 'publish:cancel',
+  PUBLISH_GET_BUILD: 'publish:getBuild',
+  PUBLISH_LIST_BUILDS: 'publish:listBuilds',
+  PUBLISH_OPEN_FOLDER: 'publish:openFolder',
+  PUBLISH_EXPORT_PROJECT: 'publish:exportProject',
 } as const;
+
+// ── Publish / Build types ─────────────────────────────────────────────────────
+
+export interface PublishStatus {
+  status: 'idle' | 'building' | 'deploying' | 'completed' | 'error';
+  progress?: number;
+  message: string;
+  url?: string;
+  logs: string[];
+}
+
+export type BuildStatus =
+  | 'idle'
+  | 'waiting'
+  | 'preparing'
+  | 'building'
+  | 'packaging'
+  | 'signing'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
+
+export type BuildTarget = 'apk' | 'aab' | 'both';
+
+export interface PublishOptions {
+  projectPath: string;
+  target: BuildTarget;
+  versionName?: string;  // e.g. "1.0.0"
+  versionCode?: number;  // e.g. 1
+}
+
+export interface BuildArtifact {
+  type: 'apk' | 'aab';
+  path: string;
+  sizeBytes: number;
+}
+
+export interface BuildRecord {
+  id: string;
+  projectPath: string;
+  target: BuildTarget;
+  status: BuildStatus;
+  startedAt: string;
+  completedAt?: string;
+  durationMs?: number;
+  artifacts: BuildArtifact[];
+  error?: string;
+  versionName: string;
+  versionCode: number;
+  qrDataUrl?: string;  // base64 data URL of QR code
+}
+
+export type DependencyStatus = 'checking' | 'found' | 'missing' | 'error';
+
+export interface DependencyInfo {
+  name: string;
+  status: DependencyStatus;
+  version?: string;
+  path?: string;
+  installUrl?: string;
+  errorMessage?: string;
+}
+
+export interface DependencyCheckResult {
+  flutter: DependencyInfo;
+  androidSdk: DependencyInfo;
+  java: DependencyInfo;
+  adb: DependencyInfo;
+  allReady: boolean;
+}
+
 
 export const IPC_EVENTS = {
   PREVIEW_STATUS: 'preview:status',
@@ -285,6 +366,10 @@ export interface IpcApi {
   readFile: (filePath: string) => Promise<string>;
   readImage: (filePath: string) => Promise<string>;
   writeFile: (filePath: string, content: string) => Promise<void>;
+  createDir: (dirPath: string) => Promise<void>;
+  renameItem: (oldPath: string, newPath: string) => Promise<void>;
+  deleteItem: (path: string) => Promise<void>;
+  revealItem: (path: string) => Promise<void>;
   getProject: () => Promise<ProjectInfo | null>;
   searchFiles: (rootPath: string, query: string) => Promise<FileEntry[]>;
   searchContent: (opts: { projectPath: string; query: string; caseSensitive?: boolean; isRegex?: boolean; maxResults?: number }) => Promise<any[]>;
@@ -295,10 +380,13 @@ export interface IpcApi {
   analyzeProject: (projectPath: string) => Promise<Diagnostic[]>;
   pubGet: (projectPath: string) => Promise<void>;
   startPreview: (projectPath: string) => Promise<PreviewSession>;
+  rnStartPreview: (projectPath: string) => Promise<PreviewSession>;
   stopPreview: () => Promise<void>;
+  rnStopPreview: (processId: number) => Promise<void>;
   reloadPreview: () => Promise<void>;
+  rnReloadPreview: (processId: number) => Promise<void>;
   getPreviewSession: () => Promise<PreviewSession | null>;
-  detachPreview: () => Promise<void>;
+  detachPreview: (deviceId?: string) => Promise<void>;
   attachPreview: () => Promise<void>;
   isPreviewDetached: () => Promise<boolean>;
   sendAgentMessage: (options: AgentSendOptions) => Promise<void>;
@@ -331,9 +419,8 @@ export interface IpcApi {
   getUpdateStatus: () => Promise<UpdateInfo>;
   completeOnboarding: () => Promise<void>;
   getPerformanceInfo?: () => Promise<{ heapUsedMB: number; rssMemMB: number }>;
-  publishGetStatus: () => Promise<any>;
-  publishBuildDeploy: (options: { projectPath: string, platform: 'flutter' | 'react-native', target: 'vercel' | 'netlify', token?: string }) => Promise<void>;
-  publishEasBuild: (options: { projectPath: string }) => Promise<void>;
+  publishGetStatus: () => Promise<PublishStatus>;
+  publishDeploy: (projectPath: string, platform: 'flutter' | 'react-native', target: 'vercel' | 'netlify', token?: string) => Promise<void>;
   publishCancel: () => Promise<void>;
   onPreviewStatus: (callback: (session: PreviewSession) => void) => () => void;
   onDiagnostics: (callback: (diagnostics: Diagnostic[]) => void) => () => void;
@@ -353,6 +440,7 @@ export interface IpcApi {
   onPublishStatus: (callback: (status: any) => void) => () => void;
   onPublishLog: (callback: (line: string) => void) => () => void;
   onOpenFile: (callback: (file: any) => void) => () => void;
+
 }
 
 declare global {

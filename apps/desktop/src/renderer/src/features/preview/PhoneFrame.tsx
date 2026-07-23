@@ -1,4 +1,21 @@
 import './PhoneFrame.css';
+import { useState, useEffect } from 'react';
+
+/** Shows live clock matching the system time */
+function useClock() {
+  const fmt = () => {
+    const now = new Date();
+    const h = now.getHours();
+    const m = now.getMinutes().toString().padStart(2, '0');
+    return `${h}:${m}`;
+  };
+  const [time, setTime] = useState(fmt);
+  useEffect(() => {
+    const id = setInterval(() => setTime(fmt()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return time;
+}
 
 export type DeviceType =
   | 'iphone-15'
@@ -15,6 +32,7 @@ interface PhoneFrameProps {
 
 /** iPhone 15 / 15 Pro — Dynamic Island, titanium frame, rounded corners */
 function IPhoneFrame({ pro, children }: { pro?: boolean; children: React.ReactNode }) {
+  const time = useClock();
   return (
     <div className={`pf pf-iphone ${pro ? 'pf-iphone--pro' : ''}`}>
       {/* ── Side hardware buttons ── */}
@@ -25,6 +43,31 @@ function IPhoneFrame({ pro, children }: { pro?: boolean; children: React.ReactNo
 
       {/* ── Screen bezel ── */}
       <div className="pf-bezel">
+        {/* Status Bar */}
+        <div className="pf-status-bar">
+          <div className="pf-status-left">
+            <span>{time}</span>
+          </div>
+          <div className="pf-status-right">
+            {/* Cellular bars: short-to-tall, left-to-right */}
+            <div className="pf-icon-cellular">
+              <span/><span/><span/><span/>
+            </div>
+            {/* WiFi icon */}
+            <div className="pf-icon-wifi">
+              <svg viewBox="1 8 22 14" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" style={{ width: '16px', height: '12px' }}>
+                <path d="M5 12 A10 10 0 0 1 19 12" />
+                <path d="M8.5 15.5 A5 5 0 0 1 15.5 15.5" />
+                <circle cx="12" cy="19" r="1.5" fill="currentColor" stroke="none" />
+              </svg>
+            </div>
+            {/* Battery */}
+            <div className="pf-icon-battery">
+              <div className="pf-icon-battery-level"></div>
+            </div>
+          </div>
+        </div>
+
         {/* Dynamic Island */}
         <div className="pf-dynamic-island">
           <div className="pf-di-cam" />

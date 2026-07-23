@@ -107,12 +107,18 @@ export function DetachedPreview() {
                 </div>
               )}
               {isRunning && (
-                <iframe
-                  key={iframeKey}
-                  className="preview-iframe"
-                  src={session.url}
-                  title="Mobile Preview"
-                />
+                  <iframe
+                    key={iframeKey}
+                    className="preview-iframe"
+                    style={{
+                      width: `${device.lw}px`,
+                      height: `${(device.h - device.padding * 2) / ((device.w - device.padding * 2) / device.lw)}px`,
+                      transform: `scale(${(device.w - device.padding * 2) / device.lw})`,
+                      transformOrigin: 'top left',
+                    }}
+                    src={session.url}
+                    title="Mobile Preview"
+                  />
               )}
               {!session && (
                 <div className="preview-placeholder">

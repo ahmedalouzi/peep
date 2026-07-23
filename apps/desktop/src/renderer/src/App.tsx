@@ -16,17 +16,12 @@ export default function App() {
   const query = new URLSearchParams(window.location.search);
   const windowType = query.get('windowType');
 
-  if (windowType === 'preview') {
-    return <DetachedPreview />;
-  }
-
+  // ALL hooks must be declared before any conditional return
   const [globalPickerOpen, setGlobalPickerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
-
-  // Onboarding state — null = loading from settings
   const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -58,17 +53,25 @@ export default function App() {
     const onOpenPicker = () => setGlobalPickerOpen(true);
     const onOpenSettings = () => setSettingsOpen(true);
     const onOpenPublish = () => setPublishOpen(true);
+    const onNewProject = () => setNewProjectOpen(true);
 
     window.addEventListener('peep:open-picker', onOpenPicker);
     window.addEventListener('peep:open-settings', onOpenSettings);
     window.addEventListener('peep:open-publish', onOpenPublish);
+    window.addEventListener('peep:new-project', onNewProject);
 
     return () => {
       window.removeEventListener('peep:open-picker', onOpenPicker);
       window.removeEventListener('peep:open-settings', onOpenSettings);
       window.removeEventListener('peep:open-publish', onOpenPublish);
+      window.removeEventListener('peep:new-project', onNewProject);
     };
   }, []);
+
+  // Early return for detached preview window — AFTER all hooks
+  if (windowType === 'preview') {
+    return <DetachedPreview />;
+  }
 
   if (showOnboarding === null) return null;
 

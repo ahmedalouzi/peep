@@ -38,6 +38,14 @@ const api: IpcApi = {
   readImage: (filePath: string) => ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_READ_IMAGE, filePath) as Promise<string>,
   writeFile: (filePath: string, content: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_WRITE_FILE, filePath, content),
+  createDir: (dirPath: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_CREATE_DIR, dirPath),
+  renameItem: (oldPath: string, newPath: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_RENAME_ITEM, oldPath, newPath),
+  deleteItem: (path: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_DELETE_ITEM, path),
+  revealItem: (path: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_REVEAL_ITEM, path),
   getProject: () => ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_GET_PROJECT),
   searchFiles: (rootPath: string, query: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_SEARCH_FILES, rootPath, query),
@@ -53,8 +61,12 @@ const api: IpcApi = {
   pubGet: (projectPath: string) => ipcRenderer.invoke(IPC_CHANNELS.FLUTTER_PUB_GET, projectPath),
   startPreview: (projectPath: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.PREVIEW_START, projectPath) as Promise<PreviewSession>,
+  rnStartPreview: (projectPath: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.RN_START_PREVIEW, projectPath) as Promise<PreviewSession>,
   stopPreview: () => ipcRenderer.invoke(IPC_CHANNELS.PREVIEW_STOP),
+  rnStopPreview: (processId: number) => ipcRenderer.invoke(IPC_CHANNELS.RN_STOP_PREVIEW, processId),
   reloadPreview: () => ipcRenderer.invoke(IPC_CHANNELS.PREVIEW_RELOAD),
+  rnReloadPreview: (processId: number) => ipcRenderer.invoke(IPC_CHANNELS.RN_RELOAD_PREVIEW, processId),
   getPreviewSession: () =>
     ipcRenderer.invoke(IPC_CHANNELS.PREVIEW_GET_SESSION) as Promise<PreviewSession | null>,
   detachPreview: (deviceId?: string) => ipcRenderer.invoke(IPC_CHANNELS.PREVIEW_DETACH, deviceId) as Promise<void>,
@@ -116,6 +128,13 @@ const api: IpcApi = {
   installExtension: (id, url) => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_INSTALL, id, url) as Promise<void>,
   uninstallExtension: (id) => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_UNINSTALL, id) as Promise<void>,
   getExtensionDetails: (id) => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_DETAILS, id) as Promise<any>,
+  // Publish
+  publishGetStatus: () => ipcRenderer.invoke(IPC_CHANNELS.PUBLISH_GET_STATUS) as Promise<import('@peep/shared').PublishStatus>,
+  publishDeploy: (projectPath: string, platform: 'flutter' | 'react-native', target: 'vercel' | 'netlify', token?: string) => ipcRenderer.invoke(IPC_CHANNELS.PUBLISH_DEPLOY, projectPath, platform, target, token) as Promise<void>,
+  publishCancel: () => ipcRenderer.invoke(IPC_CHANNELS.PUBLISH_CANCEL) as Promise<void>,
+  onPublishLog: (callback: (line: string) => void) => subscribe<string>(IPC_EVENTS.PUBLISH_LOG, callback),
+  onPublishStatus: (callback: (status: import('@peep/shared').PublishStatus) => void) => subscribe<import('@peep/shared').PublishStatus>(IPC_EVENTS.PUBLISH_STATUS, callback),
+  onOpenFile: (callback: (payload: { path: string; name: string; content: string; dirty: boolean }) => void) => subscribe<{ path: string; name: string; content: string; dirty: boolean }>('open:file', callback),
 };
 
 contextBridge.exposeInMainWorld('peep', api);

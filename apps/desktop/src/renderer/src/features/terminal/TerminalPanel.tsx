@@ -45,9 +45,19 @@ export function TerminalPanel() {
       if (t && code !== 0) t.term.writeln(`\r\n[process exited with code ${code}]`);
     });
 
+    const unsubPreviewLog = window.peep.onPreviewLog((msg) => {
+      // Find the active terminal, or if there's only one terminal, use that
+      const targetId = activeIdRef.current || (terminalsRef.current.length > 0 ? terminalsRef.current[0].id : null);
+      if (targetId) {
+        const t = terminalsRef.current.find(x => x.id === targetId);
+        if (t) t.term.writeln(msg.replace(/\r?\n/g, '\r\n'));
+      }
+    });
+
     return () => {
       unsubOutput();
       unsubExit();
+      unsubPreviewLog();
     };
   }, []);
 

@@ -26,24 +26,57 @@ export function AppShell({ onOpenSettings, onNewProject }: AppShellProps) {
 
   const [terminalHeight, setTerminalHeight] = useState(160);
   const [isResizing, setIsResizing] = useState(false);
+  
+  const [agentWidth, setAgentWidth] = useState(280);
+  const [previewWidth, setPreviewWidth] = useState(320);
+  const [isResizingAgent, setIsResizingAgent] = useState(false);
+  const [isResizingPreview, setIsResizingPreview] = useState(false);
 
   const startResizing = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     setIsResizing(true);
   }, []);
 
+  const startResizingAgent = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingAgent(true);
+  }, []);
+
+  const startResizingPreview = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingPreview(true);
+  }, []);
+
   useEffect(() => {
-    if (!isResizing) return;
+    if (!isResizing && !isResizingAgent && !isResizingPreview) return;
 
     const handleMouseMove = (e: MouseEvent) => {
-      // 82px = titlebar + menubar, 22px = statusbar
-      const newHeight = window.innerHeight - e.clientY - 22;
-      if (newHeight > 100 && newHeight < window.innerHeight * 0.8) {
-        setTerminalHeight(newHeight);
+      if (isResizing) {
+        const newHeight = window.innerHeight - e.clientY - 22;
+        if (newHeight > 100 && newHeight < window.innerHeight * 0.8) {
+          setTerminalHeight(newHeight);
+        }
+      }
+      if (isResizingAgent) {
+        const newWidth = window.innerWidth - e.clientX;
+        if (newWidth > 200 && newWidth < window.innerWidth * 0.6) {
+          setAgentWidth(newWidth);
+        }
+      }
+      if (isResizingPreview) {
+        const agentOffset = agentPaneOpen ? agentWidth : 0;
+        const newWidth = window.innerWidth - agentOffset - e.clientX;
+        if (newWidth > 200 && newWidth < window.innerWidth * 0.6) {
+          setPreviewWidth(newWidth);
+        }
       }
     };
 
-    const handleMouseUp = () => setIsResizing(false);
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      setIsResizingAgent(false);
+      setIsResizingPreview(false);
+    };
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
@@ -51,7 +84,7 @@ export function AppShell({ onOpenSettings, onNewProject }: AppShellProps) {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isResizing]);
+  }, [isResizing, isResizingAgent, isResizingPreview, agentWidth, agentPaneOpen]);
 
   const handleNewProject = () => {
     window.dispatchEvent(new CustomEvent('peep:new-project'));
@@ -63,7 +96,7 @@ export function AppShell({ onOpenSettings, onNewProject }: AppShellProps) {
       <div 
         className="layout"
         style={{
-          gridTemplateColumns: `46px ${sidebarOpen ? '220px' : '0px'} 1fr ${previewPaneOpen ? '320px' : '0px'} ${agentPaneOpen ? '280px' : '0px'}`,
+          gridTemplateColumns: `46px ${sidebarOpen ? '240px' : '0px'} 1fr ${previewPaneOpen ? `${previewWidth}px` : '0px'} ${agentPaneOpen ? `${agentWidth}px` : '0px'}`,
           gridTemplateRows: `calc(100vh - 82px - ${bottomPanelOpen ? terminalHeight : 0}px) ${bottomPanelOpen ? terminalHeight : 0}px`,
         }}
       >
@@ -73,9 +106,44 @@ export function AppShell({ onOpenSettings, onNewProject }: AppShellProps) {
             {sidebarOpen && <Sidebar />}
             
             <EditorPane />
-            {previewPaneOpen && <PreviewPane />}
             
-            {agentPaneOpen && <ChatPane onOpenSettings={onOpenSettings} />}
+            {previewPaneOpen && (
+              <>
+                <div 
+                  onMouseDown={startResizingPreview}
+                  style={{
+                    gridRow: 1, 
+                    gridColumn: 4, 
+                    width: '4px', 
+                    marginLeft: '-2px',
+                    cursor: 'col-resize',
+                    zIndex: 50,
+                    background: isResizingPreview ? 'var(--accent)' : 'transparent',
+                    opacity: isResizingPreview ? 0.5 : 1
+                  }}
+                />
+                <PreviewPane />
+              </>
+            )}
+            
+            {agentPaneOpen && (
+              <>
+                <div 
+                  onMouseDown={startResizingAgent}
+                  style={{
+                    gridRow: '1 / 3', 
+                    gridColumn: 5, 
+                    width: '4px', 
+                    marginLeft: '-2px',
+                    cursor: 'col-resize',
+                    zIndex: 50,
+                    background: isResizingAgent ? 'var(--accent)' : 'transparent',
+                    opacity: isResizingAgent ? 0.5 : 1
+                  }}
+                />
+                <ChatPane onOpenSettings={onOpenSettings} />
+              </>
+            )}
             
             {bottomPanelOpen && (
               <>
@@ -83,7 +151,7 @@ export function AppShell({ onOpenSettings, onNewProject }: AppShellProps) {
                   onMouseDown={startResizing}
                   style={{
                     gridRow: 2, 
-                    gridColumn: '3 / 5', 
+                    gridColumn: '3 / 6', 
                     height: '4px', 
                     marginTop: '-2px',
                     cursor: 'row-resize',
@@ -108,8 +176,8 @@ export function AppShell({ onOpenSettings, onNewProject }: AppShellProps) {
       <StatusBar />
       
       {/* Global dragging overlay to prevent iframe selection while resizing */}
-      {isResizing && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, cursor: 'row-resize' }} />
+      {(isResizing || isResizingAgent || isResizingPreview) && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, cursor: isResizing ? 'row-resize' : 'col-resize' }} />
       )}
     </>
   );

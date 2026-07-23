@@ -18,33 +18,32 @@
 .pf-iphone {
   width: 290px;
   height: 600px;
-  border-radius: 50px;
+  border-radius: 48px;
 
-  /* Deep titanium / aluminum body */
+  /* Near-black titanium body like real iPhone */
   background:
     linear-gradient(165deg,
-      #5c5c5e 0%,
-      #38383a 12%,
+      #3a3a3c 0%,
+      #2a2a2c 12%,
       #1c1c1e 28%,
-      #252527 45%,
+      #222224 45%,
       #1a1a1c 62%,
-      #363638 80%,
-      #2a2a2c 100%
+      #2e2e30 80%,
+      #242426 100%
     );
 
   /* Metal rim + depth shadow */
   box-shadow:
     /* Outer metal edge highlight */
-    0 0 0 0.5px rgba(255, 255, 255, 0.2),
+    0 0 0 0.5px rgba(255, 255, 255, 0.15),
     /* Subtle rim */
-    0 0 0 1.5px rgba(0, 0, 0, 0.8),
+    0 0 0 1.5px rgba(0, 0, 0, 0.9),
     /* Drop shadow — Xcode style */
-    0 30px 60px rgba(0, 0, 0, 0.55),
-    0 8px 20px rgba(0, 0, 0, 0.35),
+    0 30px 60px rgba(0, 0, 0, 0.6),
+    0 8px 20px rgba(0, 0, 0, 0.4),
     0 2px 5px rgba(0, 0, 0, 0.3);
 
-  /* Xcode has ultra thin bezel — almost non-existent */
-  padding: 3px;
+  padding: 6px;
 }
 
 /* Pro: deeper titanium tone */
@@ -102,24 +101,23 @@
   display: flex;
   flex-direction: column;
   background: #000;
-  border-radius: 47px;   /* exactly outer radius (50) minus padding (3) */
+  border-radius: 42px;   /* outer radius (48) minus padding (6) */
   overflow: hidden;
   position: relative;
-  /* Very subtle inner shadow — Xcode style */
   box-shadow:
-    inset 0 0 0 0.5px rgba(255, 255, 255, 0.08),
-    inset 0 1px 4px rgba(0, 0, 0, 0.8);
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.06),
+    inset 0 1px 4px rgba(0, 0, 0, 0.9);
 }
 
 /* ── Dynamic Island ── */
 .pf-dynamic-island {
   position: absolute;
-  top: 12px;
+  top: 10px;
   left: 50%;
   transform: translateX(-50%);
-  width: 110px;
-  height: 32px;
-  border-radius: 18px;
+  width: 98px;
+  height: 28px;
+  border-radius: 14px;
   background: #000;
   z-index: 20;
   display: flex;
@@ -133,7 +131,7 @@
 }
 
 .pf-di-cam {
-  width: 11px; height: 11px;
+  width: 9px; height: 9px;
   border-radius: 50%;
   background: radial-gradient(circle at 35% 32%, #1a3a5c 0%, #080808 55%, #040404 100%);
   box-shadow:
@@ -142,8 +140,8 @@
 }
 
 .pf-di-speaker {
-  width: 48px; height: 4px;
-  border-radius: 2.5px;
+  width: 40px; height: 3px;
+  border-radius: 1.5px;
   background: #080808;
   box-shadow: inset 0 1px 2px rgba(0,0,0,0.9);
 }
@@ -154,6 +152,90 @@
   overflow: hidden;
   position: relative;
   background: #000;
+}
+
+/* ── Status Bar — sits at same level as Dynamic Island ── */
+.pf-status-bar {
+  position: absolute;
+  top: 10px;
+  left: 0;
+  right: 0;
+  height: 28px;
+  padding: 0 22px;     /* slightly more padding from edges */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 25;
+  color: white;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 10.5px;   /* smaller time */
+  font-weight: 600;
+  letter-spacing: 0.1px;
+  pointer-events: none;
+  mix-blend-mode: difference;
+}
+
+.pf-status-left {
+  display: flex;
+  align-items: center;
+  padding-left: 5px; /* move slightly to the right */
+}
+
+.pf-status-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pf-icon-cellular, .pf-icon-wifi, .pf-icon-battery {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pf-icon-cellular { gap: 1.5px; align-items: flex-end; }
+.pf-icon-cellular span {
+  width: 2.5px; background: white; border-radius: 0.5px;
+  display: block;
+}
+/* Correct order: short→tall left-to-right, like real iOS */
+.pf-icon-cellular span:nth-child(1) { height: 4px; }
+.pf-icon-cellular span:nth-child(2) { height: 6px; }
+.pf-icon-cellular span:nth-child(3) { height: 8px; }
+.pf-icon-cellular span:nth-child(4) { height: 10px; }
+
+.pf-icon-wifi {
+  position: relative;
+  width: 16px; height: 12px;
+}
+.pf-icon-wifi svg {
+  width: 100%; height: 100%;
+  fill: white;
+}
+
+.pf-icon-battery {
+  width: 22px; height: 11px;
+  border: 1px solid rgba(255,255,255,0.5);
+  border-radius: 3.5px;
+  padding: 1px;
+  position: relative;
+  display: flex;
+}
+.pf-icon-battery::after {
+  content: '';
+  position: absolute;
+  right: -3.5px;
+  top: 3px;
+  width: 2px;
+  height: 3px;
+  background: rgba(255,255,255,0.5);
+  border-radius: 0 2px 2px 0;
+}
+.pf-icon-battery-level {
+  width: 100%;
+  height: 100%;
+  background: white;
+  border-radius: 1.5px;
 }
 
 /* ── Home indicator ── */

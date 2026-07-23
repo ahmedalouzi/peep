@@ -17,6 +17,17 @@ export class PublishService {
 
   constructor(private processManager: ProcessManager) {}
 
+  // Called by ipc/index.ts — no-op since we broadcast via BrowserWindow.getAllWindows()
+  setMainWindow(_window: BrowserWindow | null): void {}
+
+  // Called by ipc/index.ts before builds — apply optional settings
+  setSettings(settings: { flutterSdkPath?: string }): void {
+    if (settings.flutterSdkPath) {
+      // store for future use if needed
+    }
+  }
+
+
   private getBin(name: string): string {
     return process.platform === 'win32' ? `${name}.cmd` : name;
   }

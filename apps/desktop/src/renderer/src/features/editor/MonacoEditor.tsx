@@ -1,8 +1,11 @@
 import Editor, { type OnMount } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import './MonacoEditor.css';
 import { useDiagnosticsStore } from '../../stores/preview-store';
+import { emmetHTML, emmetCSS, emmetJSX } from 'emmet-monaco-es';
+
+let emmetInitialized = false;
 
 interface MonacoEditorProps {
   path: string;
@@ -96,6 +99,17 @@ export function MonacoEditor({ path, value, onChange, onSave }: MonacoEditorProp
 
       editorInstance.focus();
 
+      if (!emmetInitialized) {
+        try {
+          emmetHTML(monaco, ['html', 'htm', 'xml', 'markdown']);
+          emmetCSS(monaco, ['css', 'scss', 'sass', 'less']);
+          emmetJSX(monaco, ['javascript', 'typescript', 'javascriptreact', 'typescriptreact', 'jsx', 'tsx']);
+          emmetInitialized = true;
+        } catch (err) {
+          console.error('Failed to initialize emmet:', err);
+        }
+      }
+
       /* ── Bridge Monaco markers → DiagnosticsStore ── */
       const syncMarkers = () => {
         const allMarkers: any[] = monaco.editor.getModelMarkers({});
@@ -116,6 +130,20 @@ export function MonacoEditor({ path, value, onChange, onSave }: MonacoEditorProp
     },
     [onSave],
   );
+
+  /* ── Go-to-line event listener ── */
+  useEffect(() => {
+    const onGoToLine = (e: Event) => {
+      const ed = editorRef.current;
+      if (!ed) return;
+      const { line, col } = (e as CustomEvent<{ line: number; col: number }>).detail;
+      ed.revealLineInCenter(line);
+      ed.setPosition({ lineNumber: line, column: col ?? 1 });
+      ed.focus();
+    };
+    window.addEventListener('peep:go-to-line', onGoToLine);
+    return () => window.removeEventListener('peep:go-to-line', onGoToLine);
+  }, []);
 
   const handleBeforeMount = useCallback((monaco: any) => {
     /* ── Configure TypeScript Compiler ── */

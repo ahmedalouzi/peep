@@ -28,7 +28,7 @@ function getDiffStats(original: string, proposed: string) {
   return { added, removed };
 }
 
-export function ChatPane({ onOpenSettings }: ChatPaneProps) {
+export function ChatPane({ onOpenSettings: _onOpenSettings }: ChatPaneProps) {
   const {
     messages,
     input,
@@ -45,11 +45,13 @@ export function ChatPane({ onOpenSettings }: ChatPaneProps) {
   const activeFilePath = useWorkspaceStore((s) => s.activeFilePath);
   const openFiles = useWorkspaceStore((s) => s.openFiles);
   const openFile = useWorkspaceStore((s) => s.openFile);
+  const activeFile = openFiles.find((f) => f.path === activeFilePath) ?? null;
   const diagnostics = useDiagnosticsStore((s) => s.items);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const [showModelSelect, setShowModelSelect] = useState(false);
+  const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState('gpt-4o-mini');
   const [changesBarExpanded, setChangesBarExpanded] = useState(false);
 
@@ -72,8 +74,6 @@ export function ChatPane({ onOpenSettings }: ChatPaneProps) {
     { name: 'llama-3.3-70b', label: 'llama-3.3-70b', provider: 'openai' },
     { name: 'codestral', label: 'codestral', provider: 'openai', badge: 'Coding' },
   ];
-
-  const activeFile = openFiles.find((f) => f.path === activeFilePath);
 
   const fetchSettings = () => {
     void window.peep.getSettings().then((s) => {
@@ -113,6 +113,9 @@ export function ChatPane({ onOpenSettings }: ChatPaneProps) {
       createdAt: new Date().toISOString(),
     });
     setInput('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
 
     const assistantId = crypto.randomUUID();
     startStreaming(assistantId);
@@ -124,6 +127,7 @@ export function ChatPane({ onOpenSettings }: ChatPaneProps) {
       openFilePath: activeFile?.path,
       openFileContent: activeFile?.content,
       diagnostics,
+      autoApplyEdits: true,
     });
   };
 
@@ -179,9 +183,9 @@ export function ChatPane({ onOpenSettings }: ChatPaneProps) {
               boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
             }}>
               <div style={{ padding: '2px 10px', fontSize: '10px', color: '#8b949e', marginBottom: '2px' }}>Model</div>
-              {AI_MODELS.map(model => (
+              {MODELS.map(model => (
                 <div
-                  key={model.id}
+                  key={model.name}
                   onClick={() => { setSelectedModel(model.name); setIsModelDropdownOpen(false); }}
                   style={{
                     padding: '6px 10px',
@@ -344,35 +348,10 @@ export function ChatPane({ onOpenSettings }: ChatPaneProps) {
         </div>
       )}
 
-      <form className="chat-pane__input-wrapper" onSubmit={handleSubmit}>
+      <div className="chat-pane__input-wrapper">
         {isStreaming && streamStatus && (
           <div className="agent-streaming-status-bar">
             <span className="spinner">◌</span> {streamStatus}
-          </div>
-        )}
-        {showModelSelect && (
-          <div className="model-dropdown">
-            <div className="model-dropdown__header">Model</div>
-            <div className="model-dropdown__list">
-              {MODELS.map(m => (
-                <button
-                  key={m.name}
-                  type="button"
-                  className={`model-option ${selectedModel === m.name ? 'model-option--active' : ''}`}
-                  onClick={async () => {
-                    setSelectedModel(m.name);
-                    setShowModelSelect(false);
-                    await window.peep.setSettings({
-                      apiModel: m.name,
-                      apiProvider: m.provider as any,
-                    });
-                  }}
-                >
-                  <span className="model-name">{m.label}</span>
-                  {m.badge && <span className="model-badge">{m.badge}</span>}
-                </button>
-              ))}
-            </div>
           </div>
         )}
 
@@ -380,15 +359,6 @@ export function ChatPane({ onOpenSettings }: ChatPaneProps) {
           <div className="chat-pane__input-toolbar">
             <button type="button" className="icon-btn" title="Attach context">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-            </button>
-            <button
-              type="button"
-              className="model-select-btn"
-              onClick={() => setShowModelSelect(!showModelSelect)}
-              title="Select Model (Ctrl+/)"
-            >
-              {selectedModel}
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9" /></svg>
             </button>
             <div className="spacer" />
             <button type="button" className="icon-btn" title="Voice input">
@@ -399,11 +369,16 @@ export function ChatPane({ onOpenSettings }: ChatPaneProps) {
           <form className="agent-input-area" onSubmit={handleSubmit}>
             <div className="agent-input-wrap">
               <textarea
+                ref={textareaRef}
                 className="agent-input"
                 placeholder="Ask the agent..."
                 value={input}
                 rows={1}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  e.target.style.height = 'auto';
+                  e.target.style.height = `${e.target.scrollHeight}px`;
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
@@ -418,5 +393,7 @@ export function ChatPane({ onOpenSettings }: ChatPaneProps) {
             <div className="agent-footer-text">{selectedModel} · Context: {activeFile?.name ?? 'None'}</div>
           </form>
         </div>
-        );
+      </div>
+    </div>
+  );
 }

@@ -1,6 +1,8 @@
 import { app, BrowserWindow, shell } from 'electron';
 import { join } from 'node:path';
 import { cleanupServices, registerIpcHandlers, setMainWindow } from './ipc';
+import { config } from 'dotenv';
+config(); // Load .env from root
 
 // Suppress harmless Chromium GPU cache permission errors on Windows
 if (process.platform === 'win32') {

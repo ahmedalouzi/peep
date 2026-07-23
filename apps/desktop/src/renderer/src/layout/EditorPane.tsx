@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { MonacoEditor } from '../features/editor/MonacoEditor';
-import { DiffViewer } from '../features/chat/DiffViewer';
-import { PlanViewer } from '../features/plan/PlanViewer';
+
 import { NoFileOpenEmptyState, NoProjectEmptyState } from '../features/shared/EmptyState';
 import { useWorkspaceStore } from '../stores/workspace-store';
 import { useWorkspace } from '../hooks/useWorkspace';
@@ -99,12 +98,7 @@ export function EditorPane() {
     window.dispatchEvent(new CustomEvent('peep:new-project'));
   };
 
-  const isVirtualFile =
-    activeFile?.path === 'peep://proposed-changes' ||
-    activeFile?.path.endsWith('.peep/plan.md') ||
-    activeFile?.path.endsWith('.peep\\plan.md') ||
-    activeFile?.path.endsWith('.peep/walkthrough.md') ||
-    activeFile?.path.endsWith('.peep\\walkthrough.md');
+
 
   return (
     <div className="editor-area">

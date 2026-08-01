@@ -77,9 +77,53 @@ export function PreviewPane() {
     setIsInspectorActive(nextActive);
     webviewRef.current?.send('peep:toggle-inspector', nextActive);
   };
+  const selectedElement = usePreviewStore((s) => s.selectedElement);
+  const setSelectedElement = usePreviewStore((s) => s.setSelectedElement);
+  const promptInput = usePreviewStore((s) => s.promptInput);
+  const setPromptInput = usePreviewStore((s) => s.setPromptInput);
+
+  const handleSendToAgent = () => {
+    if (!selectedElement) return;
+    const { setOpen, stageFile, setPrompt } = useComposerStore.getState();
+    const workspaceStore = useWorkspaceStore.getState();
+
+    const handleOpenSource = async () => {
+      if (selectedElement.sourceFile) {
+        try {
+          const content = await window.peep.readFile(selectedElement.sourceFile);
+          const name = selectedElement.sourceFile.split(/[\\/]/).pop() || 'File';
+          workspaceStore.openFile({ path: selectedElement.sourceFile, name, content, dirty: false });
+          stageFile(selectedElement.sourceFile);
+        } catch {}
+      }
+    };
+    handleOpenSource();
+
+    setPrompt(`[SELECTED ELEMENT CONTEXT]
+- Framework: ${selectedElement.framework}
+- Component: ${selectedElement.componentName}
+- Source File: ${selectedElement.sourceFile || 'Unknown'}
+- Location: Line ${selectedElement.sourceLine || '?'}, Column ${selectedElement.sourceColumn || '?'}
+- Component Hierarchy: ${selectedElement.componentHierarchy?.join(' → ') || 'None'}
+- Props / Styles: ${JSON.stringify(selectedElement.props || {}, null, 2)}
+- Selected Element: Tag <${selectedElement.elementInfo?.tagName || ''}>, Text: "${selectedElement.elementInfo?.text || ''}"
+
+Please modify the selected element and its corresponding component files as follows: ${promptInput}`);
+    setOpen(true);
+    setSelectedElement(null);
+    setPromptInput('');
+  };
 
   const session = usePreviewStore((s) => s.session);
   const isRunning = session?.status === 'running' && session.url;
+  const [webviewError, setWebviewError] = useState<{ code: number; desc: string; url: string } | null>(null);
+
+  // Clear error when session starts running
+  useEffect(() => {
+    if (isRunning) {
+      setWebviewError(null);
+    }
+  }, [isRunning, session?.url]);
 
   useEffect(() => {
     const webview = webviewRef.current;
@@ -89,30 +133,64 @@ export function PreviewPane() {
       if (e.channel === 'peep:element-selected') {
         const metadata = e.args[0];
         setIsInspectorActive(false);
+        setSelectedElement(metadata);
 
-        const { setOpen, stageFile, setPrompt } = useComposerStore.getState();
+        // Auto-open and position in Editor immediately
         const workspaceStore = useWorkspaceStore.getState();
-        if (workspaceStore.activeFilePath) {
-          stageFile(workspaceStore.activeFilePath);
-        }
-
-        setPrompt(`Here is the selected visual element context:
-- Tag: ${metadata.tagName}
-- Text: ${metadata.text}
-- Markup:
-\`\`\`html
-${metadata.outerHTML}
-\`\`\`
-
-Please modify this element as follows: `);
-        setOpen(true);
+        const { stageFile } = useComposerStore.getState();
+        
+        const autoOpen = async () => {
+          if (metadata.sourceFile) {
+            try {
+              const content = await window.peep.readFile(metadata.sourceFile);
+              const name = metadata.sourceFile.split(/[\\/]/).pop() || 'File';
+              workspaceStore.openFile({ path: metadata.sourceFile, name, content, dirty: false });
+              stageFile(metadata.sourceFile);
+              
+              setTimeout(() => {
+                window.dispatchEvent(
+                  new CustomEvent('peep:go-to-line', {
+                    detail: { line: metadata.sourceLine || 1, col: metadata.sourceColumn || 1 }
+                  })
+                );
+              }, 120);
+            } catch (err) {
+              console.error("Auto open failed", err);
+            }
+          }
+        };
+        autoOpen();
       }
     };
 
     webview.addEventListener('ipc-message', handleIpcMessage);
+
+    const onStartLoading = () => console.log('[WebView] did-start-loading');
+    const onStopLoading = () => console.log('[WebView] did-stop-loading');
+    const onFinishLoad = () => console.log('[WebView] did-finish-load');
+    const onFailLoad = (e: any) => {
+      console.error(`[WebView] did-fail-load: ${e.errorCode} ${e.errorDescription} at ${e.validatedURL}`);
+      setWebviewError({ code: e.errorCode, desc: e.errorDescription, url: e.validatedURL });
+    };
+    const onProcessGone = (e: any) => console.error('[WebView] render-process-gone:', e.details);
+    const onCrashed = () => console.error('[WebView] crashed');
+
+    webview.addEventListener('did-start-loading', onStartLoading);
+    webview.addEventListener('did-stop-loading', onStopLoading);
+    webview.addEventListener('did-finish-load', onFinishLoad);
+    webview.addEventListener('did-fail-load', onFailLoad);
+    webview.addEventListener('render-process-gone', onProcessGone);
+    webview.addEventListener('crashed', onCrashed);
+
     return () => {
       if (webview) {
         webview.removeEventListener('ipc-message', handleIpcMessage);
+        webview.removeEventListener('did-start-loading', onStartLoading);
+        webview.removeEventListener('did-stop-loading', onStopLoading);
+        webview.removeEventListener('did-finish-load', onFinishLoad);
+        webview.removeEventListener('did-fail-load', onFailLoad);
+        webview.removeEventListener('render-process-gone', onProcessGone);
+        webview.removeEventListener('crashed', onCrashed);
       }
     };
   }, [session?.status, isRunning]);
@@ -286,9 +364,22 @@ Please modify this element as follows: `);
                 </button>
               )}
               {isRunning ? (
-                <button type="button" className="preview-action-btn" onClick={handleRefresh} title="Hot reload">
-                  ↺ Refresh
-                </button>
+                <>
+                  <button type="button" className="preview-action-btn" onClick={handleRefresh} title="Hot reload">
+                    ↺ Refresh
+                  </button>
+                  <button type="button" className="preview-action-btn" onClick={() => {
+                    if (platform === 'react-native' || platform === 'expo') {
+                      if (session?.processId) {
+                        void window.peep.rnStopPreview(session.processId);
+                      }
+                    } else {
+                      void window.peep.stopPreview();
+                    }
+                  }} title="Stop preview">
+                    ⏹ Stop
+                  </button>
+                </>
               ) : (
                 <button
                   type="button"
@@ -386,6 +477,19 @@ Please modify this element as follows: `);
                         </p>
                       </div>
                     )}
+                    {selectedDeviceId === 'browser' && isRunning && webviewError && (
+                      <div className="preview-placeholder preview-placeholder--error" style={{ position: 'absolute', inset: 0, zIndex: 10, background: 'var(--bg-pane)' }}>
+                        <span className="preview-placeholder__icon">⚠️</span>
+                        <h3>WebView Load Error</h3>
+                        <p>Error Code: {webviewError.code}</p>
+                        <p>{webviewError.desc}</p>
+                        <p style={{ fontSize: '10px', wordBreak: 'break-all' }}>URL: {webviewError.url}</p>
+                        <button type="button" className="preview-retry-btn" onClick={() => {
+                          setWebviewError(null);
+                          if (webviewRef.current) webviewRef.current.reload();
+                        }}>Retry Load</button>
+                      </div>
+                    )}
                     {selectedDeviceId === 'browser' && isRunning && (
                       <webview
                         key={iframeKey}
@@ -393,7 +497,7 @@ Please modify this element as follows: `);
                         className="preview-iframe"
                         src={session.url}
                         preload={`file://${(window.peep as any).getInspectorPreloadPath()}`}
-                        style={{ width: '100%', height: '100%', border: 'none' }}
+                        style={{ width: '100%', height: '100%', border: 'none', display: webviewError ? 'none' : 'block' }}
                       />
                     )}
                     {!session && (
@@ -417,6 +521,75 @@ Please modify this element as follows: `);
           )}
         </div>
       </div>
+      {selectedElement && (
+        <div style={{
+          position: 'absolute',
+          bottom: '20px',
+          left: '20px',
+          right: '20px',
+          background: '#1f2428',
+          border: '1px solid var(--border)',
+          borderRadius: '8px',
+          padding: '12px',
+          zIndex: 1000,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '11.5px', color: 'var(--gold)', fontWeight: 600 }}>
+              ✨ Ask AI to modify: {selectedElement.componentName}
+            </span>
+            <button
+              onClick={() => setSelectedElement(null)}
+              style={{ background: 'transparent', border: 'none', color: '#8b949e', cursor: 'pointer', fontSize: '12px' }}
+            >
+              ✕
+            </button>
+          </div>
+          <div style={{ fontSize: '10px', color: '#8b949e' }}>
+            Source: {selectedElement.sourceFile?.split(/[\\/]/).pop() || 'Unknown'} (Line {selectedElement.sourceLine || '?'})
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <input
+              type="text"
+              placeholder="e.g. Make this card more premium, change the background color..."
+              value={promptInput}
+              onChange={(e) => setPromptInput(e.target.value)}
+              style={{
+                flex: 1,
+                background: '#24292e',
+                border: '1px solid var(--border)',
+                borderRadius: '4px',
+                padding: '6px 10px',
+                color: '#fff',
+                fontSize: '11px'
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleSendToAgent();
+                }
+              }}
+            />
+            <button
+              onClick={handleSendToAgent}
+              style={{
+                background: 'var(--gold)',
+                color: '#000',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '6px 12px',
+                fontSize: '11.5px',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              Submit
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

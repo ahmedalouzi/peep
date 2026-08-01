@@ -497,7 +497,14 @@ Please modify the selected element and its corresponding component files as foll
                         className="preview-iframe"
                         src={session.url}
                         preload={`file://${(window.peep as any).getInspectorPreloadPath()}`}
-                        style={{ width: '100%', height: '100%', border: 'none', display: webviewError ? 'none' : 'block' }}
+                        style={{
+                          width: `${device.lw}px`,
+                          height: `${(device.h - device.padding * 2) / ((device.w - device.padding * 2) / device.lw)}px`,
+                          transform: `scale(${(device.w - device.padding * 2) / device.lw})`,
+                          transformOrigin: 'top left',
+                          border: 'none',
+                          display: webviewError ? 'none' : 'block'
+                        }}
                       />
                     )}
                     {!session && (

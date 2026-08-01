@@ -41,56 +41,50 @@ function IPhoneFrame({ pro, children }: { pro?: boolean; children: React.ReactNo
       <div className="pf-btn pf-btn--vol-down" />
       <div className="pf-btn pf-btn--power" />
 
-      {/* ── Inner Layering ── */}
-      <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column' }}>
-        
-        {/* 1. Screen clip container (Underlay) */}
-        <div className="pf-bezel" style={{ position: 'absolute', inset: 0, background: '#000' }}>
-          <div className="pf-screen">
-            {children}
+      {/* ── Screen bezel ── */}
+      <div className="pf-bezel">
+        {/* Status Bar */}
+        <div className="pf-status-bar">
+          <div className="pf-status-left">
+            <span>{time}</span>
+          </div>
+          <div className="pf-status-right">
+            {/* Cellular bars: short-to-tall, left-to-right */}
+            <div className="pf-icon-cellular">
+              <span/><span/><span/><span/>
+            </div>
+            {/* WiFi icon */}
+            <div className="pf-icon-wifi">
+              <svg viewBox="1 8 22 14" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" style={{ width: '16px', height: '12px' }}>
+                <path d="M5 12 A10 10 0 0 1 19 12" />
+                <path d="M8.5 15.5 A5 5 0 0 1 15.5 15.5" />
+                <circle cx="12" cy="19" r="1.5" fill="currentColor" stroke="none" />
+              </svg>
+            </div>
+            {/* Battery */}
+            <div className="pf-icon-battery">
+              <div className="pf-icon-battery-level"></div>
+            </div>
           </div>
         </div>
 
-        {/* 2. Bezel overlays (Overlay) */}
-        <div className="pf-bezel" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'transparent' }}>
-          {/* Status Bar */}
-          <div className="pf-status-bar">
-            <div className="pf-status-left">
-              <span>{time}</span>
-            </div>
-            <div className="pf-status-right">
-              {/* Cellular bars: short-to-tall, left-to-right */}
-              <div className="pf-icon-cellular">
-                <span/><span/><span/><span/>
-              </div>
-              {/* WiFi icon */}
-              <div className="pf-icon-wifi">
-                <svg viewBox="1 8 22 14" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" style={{ width: '16px', height: '12px' }}>
-                  <path d="M5 12 A10 10 0 0 1 19 12" />
-                  <path d="M8.5 15.5 A5 5 0 0 1 15.5 15.5" />
-                  <circle cx="12" cy="19" r="1.5" fill="currentColor" stroke="none" />
-                </svg>
-              </div>
-              {/* Battery */}
-              <div className="pf-icon-battery">
-                <div className="pf-icon-battery-level"></div>
-              </div>
-            </div>
-          </div>
-
-          {/* Dynamic Island */}
-          <div className="pf-dynamic-island">
-            <div className="pf-di-cam" />
-            <div className="pf-di-speaker" />
-          </div>
-
-          {/* Home indicator */}
-          <div className="pf-home-indicator" />
+        {/* Dynamic Island */}
+        <div className="pf-dynamic-island">
+          <div className="pf-di-cam" />
+          <div className="pf-di-speaker" />
         </div>
+
+        {/* Screen */}
+        <div className="pf-screen">
+          {children}
+        </div>
+
+        {/* Home indicator */}
+        <div className="pf-home-indicator" />
       </div>
 
       {/* Frame shine overlay */}
-      <div className="pf-shine" style={{ pointerEvents: 'none' }} />
+      <div className="pf-shine" />
     </div>
   );
 }
@@ -103,30 +97,24 @@ function IPhoneSEFrame({ children }: { children: React.ReactNode }) {
       <div className="pf-btn pf-btn--vol-down" style={{ top: '130px' }} />
       <div className="pf-btn pf-btn--power" style={{ top: '80px' }} />
 
-      <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column' }}>
-        {/* 1. Screen clip container (Underlay) */}
-        <div className="pf-bezel" style={{ position: 'absolute', inset: 0, background: '#000' }}>
-          <div className="pf-screen">
-            {children}
-          </div>
+      <div className="pf-bezel">
+        {/* SE notch: small FaceTime camera area */}
+        <div className="pf-se-topbar">
+          <div className="pf-se-speaker" />
+          <div className="pf-se-cam" />
         </div>
 
-        {/* 2. Bezel overlays (Overlay) */}
-        <div className="pf-bezel" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'transparent' }}>
-          {/* SE notch: small FaceTime camera area */}
-          <div className="pf-se-topbar">
-            <div className="pf-se-speaker" />
-            <div className="pf-se-cam" />
-          </div>
+        <div className="pf-screen">
+          {children}
+        </div>
 
-          {/* SE has physical home button */}
-          <div className="pf-se-home-btn">
-            <div className="pf-se-home-ring" />
-          </div>
+        {/* SE has physical home button */}
+        <div className="pf-se-home-btn">
+          <div className="pf-se-home-ring" />
         </div>
       </div>
 
-      <div className="pf-shine" style={{ pointerEvents: 'none' }} />
+      <div className="pf-shine" />
     </div>
   );
 }
@@ -139,25 +127,17 @@ function PixelFrame({ children }: { children: React.ReactNode }) {
       <div className="pf-btn pf-btn--vol-up pf-btn--android-vol-up" />
       <div className="pf-btn pf-btn--vol-down pf-btn--android-vol-down" />
 
-      <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column' }}>
-        <div className="pf-bezel pf-bezel--android" style={{ position: 'absolute', inset: 0, background: '#000' }}>
-          <div className="pf-screen">
-            {children}
-          </div>
+      <div className="pf-bezel pf-bezel--android">
+        <div className="pf-screen">
+          {/* Punch-hole camera */}
+          <div className="pf-punchhole" />
+          {children}
         </div>
-        
-        <div className="pf-bezel pf-bezel--android" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'transparent' }}>
-          <div className="pf-screen" style={{ background: 'transparent' }}>
-            {/* Punch-hole camera */}
-            <div className="pf-punchhole" />
-          </div>
-          
-          {/* Android gesture bar */}
-          <div className="pf-android-bar" />
-        </div>
+        {/* Android gesture bar */}
+        <div className="pf-android-bar" />
       </div>
 
-      <div className="pf-shine pf-shine--android" style={{ pointerEvents: 'none' }} />
+      <div className="pf-shine pf-shine--android" />
     </div>
   );
 }
@@ -170,23 +150,16 @@ function PixelFoldFrame({ children }: { children: React.ReactNode }) {
       <div className="pf-btn pf-btn--vol-up pf-btn--android-vol-up" />
       <div className="pf-btn pf-btn--vol-down pf-btn--android-vol-down" />
 
-      <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column' }}>
-        <div className="pf-bezel pf-bezel--android pf-bezel--fold" style={{ position: 'absolute', inset: 0, background: '#000' }}>
-          <div className="pf-screen">
-            {children}
-          </div>
+      <div className="pf-bezel pf-bezel--android pf-bezel--fold">
+        <div className="pf-screen">
+          <div className="pf-punchhole pf-punchhole--fold" />
+          {children}
         </div>
-        
-        <div className="pf-bezel pf-bezel--android pf-bezel--fold" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'transparent' }}>
-          <div className="pf-screen" style={{ background: 'transparent' }}>
-            <div className="pf-punchhole pf-punchhole--fold" />
-          </div>
-          <div className="pf-fold-hinge" />
-          <div className="pf-android-bar" />
-        </div>
+        <div className="pf-fold-hinge" />
+        <div className="pf-android-bar" />
       </div>
 
-      <div className="pf-shine pf-shine--android" style={{ pointerEvents: 'none' }} />
+      <div className="pf-shine pf-shine--android" />
     </div>
   );
 }
@@ -199,22 +172,15 @@ function GalaxyFrame({ children }: { children: React.ReactNode }) {
       <div className="pf-btn pf-btn--vol-up pf-btn--samsung-vol-up" />
       <div className="pf-btn pf-btn--vol-down pf-btn--samsung-vol-down" />
 
-      <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column' }}>
-        <div className="pf-bezel pf-bezel--android pf-bezel--samsung" style={{ position: 'absolute', inset: 0, background: '#000' }}>
-          <div className="pf-screen">
-            {children}
-          </div>
+      <div className="pf-bezel pf-bezel--android pf-bezel--samsung">
+        <div className="pf-screen">
+          <div className="pf-punchhole pf-punchhole--samsung" />
+          {children}
         </div>
-        
-        <div className="pf-bezel pf-bezel--android pf-bezel--samsung" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'transparent' }}>
-          <div className="pf-screen" style={{ background: 'transparent' }}>
-            <div className="pf-punchhole pf-punchhole--samsung" />
-          </div>
-          <div className="pf-android-bar" />
-        </div>
+        <div className="pf-android-bar" />
       </div>
 
-      <div className="pf-shine pf-shine--android" style={{ pointerEvents: 'none' }} />
+      <div className="pf-shine pf-shine--android" />
     </div>
   );
 }

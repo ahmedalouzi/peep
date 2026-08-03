@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs';
 import type { BrowserWindow } from 'electron';
 import { IPC_EVENTS } from '@peep/shared';
 import type { RunCommandResult } from '@peep/shared';
+import { globalIpcBatcher } from '../utils/ipc-batcher';
 
 const ALLOWED_PREFIXES = [
   'flutter ',
@@ -35,6 +36,12 @@ export class TerminalService {
 
   setMainWindow(window: BrowserWindow | null): void {
     this.mainWindow = window;
+  }
+
+  private emitOutput(id: string, data: string): void {
+    globalIpcBatcher.bufferString(IPC_EVENTS.TERMINAL_OUTPUT, id, data, 16, (flushId, accumulated) => {
+      this.mainWindow?.webContents.send(IPC_EVENTS.TERMINAL_OUTPUT, { id: flushId, data: accumulated });
+    });
   }
 
   setFlutterSdkPath(path: string | undefined): void {
@@ -79,7 +86,7 @@ export class TerminalService {
     this.sessions.set(id, session);
 
     const emit = (data: string) => {
-      this.mainWindow?.webContents.send(IPC_EVENTS.TERMINAL_OUTPUT, { id, data });
+      this.emitOutput(id, data);
     };
 
     child.stdout?.on('data', (chunk: Buffer) => {
@@ -122,7 +129,7 @@ export class TerminalService {
     }
 
     const emit = (str: string) => {
-      this.mainWindow?.webContents.send(IPC_EVENTS.TERMINAL_OUTPUT, { id, data: str });
+      this.emitOutput(id, str);
     };
 
     let i = 0;
@@ -256,10 +263,7 @@ export class TerminalService {
         child.stdin.write('y\r\n');
         
         setTimeout(() => {
-          this.mainWindow?.webContents.send(IPC_EVENTS.TERMINAL_OUTPUT, {
-            id,
-            data: '\r\n[peep auto-respond] y\r\n'
-          });
+          this.emitOutput(id, '\r\n[peep auto-respond] y\r\n');
         }, 100);
       }
     }

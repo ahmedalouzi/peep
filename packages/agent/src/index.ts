@@ -9,5 +9,13 @@ export {
   loadDesignManifest,
   saveDesignManifest,
   serializeDesignManifest,
-  type DesignManifest,
-} from './design/manifest';
+} from './design/design-retrieval';
+export { type DesignManifest } from './design/design-types';
+export { DesignReasoner } from './design/design-reasoner';
+export { DesignReviewer } from './design/design-reviewer';
+export { type AgentState, type TaskState, loadAgentTaskState, saveAgentTaskState } from './design/task-state';
+export { discoverProjectContext, type ProjectIntelligence } from './context/discovery';
+export * from './intelligence/index';
+export * from './memory/index';
+export * from './models/index';
+export * from './error-recovery/diagnostics';

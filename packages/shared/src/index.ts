@@ -40,6 +40,39 @@ export interface PreviewSession {
   error?: string;
 }
 
+export type ErrorCategory =
+  | 'success'
+  | 'warning'
+  | 'compile_error'
+  | 'type_error'
+  | 'lint_error'
+  | 'dependency_error'
+  | 'configuration_error'
+  | 'runtime_error'
+  | 'environment_error'
+  | 'timeout'
+  | 'unknown_error';
+
+export interface ValidationCheck {
+  type: string;
+  success: boolean;
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  errors?: any[];
+}
+
+export interface ValidationResult {
+  success: boolean;
+  framework: string;
+  environment: string;
+  checks: ValidationCheck[];
+  blockingErrors: number;
+  warnings: number;
+  errorCategory: ErrorCategory;
+  message?: string;
+}
+
 export interface AgentMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -56,23 +89,212 @@ export interface ProposedEdit {
 }
 
 export interface AgentStreamEvent {
-  type: 'status' | 'delta' | 'done' | 'error';
+  type: 'status' | 'delta' | 'done' | 'error' | 'activity';
   content: string;
+}
+
+export interface AgentActivityEvent {
+  provider: string;
+  selectedModel: string;
+  actualModel: string;
+  task: string;
+  iteration: number;
+  maxIterations: number | 'Dynamic';
+  inputTokens: number;
+  outputTokens: number;
+  estimatedCost: number;
+}
+
+export interface BuildResult {
+  success: boolean;
+  framework: string;
+  environment: string;
+  platform: string;
+  outputPath?: string;
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  duration?: number;
+  errorCategory?: ErrorCategory;
+  message?: string;
+}
+
+export interface TestResult {
+  success: boolean;
+  status: 'passed' | 'failed' | 'not_configured' | 'error';
+  message?: string;
+  stdout?: string;
+  stderr?: string;
+}
+
+export interface AppStartResult {
+  success: boolean;
+  processId: number;
+  sessionId?: string;
+  status: string;
+  previewUrl?: string;
+  message?: string;
+  errorCategory?: ErrorCategory;
+}
+
+export interface RuntimeError {
+  type: 'RUNTIME_ERROR' | 'BUILD_ERROR' | 'NETWORK_ERROR' | 'DEPENDENCY_ERROR' | 'UNKNOWN';
+  message: string;
+  file?: string;
+  line?: number;
+  stackTrace?: string;
+  severity: 'error' | 'warning' | 'fatal';
+}
+
+export interface AppStatusResult {
+  processId: number;
+  status: 'starting' | 'running' | 'degraded' | 'error' | 'crashed' | 'stopped' | 'exited' | 'unknown';
+  command: string;
+  framework: string;
+  environment: string;
+  startedAt: string;
+  exitCode: number | null;
+}
+
+export interface AppLogsResult {
+  processId: number;
+  status: string;
+  stdout: string;
+  stderr: string;
+  logs: string[];
+  detectedErrors: RuntimeError[];
+}
+
+export interface AgentUsageLog {
+  requestId: string;
+  sessionId: string;
+  taskId: string;
+  provider: string;
+  model: string;
+  timestamp: string;
+  inputTokens: number;
+  outputTokens: number;
+  estimatedCost: number;
+  latencyMs: number;
+  success: boolean;
 }
 
 export interface Settings {
   flutterSdkPath?: string;
   theme: 'dark' | 'light';
   autoSave: boolean;
+  capabilityTier?: CapabilityTier;
+  /** @deprecated Use sessionToken + ProductionAIGateway instead. Provider API keys must not be stored on the client. */
   apiProvider?: 'openai' | 'anthropic' | 'google';
+  /** @deprecated Never store provider API keys on the client. */
   apiKey?: string;
+  /** @deprecated Use ModelTier routing via the gateway instead. */
   apiModel?: string;
+  /** @deprecated */
   apiKeyConfigured?: boolean;
   onboardingCompleted?: boolean;
   telemetryEnabled?: boolean;
+  /** Session Bearer token for authenticating with ProductionAIGateway. Never a provider API key. */
+  sessionToken?: string;
+  /** Base URL for the Synkro AI Gateway backend. */
+  gatewayUrl?: string;
+  /**
+   * True if a sessionToken is stored. The sessionToken itself is NEVER sent to the renderer.
+   * The renderer must only read this flag to determine authentication state.
+   */
+  sessionConfigured?: boolean;
+  /** The refresh token for the session. Never sent to the renderer. */
+  refreshToken?: string;
+  isDevBypassActive?: boolean;
 }
 
 export type UpdateStatus = 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'ready' | 'error';
+
+export type PlanStepStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
+
+export type RecoveryErrorCategory =
+  | 'missing_dependency'
+  | 'missing_file'
+  | 'wrong_directory'
+  | 'preview_failure'
+  | 'type_error'
+  | 'syntax_error'
+  | 'port_conflict'
+  | 'transient'
+  | 'unrecoverable'
+  | 'verification_failure';
+
+export interface NormalizedError {
+  toolName: string;
+  command?: string;
+  exitCode?: number;
+  stdout?: string;
+  stderr?: string;
+  message: string;
+  category: RecoveryErrorCategory;
+  timestamp: string;
+  affectedFiles?: string[];
+  impactRadius?: string[];
+}
+
+export interface RecoveryAttempt {
+  attempt: number;
+  strategy: string;
+  error: NormalizedError;
+  status: 'pending' | 'success' | 'failed';
+  timestamp: string;
+}
+
+export interface DependencyGraph {
+  imports: Record<string, string[]>;
+  exports: Record<string, string[]>;
+  dependents: Record<string, string[]>;
+  fileHashes: Record<string, string>;
+  unresolved: Record<string, string[]>;
+  lastIndexedAt: string;
+}
+
+export interface AgentPlanStep {
+  id: string;
+  description: string;
+  status: PlanStepStatus;
+  attempts?: number;
+  maxRetries?: number;
+  lastError?: string;
+  required?: boolean;
+  currentStrategy?: string;
+  relevantFiles?: string[];
+  impactRadius?: string[];
+  history?: RecoveryAttempt[];
+}
+
+export interface AcceptanceCriterion {
+  id: string;
+  description: string;
+  status: 'pending' | 'verifying' | 'verified' | 'failed' | 'not_verifiable';
+  verificationMethod: 'test' | 'typecheck' | 'build' | 'ui_structural' | 'visual' | 'manual';
+  linkedStepIds?: string[];
+  history?: VerificationAttempt[];
+}
+
+export interface VerificationAttempt {
+  status: 'verifying' | 'verified' | 'failed';
+  verificationMethod: string;
+  commandOrAction?: string;
+  outputSummary?: string;
+  timestamp: string;
+  evidence?: string;
+}
+
+export interface AgentPlan {
+  taskId: string;
+  goal: string;
+  complexity: 'simple' | 'medium' | 'complex';
+  steps: AgentPlanStep[];
+  acceptanceCriteria?: AcceptanceCriterion[];
+  status?: 'in_progress' | 'completed' | 'failed';
+  updatedAt?: string;
+}
 
 export interface UpdateInfo {
   status: UpdateStatus;
@@ -108,12 +330,29 @@ export interface CreateProjectOptions {
   name: string;
   parentPath: string;
   templateId: string;
+  mode?: 'beginner' | 'advanced';
+  framework?: 'react-native' | 'flutter';
 }
 
 export interface CreateProjectFromPromptOptions {
   name: string;
   parentPath: string;
   prompt: string;
+  mode?: 'beginner' | 'advanced';
+  framework?: 'react-native' | 'flutter';
+}
+
+export interface MobileEnvironment {
+  framework: 'react-native' | 'flutter';
+  environment: 'managed' | 'local' | 'cloud';
+  mode: 'beginner' | 'advanced';
+  capabilities: {
+    localSdk: boolean;
+    terminal: boolean;
+    preview: boolean;
+    androidBuild: boolean;
+    iosBuild: boolean;
+  };
 }
 
 export interface GitFileChange {
@@ -204,6 +443,7 @@ export const IPC_CHANNELS = {
   AGENT_APPLY_EDITS: 'agent:applyEdits',
   AGENT_REJECT_EDITS: 'agent:rejectEdits',
   AGENT_GET_PENDING_EDITS: 'agent:getPendingEdits',
+  AGENT_ACTIVITY: 'agent:activity',
   GIT_STATUS: 'git:status',
   GIT_INIT: 'git:init',
   GIT_STAGE: 'git:stage',
@@ -248,6 +488,11 @@ export const IPC_CHANNELS = {
   PREVIEW_IS_DETACHED: 'preview:isDetached',
   // Extensions
   EXTENSIONS_SEARCH: 'extensions:search',
+  // Auth
+  AUTH_SIGN_IN: 'auth:signIn',
+  AUTH_SIGN_UP: 'auth:signUp',
+  AUTH_LOGOUT: 'auth:logout',
+  AUTH_GET_ACCOUNT: 'auth:getAccount',
   EXTENSIONS_INSTALLED: 'extensions:installed',
   EXTENSIONS_INSTALL: 'extensions:install',
   EXTENSIONS_UNINSTALL: 'extensions:uninstall',
@@ -355,6 +600,7 @@ export const IPC_EVENTS = {
   APP_UPDATE_STATUS: 'app:updateStatus',
   PUBLISH_STATUS: 'publish:status',
   PUBLISH_LOG: 'publish:log',
+  AUTH_SESSION_EXPIRED: 'auth:sessionExpired',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
@@ -436,6 +682,7 @@ export interface IpcApi {
   onDiagnostics: (callback: (diagnostics: Diagnostic[]) => void) => () => void;
   onPreviewLog: (callback: (line: string) => void) => () => void;
   onAgentStream: (callback: (event: AgentStreamEvent) => void) => () => void;
+  onAgentActivity: (callback: (event: AgentActivityEvent) => void) => () => void;
   onProposedEdits: (callback: (edits: ProposedEdit[]) => void) => () => void;
   onTerminalOutput: (callback: (payload: { id: string; data: string }) => void) => () => void;
   onTerminalExit: (callback: (payload: { id: string; code: number }) => void) => () => void;
@@ -447,10 +694,27 @@ export interface IpcApi {
   installExtension: (extensionId: string, downloadUrl?: string) => Promise<void>;
   uninstallExtension: (extensionId: string) => Promise<void>;
   getExtensionDetails: (extensionId: string) => Promise<any>;
+  // Auth
+  authSignIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  authSignUp: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  authLogout: () => Promise<void>;
+  authGetAccount: () => Promise<{
+    email: string;
+    tier?: string;
+    plan?: string;
+    usedCost?: number;
+    budgetCost?: number;
+    usedTokens?: number;
+    budgetTokens?: number;
+    usage?: number;
+    limit?: number;
+    gatewayConnected?: boolean;
+  } | null>;
   onPublishStatus: (callback: (status: any) => void) => () => void;
   onPublishLog: (callback: (line: string) => void) => () => void;
   onOpenFile: (callback: (file: any) => void) => () => void;
-
+  onAuthSessionExpired: (callback: () => void) => () => void;
+  onPlanUpdated: (callback: (plan: AgentPlan) => void) => () => void;
 }
 
 declare global {
@@ -458,3 +722,59 @@ declare global {
     peep: IpcApi;
   }
 }
+
+export type ModelTier = 'fast' | 'reasoning' | 'premium';
+
+export interface AIToolCall {
+  id: string;
+  name: string;
+  arguments: any;
+}
+
+export interface AIUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
+export interface CostEstimate {
+  cost: number;
+  currency: string;
+}
+
+export interface AIError {
+  code: string;
+  message: string;
+  status?: number;
+}
+
+export type CapabilityTier = 'fast' | 'reasoning' | 'premium';
+
+export interface AIRequest {
+  tier: CapabilityTier;
+  messages: any[];
+  tools?: any[];
+}
+
+export interface AIResponse {
+  content: string;
+  toolCalls?: AIToolCall[];
+  usage?: AIUsage;
+  cost?: CostEstimate;
+}
+
+export interface AIStreamEvent {
+  type: 'delta' | 'tool_call' | 'done' | 'error';
+  content?: string;
+  toolCall?: AIToolCall;
+  usage?: AIUsage;
+  cost?: CostEstimate;
+  error?: AIError;
+}
+
+export interface AIGateway {
+  generate(request: AIRequest, options?: { signal?: AbortSignal }): Promise<AIResponse>;
+  stream(request: AIRequest, options?: { signal?: AbortSignal }): AsyncIterable<AIStreamEvent>;
+  estimateCost(request: AIRequest): Promise<CostEstimate>;
+}
+

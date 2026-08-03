@@ -1,0 +1,62 @@
+import { ServerModelRouter } from '../src/models/server-router';
+import { BackendAIGateway } from '../src/models/backend-gateway';
+
+export default async function runTests() {
+  console.log('  Running ServerModelRouter unit tests...');
+
+  const router = new ServerModelRouter();
+
+  // Test 1: Route Tiers
+  const fastConfig = router.route('fast');
+  if (fastConfig.providerId !== 'google' || fastConfig.modelId !== 'gemini-3.6-flash') {
+    throw new Error('fast tier routing mapped to incorrect model config');
+  }
+
+  const reasoningConfig = router.route('reasoning');
+  if (reasoningConfig.providerId !== 'openai' || reasoningConfig.modelId !== 'gpt-4o') {
+    throw new Error('reasoning tier routing mapped to incorrect model config');
+  }
+
+  const premiumConfig = router.route('premium');
+  if (premiumConfig.providerId !== 'google' || premiumConfig.modelId !== 'gemini-3.1-pro') {
+    throw new Error('premium tier routing mapped to incorrect model config');
+  }
+
+  // Test 2: Plan Limitations
+  try {
+    router.route('premium', 'free');
+    throw new Error('premium tier request did not block free tier plan');
+  } catch (err: any) {
+    if (!err.message.includes('paid active subscription')) throw err;
+  }
+
+  // Test 3: Gateway Integration (Routing by Tier)
+  const gateway = new BackendAIGateway();
+  const { MockOpenAIAdapter } = await import('../src/models/backend-gateway');
+  (gateway as any).adapters.set('google', new MockOpenAIAdapter());
+  const session = await gateway.authService.login('user@example.com', 'hash-password-123');
+
+  const headers = {
+    'authorization': `Bearer ${session.sessionToken}`,
+    'x-request-id': 'req-router-id'
+  };
+
+  const res = await gateway.handleRequest('POST', '/v1/ai/generate', headers, {
+    tier: 'fast',
+    prompt: 'route this please'
+  });
+  if (res.status !== 200) {
+    throw new Error(`Gateway handleRequest failed under routing. Status: ${res.status}`);
+  }
+
+  // Test 4: Unsupported Tier Rejection
+  const badRes = await gateway.handleRequest('POST', '/v1/ai/generate', headers, {
+    tier: 'ultra-fast-hyper-intelligence' as any,
+    prompt: 'test'
+  });
+  if (badRes.status !== 400 || badRes.body.code !== 'VALIDATION_ERROR') {
+    throw new Error('Gateway failed to reject unsupported model tier');
+  }
+
+  console.log('  🟢 All ServerModelRouter unit tests passed.');
+}

@@ -1,8 +1,6 @@
-import { access, mkdir, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { getTemplate, PROJECT_TEMPLATES } from '@peep/flutter-adapter';
+import { PROJECT_TEMPLATES } from '@peep/flutter-adapter';
 import type { CreateProjectOptions, ProjectTemplateInfo } from '@peep/shared';
-import type { FlutterService } from './flutter-service';
+import type { PlatformRegistry } from './platform-registry';
 import type { WorkspaceManager } from './workspace-manager';
 
 export function sanitizeProjectName(name: string): string {
@@ -20,7 +18,7 @@ export function isValidProjectName(name: string): boolean {
 
 export class ProjectService {
   constructor(
-    private flutter: FlutterService,
+    private registry: PlatformRegistry,
     _workspace: WorkspaceManager,
   ) {}
 
@@ -34,30 +32,16 @@ export class ProjectService {
       throw new Error('Project name must start with a letter and contain only lowercase letters, numbers, and underscores.');
     }
 
-    const projectPath = join(options.parentPath, name);
-
-    try {
-      await access(projectPath);
-      throw new Error(`Folder already exists: ${projectPath}`);
-    } catch (error) {
-      if (error instanceof Error && error.message.startsWith('Folder already exists')) {
-        throw error;
-      }
-      /* does not exist — good */
+    // Determine provider based on options. For now, default to react-native-managed if beginner or not specified.
+    const mode = (options as any).mode || 'beginner';
+    const framework = (options as any).framework || 'react-native';
+    
+    let providerId = 'react-native-managed';
+    if (mode === 'advanced') {
+      providerId = framework === 'flutter' ? 'flutter-local' : 'react-native-local';
     }
 
-    await this.flutter.createProject(name, options.parentPath);
-
-    const template = getTemplate(options.templateId);
-    if (template && template.files.length > 0) {
-      for (const file of template.files) {
-        const fullPath = join(projectPath, file.relativePath);
-        await mkdir(dirname(fullPath), { recursive: true });
-        await writeFile(fullPath, file.content, 'utf-8');
-      }
-    }
-
-    await this.flutter.pubGet(projectPath);
-    return projectPath;
+    const provider = this.registry.getProvider(providerId);
+    return await provider.createProject(name, options.parentPath, options.templateId);
   }
 }

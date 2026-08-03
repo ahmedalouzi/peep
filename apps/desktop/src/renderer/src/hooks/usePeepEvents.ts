@@ -102,6 +102,18 @@ export function usePeepEvents(): void {
       });
     });
 
+    const unsubPlan = (window.peep as any).onPlanUpdated?.(() => {
+      const workspaceStore = useWorkspaceStore.getState();
+      if (!workspaceStore.project) return;
+      const planPath = `${workspaceStore.project.path}/.peep/plan.md`.replace(/\\/g, '/');
+      void window.peep.readFile(planPath).then((content) => {
+        const existing = workspaceStore.openFiles.find((f) => f.path === planPath);
+        if (existing) {
+          workspaceStore.openFile({ ...existing, content, dirty: false });
+        }
+      }).catch(() => {});
+    });
+
     return () => {
       unsubPreview();
       unsubDiagnostics();
@@ -109,6 +121,7 @@ export function usePeepEvents(): void {
       unsubAgent();
       unsubEdits();
       unsubOpenFile();
+      unsubPlan?.();
     };
   }, [
     setSession,

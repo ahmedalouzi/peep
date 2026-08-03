@@ -1,8 +1,9 @@
 import { access, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Diagnostic } from '@peep/shared';
+import type { Diagnostic, MobileEnvironment } from '@peep/shared';
 import { parseFlutterAnalyze } from '@peep/flutter-adapter';
 import type { ProcessManager } from './process-manager';
+import { FrameworkProvider, type ProviderPreviewSession } from './providers/base-provider';
 
 export interface SdkInfo {
   path: string;
@@ -12,11 +13,28 @@ export interface SdkInfo {
 const PREVIEW_PORT = 5174;
 const PREVIEW_STARTUP_MS = 120_000;
 
-export class FlutterService {
+export class FlutterService extends FrameworkProvider {
+  readonly id = 'flutter-local';
+  readonly name = 'Flutter Local';
+  readonly env: MobileEnvironment = {
+    framework: 'flutter',
+    environment: 'local',
+    mode: 'advanced',
+    capabilities: {
+      localSdk: true,
+      terminal: true,
+      preview: true,
+      androidBuild: true,
+      iosBuild: true
+    }
+  };
+
   constructor(
     private processManager: ProcessManager,
     private sdkPath?: string,
-  ) {}
+  ) {
+    super();
+  }
 
   setSdkPath(path: string | undefined): void {
     this.sdkPath = path;
@@ -42,8 +60,9 @@ export class FlutterService {
     }
   }
 
-  async createProject(name: string, parentPath: string): Promise<void> {
+  async createProject(name: string, parentPath: string, _templateId?: string): Promise<string> {
     await this.runCommand(['create', name, '--project-name', name], parentPath);
+    return join(parentPath, name);
   }
 
   async pubGet(projectRoot: string): Promise<void> {
@@ -65,6 +84,7 @@ export class FlutterService {
   async startWebPreview(
     projectRoot: string,
     port = PREVIEW_PORT,
+    onLog?: (line: string) => void
   ): Promise<{ url: string; processId: number; logs: string[] }> {
     const flutterRoot = await this.findFlutterRoot(projectRoot);
     const info = this.processManager.spawn(
@@ -86,6 +106,8 @@ export class FlutterService {
         for (const line of text.split(/\r?\n/)) {
           if (line.trim()) logs.push(line);
         }
+
+        if (onLog) onLog(text);
 
         if (
           text.includes(url) ||
@@ -112,6 +134,42 @@ export class FlutterService {
         }
       });
     });
+  }
+
+  async detect(projectPath: string): Promise<boolean> {
+    try {
+      await access(join(projectPath, 'pubspec.yaml'));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async startPreview(projectPath: string, port: number, onLog?: (line: string) => void): Promise<ProviderPreviewSession> {
+    return this.startWebPreview(projectPath, port, onLog);
+  }
+
+  async buildAndroid(projectPath: string): Promise<string> {
+    await this.runCommand(['build', 'apk'], projectPath);
+    return join(projectPath, 'build', 'app', 'outputs', 'flutter-apk', 'app-release.apk');
+  }
+
+  async buildIos(projectPath: string): Promise<string> {
+    await this.runCommand(['build', 'ios', '--no-codesign'], projectPath);
+    return join(projectPath, 'build', 'ios', 'iphoneos');
+  }
+
+  async buildWeb(projectPath: string): Promise<string> {
+    await this.runCommand(['build', 'web', '--release'], projectPath);
+    return join(projectPath, 'build', 'web');
+  }
+
+  async getAgentContext(_projectPath: string): Promise<string> {
+    return 'This is a Flutter project running in a local environment.';
+  }
+
+  async validateProject(_projectPath: string): Promise<any> {
+    return { success: true, framework: 'flutter', environment: 'local', checks: [], blockingErrors: 0, warnings: 0, errorCategory: 'success' };
   }
 
   stopPreview(processId: number): void {

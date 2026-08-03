@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { PhoneFrame } from './PhoneFrame';
+import { PreviewAssembly } from './PreviewAssembly';
 import './DetachedPreview.css';
 import { DEVICES } from '../../layout/PreviewPane';
-import type { DeviceType } from './PhoneFrame';
+import { DeviceType } from './PhoneFrame';
 
 export function DetachedPreview() {
   const query = new URLSearchParams(window.location.search);
@@ -14,8 +14,8 @@ export function DetachedPreview() {
   const [scale, setScale]           = useState(0.6);
   const bodyRef = useRef<HTMLDivElement>(null);
 
-  const FRAME_W = device.w;
-  const FRAME_H = device.h;
+  const FRAME_W = device.logicalViewport.width + device.screenCutout.x * 2;
+  const FRAME_H = device.logicalViewport.height + device.screenCutout.y * 2;
 
   useEffect(() => {
     void window.peep.getPreviewSession().then(setSession);
@@ -89,9 +89,12 @@ export function DetachedPreview() {
               height: FRAME_H,
               transform: `scale(${scale})`,
               transformOrigin: 'top left',
+              boxSizing: 'border-box',
+              paddingLeft: device.screenCutout.x,
+              paddingTop: device.screenCutout.y,
             }}
           >
-            <PhoneFrame device={deviceId}>
+            <PreviewAssembly device={device}>
               {session?.status === 'starting' && (
                 <div className="preview-placeholder">
                   <span className="preview-placeholder__icon preview-placeholder__spinner">⏳</span>
@@ -111,10 +114,9 @@ export function DetachedPreview() {
                     key={iframeKey}
                     className="preview-iframe"
                     style={{
-                      width: `${device.lw}px`,
-                      height: `${(device.h - device.padding * 2) / ((device.w - device.padding * 2) / device.lw)}px`,
-                      transform: `scale(${(device.w - device.padding * 2) / device.lw})`,
-                      transformOrigin: 'top left',
+                      width: '100%',
+                      height: '100%',
+                      border: 'none',
                     }}
                     src={session.url}
                     title="Mobile Preview"
@@ -134,7 +136,7 @@ export function DetachedPreview() {
                   <p>Launch the project preview from the IDE.</p>
                 </div>
               )}
-            </PhoneFrame>
+            </PreviewAssembly>
           </div>
         </div>
       </div>

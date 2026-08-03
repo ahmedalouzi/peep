@@ -1,0 +1,23 @@
+{
+  "name": "@peep/server",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.1097.0",
+    "@peep/agent": "workspace:*",
+    "@peep/shared": "workspace:*",
+    "@sentry/node": "^10.68.0",
+    "@sentry/profiling-node": "^10.68.0",
+    "express": "^4.21.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}

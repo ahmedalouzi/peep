@@ -41,6 +41,8 @@ export function EmptyState({ icon, title, description, action, secondaryAction, 
 
 /* ── Synkro-style "No Project" welcome screen ─────────────────── */
 
+import { useAuthStore } from '../../stores/auth-store';
+
 export function NoProjectEmptyState({
   onOpen,
   onNew,
@@ -48,6 +50,7 @@ export function NoProjectEmptyState({
   onOpen: () => void;
   onNew: () => void;
 }) {
+  const { user } = useAuthStore();
   const recentProjects = useWorkspaceStore((s) => s.recentProjects);
   const { openProjectByPath } = useWorkspace();
   const [showAllRecent, setShowAllRecent] = useState(false);
@@ -79,11 +82,17 @@ export function NoProjectEmptyState({
             </svg>
             <h1 className="synkro-title">SYNKRO</h1>
           </div>
-          <div className="synkro-subtitle">
-            <span>Free Plan</span>
-            <span className="synkro-dot">•</span>
-            <a href="#" className="synkro-link">Upgrade</a>
-          </div>
+          {user && (
+            <div className="synkro-subtitle" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-muted)', marginTop: '4px' }}>
+              <span style={{ fontSize: '10px', background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: '10px', color: '#a78bfa', fontWeight: 'bold' }}>
+                {(user.plan || user.tier || 'Free Plan').toUpperCase()}
+              </span>
+              <span className="synkro-dot">•</span>
+              <span style={{ fontSize: '12px' }}>{user.email}</span>
+              <span className="synkro-dot">•</span>
+              <a href="#" onClick={(e) => { e.preventDefault(); window.open('https://synkro.com/upgrade'); }} className="synkro-link" style={{ color: '#60a5fa', textDecoration: 'underline' }}>Upgrade</a>
+            </div>
+          )}
         </div>
 
         {/* Action Cards */}

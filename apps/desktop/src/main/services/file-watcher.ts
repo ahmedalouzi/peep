@@ -7,12 +7,12 @@ const IGNORED = /(^|[\\/])(\.git|node_modules|\.dart_tool|build|\.peep)([\\/]|$)
 export class FileWatcherService {
   private watcher: FSWatcher | null = null;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
-  private onChangeCallback: (() => void) | null = null;
+  private onChangeCallback: ((event: 'add' | 'change' | 'unlink', path: string) => void) | null = null;
 
   watch(
     projectPath: string,
     mainWindow: BrowserWindow | null,
-    onChange: () => void,
+    onChange: (event: 'add' | 'change' | 'unlink', path: string) => void,
   ): void {
     this.stop();
     this.onChangeCallback = onChange;
@@ -23,17 +23,17 @@ export class FileWatcherService {
       awaitWriteFinish: { stabilityThreshold: 400, pollInterval: 100 },
     });
 
-    const schedule = () => {
+    const handleEvent = (event: 'add' | 'change' | 'unlink', path: string) => {
+      this.onChangeCallback?.(event, path);
       if (this.debounceTimer) clearTimeout(this.debounceTimer);
       this.debounceTimer = setTimeout(() => {
-        this.onChangeCallback?.();
         mainWindow?.webContents.send(IPC_EVENTS.PREVIEW_LOG, '[watch] Project files changed');
       }, 500);
     };
 
-    this.watcher.on('change', schedule);
-    this.watcher.on('add', schedule);
-    this.watcher.on('unlink', schedule);
+    this.watcher.on('change', (path) => handleEvent('change', path));
+    this.watcher.on('add', (path) => handleEvent('add', path));
+    this.watcher.on('unlink', (path) => handleEvent('unlink', path));
   }
 
   stop(): void {

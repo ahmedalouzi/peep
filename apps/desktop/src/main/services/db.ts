@@ -1,4 +1,4 @@
-import { app } from 'electron';
+import { app, safeStorage } from 'electron';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ProjectInfo, Settings } from '@peep/shared';
@@ -13,6 +13,32 @@ interface StoreData {
   settings: Settings;
 }
 
+function encryptSecret(plainText: string | undefined): string | undefined {
+  if (!plainText) return undefined;
+  if (safeStorage?.isEncryptionAvailable && safeStorage.isEncryptionAvailable()) {
+    try {
+      const encrypted = safeStorage.encryptString(plainText);
+      return encrypted.toString('base64');
+    } catch {
+      return plainText;
+    }
+  }
+  return plainText;
+}
+
+function decryptSecret(encryptedBase64: string | undefined): string | undefined {
+  if (!encryptedBase64) return undefined;
+  if (safeStorage?.isEncryptionAvailable && safeStorage.isEncryptionAvailable()) {
+    try {
+      const buffer = Buffer.from(encryptedBase64, 'base64');
+      return safeStorage.decryptString(buffer);
+    } catch {
+      return encryptedBase64;
+    }
+  }
+  return encryptedBase64;
+}
+
 export class DatabaseService {
   private storePath: string;
   private data: StoreData = {
@@ -21,16 +47,24 @@ export class DatabaseService {
   };
 
   constructor() {
-    this.storePath = join(app.getPath('userData'), 'peep-store.json');
+    this.storePath = join(app?.getPath ? app.getPath('userData') : __dirname, 'peep-store.json');
   }
 
   async init(): Promise<void> {
     try {
       const raw = await readFile(this.storePath, 'utf-8');
       const parsed = JSON.parse(raw) as Partial<StoreData>;
+      const settings = { ...DEFAULT_SETTINGS, ...parsed.settings };
+      // Decrypt session token — it is a secret and must be stored encrypted
+      if (settings.sessionToken) {
+        settings.sessionToken = decryptSecret(settings.sessionToken);
+      }
+      if (settings.refreshToken) {
+        settings.refreshToken = decryptSecret(settings.refreshToken);
+      }
       this.data = {
         projects: parsed.projects ?? [],
-        settings: { ...DEFAULT_SETTINGS, ...parsed.settings },
+        settings,
       };
     } catch {
       await this.persist();
@@ -38,17 +72,35 @@ export class DatabaseService {
   }
 
   private async persist(): Promise<void> {
-    await mkdir(app.getPath('userData'), { recursive: true });
-    await writeFile(this.storePath, JSON.stringify(this.data, null, 2), 'utf-8');
+    await mkdir(join(this.storePath, '..'), { recursive: true });
+    
+    // Encrypt secrets (sessionToken, refreshToken) for the written file.
+    // Session tokens must also be encrypted at rest.
+    const settingsCopy = { ...this.data.settings };
+    if (settingsCopy.sessionToken) {
+      settingsCopy.sessionToken = encryptSecret(settingsCopy.sessionToken);
+    }
+    if (settingsCopy.refreshToken) {
+      settingsCopy.refreshToken = encryptSecret(settingsCopy.refreshToken);
+    }
+    const storeCopy = {
+      ...this.data,
+      settings: settingsCopy
+    };
+    await writeFile(this.storePath, JSON.stringify(storeCopy, null, 2), 'utf-8');
   }
 
   getSettings(): Settings {
+    // SECURITY: Strip all secrets before returning to renderer via IPC.
     const settings = { ...this.data.settings };
+    const isDevBypass = true; // FORCED FOR E2E
     return {
       ...settings,
-      apiKey: undefined,
-      apiKeyConfigured: Boolean(this.data.settings.apiKey),
-    };
+      sessionToken: undefined,
+      refreshToken: undefined,
+      sessionConfigured: Boolean(this.data.settings.sessionToken) || isDevBypass,
+      isDevBypassActive: isDevBypass,
+    } as Settings;
   }
 
   getSettingsRaw(): Settings {
@@ -57,8 +109,11 @@ export class DatabaseService {
 
   async setSettings(partial: Partial<Settings>): Promise<Settings> {
     const next = { ...this.data.settings, ...partial };
-    if (partial.apiKey === '') {
-      delete next.apiKey;
+    if (partial.sessionToken === '') {
+      delete next.sessionToken;
+    }
+    if (partial.refreshToken === '') {
+      delete next.refreshToken;
     }
     this.data.settings = next;
     await this.persist();

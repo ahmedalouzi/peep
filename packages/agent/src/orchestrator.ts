@@ -1,10 +1,12 @@
 import { OPENAI_TOOLS } from './tools/definitions';
 import type { ChatMessage, ToolCall } from './types';
 
+import type { AIGateway, CapabilityTier } from '@peep/shared';
+
 export interface AgentConfig {
-  apiKey: string;
-  provider: 'openai' | 'anthropic' | 'google';
-  model?: string;
+  capabilityTier: CapabilityTier;
+  sessionToken: string;
+  gateway?: AIGateway;
 }
 
 export interface AgentCallbacks {
@@ -18,190 +20,44 @@ export interface AgentToolExecutor {
   execute: (name: string, args: Record<string, unknown>) => Promise<string>;
 }
 
-const MAX_ITERATIONS = 8;
-
-const getApiUrl = (config: AgentConfig) => {
-  if (config.provider === 'google') {
-    return 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
-  }
-  return 'https://api.openai.com/v1/chat/completions';
-};
-
-export function getRoutedModel(config: AgentConfig, isComplex: boolean): string {
-  if (config.model && config.model !== 'auto') {
-    return config.model;
-  }
-  if (config.provider === 'google') {
-    return isComplex ? 'gemini-1.5-pro' : 'gemini-3.5-flash';
-  } else if (config.provider === 'openai') {
-    return isComplex ? 'gpt-4o' : 'gpt-4o-mini';
-  }
-  return 'gpt-4o-mini';
-}
-
-function estimateTokens(text: string): number {
-  return Math.ceil((text || '').length / 4);
-}
-
-function calculateCost(model: string, inputTokens: number, outputTokens: number) {
-  let inputRate = 0;
-  let outputRate = 0;
-  const m = model.toLowerCase();
-  if (m.includes('gemini-3.5-flash') || m.includes('gemini-1.5-flash')) {
-    inputRate = 0.075 / 1_000_000;
-    outputRate = 0.30 / 1_000_000;
-  } else if (m.includes('gemini-1.5-pro')) {
-    inputRate = 1.25 / 1_000_000;
-    outputRate = 5.00 / 1_000_000;
-  } else if (m.includes('gpt-4o-mini')) {
-    inputRate = 0.15 / 1_000_000;
-    outputRate = 0.60 / 1_000_000;
-  } else if (m.includes('gpt-4o')) {
-    inputRate = 5.00 / 1_000_000;
-    outputRate = 15.00 / 1_000_000;
-  } else {
-    inputRate = 0.15 / 1_000_000;
-    outputRate = 0.60 / 1_000_000;
-  }
-  const cost = (inputTokens * inputRate) + (outputTokens * outputRate);
-  return { inputTokens, outputTokens, cost };
-}
-
-function logCost(model: string, inputString: string, outputString: string) {
-  const inputTokens = estimateTokens(inputString);
-  const outputTokens = estimateTokens(outputString);
-  const usage = calculateCost(model, inputTokens, outputTokens);
-  console.log(`[AI Gateway] Model: ${model} | Input: ${usage.inputTokens} t | Output: ${usage.outputTokens} t | Cost: $${usage.cost.toFixed(6)}`);
-}
+const MAX_ITERATIONS = 50;
 
 async function callOpenAI(
   config: AgentConfig,
   messages: ChatMessage[],
   signal: AbortSignal,
-  isComplex?: boolean,
 ): Promise<ChatMessage> {
-  const model = getRoutedModel(config, isComplex ?? false);
-  const cleanKey = config.apiKey.replace(/[^\x20-\x7E]/g, '');
-
-  const response = await fetch(getApiUrl(config), {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${cleanKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      messages: messages.map((m) => {
-        if (m.role === 'tool') {
-          return { role: 'tool', content: m.content, tool_call_id: m.tool_call_id, name: m.name || 'tool_name' };
-        }
-        if (m.role === 'assistant' && m.tool_calls) {
-          return { role: 'assistant', content: m.content || null, tool_calls: m.tool_calls };
-        }
-        return { role: m.role, content: m.content };
-      }),
-      tools: OPENAI_TOOLS,
-      tool_choice: 'auto',
-    }),
-    signal,
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(body || `${config.provider} API error ${response.status}`);
+  if (!config.gateway) {
+    throw new Error('AIGateway is required to make calls');
   }
 
-  const data = (await response.json()) as {
-    choices: Array<{ message: ChatMessage }>;
-  };
-
-  const assistantMessage = data.choices[0]?.message ?? { role: 'assistant', content: 'No response.' };
-  
-  // Track tokens and cost
-  const promptText = JSON.stringify(messages);
-  const completionText = assistantMessage.content || JSON.stringify(assistantMessage.tool_calls || '');
-  logCost(model, promptText, completionText);
-
-  return assistantMessage;
-}
-
-async function streamOpenAISummary(
-  config: AgentConfig,
-  messages: ChatMessage[],
-  callbacks: AgentCallbacks,
-  signal: AbortSignal,
-  isComplex?: boolean,
-): Promise<string> {
-  const model = getRoutedModel(config, isComplex ?? false);
-  const cleanKey = config.apiKey.replace(/[^\x20-\x7E]/g, '');
-
-  const response = await fetch(getApiUrl(config), {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${cleanKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      messages: messages.map((m) => {
-        if (m.role === 'tool') {
-          return { role: 'tool', content: m.content, tool_call_id: m.tool_call_id, name: m.name || 'tool_name' };
-        }
-        if (m.role === 'assistant' && m.tool_calls) {
-          return { role: 'assistant', content: m.content || null, tool_calls: m.tool_calls };
-        }
-        return { role: m.role, content: m.content };
-      }),
-      stream: true,
-    }),
-    signal,
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(body || `OpenAI API error ${response.status}`);
-  }
-
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error('No response stream');
-
-  const decoder = new TextDecoder();
-  let fullText = '';
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() ?? '';
-
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
-      const payload = line.slice(6).trim();
-      if (payload === '[DONE]') continue;
-
-      try {
-        const parsed = JSON.parse(payload) as {
-          choices?: Array<{ delta?: { content?: string } }>;
-        };
-        const delta = parsed.choices?.[0]?.delta?.content;
-        if (delta) {
-          fullText += delta;
-          callbacks.onDelta(delta);
-        }
-      } catch {
-        /* skip malformed chunks */
+  const response = await config.gateway.generate({
+    tier: config.capabilityTier,
+    messages: messages.map((m) => {
+      if (m.role === 'tool') {
+        return { role: 'tool', content: m.content, tool_call_id: m.tool_call_id, name: m.name || 'tool_name' };
       }
-    }
+      if (m.role === 'assistant' && m.tool_calls) {
+        return { role: 'assistant', content: m.content || null, tool_calls: m.tool_calls };
+      }
+      return { role: m.role, content: m.content };
+    }),
+    tools: OPENAI_TOOLS,
+  }, { signal });
+
+  if (response.toolCalls && response.toolCalls.length > 0) {
+    return {
+      role: 'assistant',
+      content: response.content || '',
+      tool_calls: response.toolCalls.map(t => ({
+        id: t.id,
+        type: 'function',
+        function: { name: t.name, arguments: typeof t.arguments === 'string' ? t.arguments : JSON.stringify(t.arguments) }
+      }))
+    };
   }
 
-  // Track tokens and cost for streaming summary
-  const promptText = JSON.stringify(messages);
-  logCost(model, promptText, fullText);
-
-  return fullText;
+  return { role: 'assistant', content: response.content || 'No response.' };
 }
 
 async function executeToolCalls(
@@ -281,8 +137,8 @@ export async function runAgentLoop(
   signal: AbortSignal,
   isComplex?: boolean,
 ): Promise<string> {
-  if (config.provider !== 'openai' && config.provider !== 'google') {
-    throw new Error('Only OpenAI and Google Gemini providers are supported in this version. Set provider in Settings.');
+  if (!config.gateway) {
+    throw new Error('AIGateway is missing from AgentConfig');
   }
 
   const startTime = Date.now();
@@ -303,7 +159,7 @@ export async function runAgentLoop(
     if (signal.aborted) throw new Error('Cancelled');
 
     callbacks.onStatus(i === 0 ? 'Thinking…' : 'Continuing…');
-    const assistantMessage = await callOpenAI(config, messages, signal, isComplex);
+    const assistantMessage = await callOpenAI(config, messages, signal);
 
     if (assistantMessage.content) {
       callbacks.onStatus(assistantMessage.content.trim());
@@ -334,6 +190,32 @@ export async function runAgentLoop(
           toolLogs += `Renaming: <code>${args.oldPath || ''}</code> → <code>${args.newPath || ''}</code>.<br/>`;
         } else if (name === 'update_design_manifest') {
           toolLogs += `Updating Design Manifest (Design DNA).<br/>`;
+        } else if (name === 'manage_plan') {
+          const act = String(args.action || 'update');
+          if (act === 'init') {
+            toolLogs += `📋 Initialized Plan: <strong>${args.goal || 'Engineering Plan'}</strong>.<br/>`;
+          } else if (act === 'update_step') {
+            if (args.status === 'failed') {
+              toolLogs += `⚠️ <strong>Step Failed:</strong> <code>${args.stepId || ''}</code> ${args.error ? `— ${args.error}` : ''}<br/>🔍 <strong>Diagnosing Error...</strong><br/>`;
+            } else if (args.status === 'completed') {
+              toolLogs += `✅ <strong>Step Completed:</strong> <code>${args.stepId || ''}</code>.<br/>`;
+            } else {
+              toolLogs += `📋 Plan step <code>${args.stepId || ''}</code> → <strong>${args.status || 'updated'}</strong>.<br/>`;
+            }
+          } else if (act === 'retry_step') {
+            toolLogs += `🔧 <strong>Attempting Recovery Strategy:</strong> ${args.strategy || 'Auto Recovery'}<br/>🔄 <strong>Retrying Step:</strong> <code>${args.stepId || ''}</code>.<br/>`;
+          } else if (act === 'record_recovery') {
+            const status = String(args.recoveryStatus || 'pending');
+            if (status === 'success') {
+              toolLogs += `✅ <strong>Recovery Successful!</strong><br/>`;
+            } else if (status === 'failed') {
+              toolLogs += `❌ <strong>Recovery Strategy Exhausted.</strong><br/>`;
+            } else {
+              toolLogs += `🔧 Recorded recovery attempt.<br/>`;
+            }
+          } else {
+            toolLogs += `📋 Plan updated.<br/>`;
+          }
         }
       }
 
@@ -404,7 +286,7 @@ export async function runAgentLoop(
   }
 
   callbacks.onStatus('Summarizing changes…');
-  const summary = await streamOpenAISummary(
+  const summary = await callOpenAI(
     config,
     [
       ...messages,
@@ -413,11 +295,10 @@ export async function runAgentLoop(
         content: 'Summarize what you did and what the user should review. Be concise.',
       },
     ],
-    callbacks,
     signal,
-    isComplex,
   );
 
+  callbacks.onDelta(summary.content || '');
   callbacks.onDone();
-  return prefix + summary;
+  return prefix + (summary.content || '');
 }

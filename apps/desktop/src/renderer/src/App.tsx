@@ -1,15 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import { AppShell } from './layout/AppShell';
-import { FilePicker } from './features/explorer/FilePicker';
-import { SettingsModal } from './features/settings/SettingsModal';
-import { NewProjectModal } from './features/project/NewProjectModal';
-import { OnboardingWizard } from './features/onboarding/OnboardingWizard';
 import { UpdateBanner } from './features/shared/UpdateBanner';
-import { KeyboardHelp } from './features/shared/KeyboardHelp';
 import { usePeepEvents } from './hooks/usePeepEvents';
 import { DetachedPreview } from './features/preview/DetachedPreview';
-import { PublishModal } from './features/publish/PublishModal';
 import { useComposerStore } from './stores/composer-store';
+import { useAuthStore } from './stores/auth-store';
+import { useWorkspaceStore } from './stores/workspace-store';
+import { LoginScreen } from './features/auth/LoginScreen';
+import { HomeScreen } from './features/home/HomeScreen';
+
+const FilePicker = lazy(() => import('./features/explorer/FilePicker').then(m => ({ default: m.FilePicker })));
+const SettingsModal = lazy(() => import('./features/settings/SettingsModal').then(m => ({ default: m.SettingsModal })));
+const NewProjectModal = lazy(() => import('./features/project/NewProjectModal').then(m => ({ default: m.NewProjectModal })));
+const OnboardingWizard = lazy(() => import('./features/onboarding/OnboardingWizard').then(m => ({ default: m.OnboardingWizard })));
+const KeyboardHelp = lazy(() => import('./features/shared/KeyboardHelp').then(m => ({ default: m.KeyboardHelp })));
+const PublishModal = lazy(() => import('./features/publish/PublishModal').then(m => ({ default: m.PublishModal })));
 
 export default function App() {
   usePeepEvents();
@@ -18,12 +23,28 @@ export default function App() {
   const windowType = query.get('windowType');
 
   // ALL hooks must be declared before any conditional return
+  const { authState, checkSession, setAuthState } = useAuthStore();
+  const project = useWorkspaceStore((s) => s.project);
   const [globalPickerOpen, setGlobalPickerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null);
+
+  // Check session on mount
+  useEffect(() => {
+    void checkSession();
+  }, [checkSession]);
+
+  // Handle transitions between authenticated home and active workspace
+  useEffect(() => {
+    if (authState === 'AUTHENTICATED_HOME' && project) {
+      setAuthState('WORKSPACE');
+    } else if (authState === 'WORKSPACE' && !project) {
+      setAuthState('AUTHENTICATED_HOME');
+    }
+  }, [project, authState, setAuthState]);
 
   useEffect(() => {
     void window.peep.getSettings().then((settings) => {
@@ -87,6 +108,42 @@ export default function App() {
     return <DetachedPreview />;
   }
 
+  if (authState === 'BOOTING' || authState === 'AUTHENTICATING') {
+    return (
+      <div style={{ display: 'flex', flex: 1, height: '100vh', width: '100vw', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0b0b0e', color: '#94a3b8', fontFamily: 'Inter, sans-serif' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+          <div style={{ width: '32px', height: '32px', border: '3px solid rgba(255, 255, 255, 0.05)', borderTopColor: '#60a5fa', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          <span style={{ fontSize: '13px', fontWeight: 500, letterSpacing: '0.05em' }}>Loading Workspace…</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (authState === 'LOGIN') {
+    return <LoginScreen />;
+  }
+
+  if (authState === 'AUTHENTICATED_HOME') {
+    return (
+      <>
+        <UpdateBanner />
+        <HomeScreen />
+        <Suspense fallback={null}>
+          {settingsOpen && <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />}
+          {newProjectOpen && (
+            <NewProjectModal
+              open={newProjectOpen}
+              onClose={() => setNewProjectOpen(false)}
+              onCreated={() => undefined}
+            />
+          )}
+          {helpOpen && <KeyboardHelp open={helpOpen} onClose={() => setHelpOpen(false)} />}
+        </Suspense>
+      </>
+    );
+  }
+
   if (showOnboarding === null) return null;
 
   return (
@@ -98,23 +155,20 @@ export default function App() {
         onNewProject={() => setNewProjectOpen(true)}
       />
 
-      <FilePicker open={globalPickerOpen} onClose={() => setGlobalPickerOpen(false)} />
-
-      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-
-      <NewProjectModal
-        open={newProjectOpen}
-        onClose={() => setNewProjectOpen(false)}
-        onCreated={() => undefined}
-      />
-
-      <PublishModal open={publishOpen} onClose={() => setPublishOpen(false)} />
-
-      <KeyboardHelp open={helpOpen} onClose={() => setHelpOpen(false)} />
-
-      {showOnboarding && (
-        <OnboardingWizard onComplete={() => setShowOnboarding(false)} />
-      )}
+      <Suspense fallback={null}>
+        {globalPickerOpen && <FilePicker open={globalPickerOpen} onClose={() => setGlobalPickerOpen(false)} />}
+        {settingsOpen && <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />}
+        {newProjectOpen && (
+          <NewProjectModal
+            open={newProjectOpen}
+            onClose={() => setNewProjectOpen(false)}
+            onCreated={() => undefined}
+          />
+        )}
+        {publishOpen && <PublishModal open={publishOpen} onClose={() => setPublishOpen(false)} />}
+        {helpOpen && <KeyboardHelp open={helpOpen} onClose={() => setHelpOpen(false)} />}
+        {showOnboarding && <OnboardingWizard onComplete={() => setShowOnboarding(false)} />}
+      </Suspense>
     </>
   );
 }

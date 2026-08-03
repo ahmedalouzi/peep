@@ -5,6 +5,7 @@ import { execSync } from 'node:child_process';
 import { SCENARIOS } from './scenarios';
 import { EvalExecutor } from './executor';
 import { runAgentLoop } from '../orchestrator';
+import { MockAIGateway } from '../models/mock-gateway';
 import { parseFlutterAnalyze } from '@peep/flutter-adapter';
 import type { Diagnostic } from '@peep/shared';
 
@@ -137,7 +138,7 @@ async function run() {
 
       console.log(`  Prompt: "${scenario.prompt}"`);
       await runAgentLoop(
-        { apiKey: API_KEY!, provider: 'openai', model: 'gpt-4o-mini' },
+        { capabilityTier: 'fast', sessionToken: 'mock-session', gateway: new MockAIGateway() },
         isRN ? SYSTEM_CONTEXT_RN : SYSTEM_CONTEXT_FLUTTER,
         [{ role: 'user', content: scenario.prompt }],
         executor,

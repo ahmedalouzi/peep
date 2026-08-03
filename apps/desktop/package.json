@@ -19,6 +19,8 @@
     "@peep/flutter-adapter": "workspace:*",
     "@peep/platform-core": "workspace:*",
     "@peep/shared": "workspace:*",
+    "@sentry/electron": "^7.16.0",
+    "@tanstack/react-virtual": "^3.14.9",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
     "chokidar": "^4.0.3",

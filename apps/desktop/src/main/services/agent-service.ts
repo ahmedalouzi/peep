@@ -1,23 +1,24 @@
 import { randomUUID } from 'node:crypto';
 import { join, isAbsolute, normalize } from 'node:path';
-import { access, unlink, rename as fsRename } from 'node:fs/promises';
+import { unlink, rename as fsRename } from 'node:fs/promises';
+// @ts-ignore - TS cache issue with export
+import { discoverProjectContext } from '@peep/agent';
 import { spawn } from 'node:child_process';
 import type { BrowserWindow } from 'electron';
 import { IPC_EVENTS } from '@peep/shared';
 import type { ProposedEdit, AgentStreamEvent, AgentSendOptions } from '@peep/shared';
-import { buildAgentContext, runAgentLoop, SCAFFOLD_SYSTEM_ADDENDUM, type ChatMessage, classifyCommand, loadDesignManifest, saveDesignManifest, serializeDesignManifest, type DesignManifest } from '@peep/agent';
+import { buildAgentContext, runAgentLoop, SCAFFOLD_SYSTEM_ADDENDUM, type ChatMessage, classifyCommand, loadDesignManifest, saveDesignManifest, serializeDesignManifest, ProductionAIGateway } from '@peep/agent';
 import type { DatabaseService } from './db';
 import type { WorkspaceManager } from './workspace-manager';
-import type { FlutterService } from './flutter-service';
-import type { ReactNativeService } from './react-native-service';
 import { searchFiles } from './file-search';
 import { searchContent } from './content-search';
 
 const RN_SYSTEM_ADDENDUM = `
 This is a React Native / Expo project.
 Key rules:
-- **PLANNING**: For requests that require writing, modifying, or scaffolding code files, you MUST first create or update a file named \`.peep/plan.md\` in the project root. This file must contain a clean, simple, bulleted and summarized checklist of the features/tasks you plan to implement. Do NOT edit code files in the same turn as writing/updating the plan. Instead, instruct the user to click the "Proceed with Implementation" button in the plan tab. Only when the user says "Proceed with implementation" should you propose the actual code edits.
-- **AUTONOMY**: Never ask conversational questions or request permission for coding tasks. On initial request, immediately write/update the \`.peep/plan.md\` file and tell the user to click "Proceed". Once they click or say "Proceed with implementation", you have full authority to execute ALL edits, run terminal commands, compile/typecheck, and self-correct diagnostics. You MUST NOT update the plan, stop, or ask for confirmation again. Execute all necessary tool calls and finish the task completely in that same run-loop.
+- **PLANNING**: For multi-step software engineering requests (such as creating projects, installing packages, building features across files, or complex refactoring), you MUST first initialize a structured task plan using \`manage_plan\` (action: "init"). Do NOT create a plan for simple single-step requests (such as "explain this file", "rename a variable", or a single conversation question). All plan updates must go through \`manage_plan\`. As you execute tools, call \`manage_plan\` (action: "update_step") to transition step statuses (pending -> in_progress -> completed | failed). If a step fails, call \`manage_plan\` with action: "update_step" and status: "failed". You MAY retry a failed step by calling \`manage_plan\` (action: "retry_step").
+- **DETERMINISTIC COMPLETION**: You MUST NOT declare a task completed if any required step in the plan remains in "pending", "in_progress", or "failed" status. Completion is only valid when all required steps are marked "completed".
+- **AUTONOMY**: On receiving a multi-step prompt, immediately initialize the plan using \`manage_plan\` and continue executing all tools required to complete the steps autonomously. You have full authority to execute ALL edits, run terminal commands, compile/typecheck, and self-correct diagnostics. Do not pause unnecessarily once a plan is active.
 - **CONVERSATIONAL CHAT**: If the user's message is a greeting (e.g., "hi", "hello"), a general question, or a discussion that does NOT ask you to write, edit, or scaffold code, respond conversationally, politely, and briefly. In this case, do NOT call any tools, do NOT create/update the plan, and do NOT ask them to click "Proceed".
 - **WALKTHROUGH**: After completing the code edits (in the same turn you propose the code changes), you MUST also create or update a file named \`.peep/walkthrough.md\` in the project root via the tool call. This file must contain a clear, professional summary of the changes made, the files created/modified, and details on how the developer can verify the new features.
 - **CODE PRESERVATION**: When modifying or refactoring files, you MUST preserve all existing features, UI elements, handlers, imports, and business logic unless explicitly requested to remove or replace them. Never drop progress indicators, buttons, state properties, or helper methods during subsequent feature additions.
@@ -35,17 +36,33 @@ Key rules:
 - File extensions: .tsx for components, .ts for logic/hooks.
 `;
 
+import { ProjectIndexer, ProjectRetrieval, MemoryManager, MemoryRetrieval } from '@peep/agent';
+import type { PlatformRegistry } from './platform-registry';
+
 export class AgentService {
   private pendingEdits: ProposedEdit[] = [];
   private abortController: AbortController | null = null;
   private mainWindow: BrowserWindow | null = null;
+  private indexers: Map<string, ProjectIndexer> = new Map();
+  private memoryManagers: Map<string, MemoryManager> = new Map();
+  private activeToolProcesses = new Set<any>();
 
   constructor(
     private db: DatabaseService,
     private workspace: WorkspaceManager,
-    private flutter: FlutterService,
-    private rnService?: ReactNativeService,
+    private registry: PlatformRegistry,
   ) {}
+
+  async onFileChanged(projectPath: string, event: 'add' | 'change' | 'unlink', path: string): Promise<void> {
+    const indexer = this.indexers.get(projectPath);
+    if (!indexer) return;
+    
+    if (event === 'unlink') {
+      await indexer.removeFile(path);
+    } else {
+      await indexer.updateFile(path, true);
+    }
+  }
 
   setMainWindow(window: BrowserWindow | null): void {
     this.mainWindow = window;
@@ -112,13 +129,28 @@ export class AgentService {
     this.pendingEdits = this.pendingEdits.filter((e) => !editIds.includes(e.id));
     this.emitEdits();
 
-    const diagnostics = await this.flutter.analyze(project.path);
-    this.mainWindow?.webContents.send(IPC_EVENTS.DIAGNOSTICS_UPDATED, diagnostics);
   }
 
   cancel(): void {
     this.abortController?.abort();
     this.abortController = null;
+
+    for (const child of this.activeToolProcesses) {
+      const pid = child.pid;
+      if (pid) {
+        if (process.platform === 'win32') {
+          try {
+            const { exec } = require('node:child_process');
+            exec(`taskkill /pid ${pid} /f /t`);
+          } catch {}
+        } else {
+          try {
+            child.kill('SIGKILL');
+          } catch {}
+        }
+      }
+    }
+    this.activeToolProcesses.clear();
   }
 
   async scaffold(projectPath: string, prompt: string): Promise<void> {
@@ -133,10 +165,6 @@ export class AgentService {
   async send(options: AgentSendOptions): Promise<void> {
     const projectPath = options.projectPath;
     const settings = this.db.getSettingsRaw();
-    if (!settings.apiKey) {
-      this.emitStream({ type: 'error', content: 'Add your OpenAI API key in Settings (gear icon).' });
-      return;
-    }
 
     this.cancel();
     this.abortController = new AbortController();
@@ -148,37 +176,66 @@ export class AgentService {
     let mainDart: string | undefined;
     let packageJson: string | undefined;
     let appEntry: string | undefined;
+    let providerContextStr = '';
+    let mobileEnv: any = null;
 
     if (projectPath) {
-      // Detect platform by checking for pubspec.yaml vs package.json
-      try {
-        await access(join(projectPath, 'pubspec.yaml'));
-        // Flutter project
-        pubspec = await this.workspace.readFile(join(projectPath, 'pubspec.yaml')).catch(() => undefined);
-        mainDart = await this.workspace.readFile(join(projectPath, 'lib', 'main.dart')).catch(() => undefined);
-      } catch {
-        const fullText = (options.history?.map(h => h.content).join(' ') || '') + ' ' + options.message;
-        if (fullText.toLowerCase().includes('flutter')) {
-          isReactNative = false;
-          // User explicitly asked for Flutter, check if SDK is installed
-          const flutterSdk = await this.flutter.detectSdk();
-          if (!flutterSdk) {
-            this.emitStream({ type: 'error', content: 'Flutter SDK is not detected. Please install Flutter and add the path in Settings, or ask me to build it with React Native instead.' });
-            return;
-          }
+      const detectResult = await this.registry.detect(projectPath);
+      const provider = detectResult.provider;
+      
+      if (provider) {
+        mobileEnv = provider.env;
+        isReactNative = mobileEnv.framework === 'react-native';
+        providerContextStr = await provider.getAgentContext(projectPath);
+
+        if (isReactNative) {
+          packageJson = await this.workspace.readFile(join(projectPath, 'package.json')).catch(() => undefined);
+          appEntry = await this.workspace.readFile(join(projectPath, 'App.tsx')).catch(() =>
+            this.workspace.readFile(join(projectPath, 'App.js')).catch(() => undefined)
+          );
         } else {
-          isReactNative = true;
+          pubspec = await this.workspace.readFile(join(projectPath, 'pubspec.yaml')).catch(() => undefined);
+          mainDart = await this.workspace.readFile(join(projectPath, 'lib', 'main.dart')).catch(() => undefined);
         }
-        
-        packageJson = await this.workspace.readFile(join(projectPath, 'package.json')).catch(() => undefined);
-        // Try common RN entry points
-        appEntry = await this.workspace.readFile(join(projectPath, 'App.tsx')).catch(() =>
-          this.workspace.readFile(join(projectPath, 'App.js')).catch(() => undefined)
-        );
+      } else {
+        // Fallback for unknown
+        const fullText = (options.history?.map(h => h.content).join(' ') || '') + ' ' + options.message;
+        isReactNative = !fullText.toLowerCase().includes('flutter');
       }
     }
 
     const treeSummary = projectPath ? await this.buildTreeSummary(projectPath) : '';
+
+    let intelligenceContext = '';
+    let memoryContext = '';
+    
+    if (projectPath) {
+      let indexer = this.indexers.get(projectPath);
+      if (!indexer) {
+        indexer = new ProjectIndexer(projectPath, isReactNative ? 'react-native' : 'flutter');
+        this.indexers.set(projectPath, indexer);
+        const loaded = await indexer.loadIndex();
+        if (!loaded) {
+          await indexer.fullIndex();
+        }
+      }
+      
+      const retrieval = new ProjectRetrieval(indexer.getIndex(), projectPath);
+      const retrievalResult = retrieval.retrieveRelevantContext(options.message);
+      intelligenceContext = '\n\n' + retrievalResult.summary;
+
+      let memoryManager = this.memoryManagers.get(projectPath);
+      if (!memoryManager) {
+        memoryManager = new MemoryManager(projectPath);
+        await memoryManager.loadMemory();
+        this.memoryManagers.set(projectPath, memoryManager);
+      }
+      const memoryRetrieval = new MemoryRetrieval(memoryManager.getStore());
+      const relevantMemory = memoryRetrieval.retrieveRelevantMemory(options.message);
+      if (relevantMemory) {
+        memoryContext = '\n\n' + relevantMemory;
+      }
+    }
 
     // Load Design Manifest if it exists — inject into AI context for all UI tasks
     let designManifestContext = '';
@@ -189,13 +246,22 @@ export class AgentService {
       }
     }
 
+    let providerDetails = '';
+    if (mobileEnv) {
+      providerDetails = `\n\n[ENVIRONMENT CAPABILITIES]\n\`\`\`json\n${JSON.stringify(mobileEnv, null, 2)}\n\`\`\`\n\n[FRAMEWORK CONTEXT]\n${providerContextStr}\n`;
+    }
+
     const rnAddendum = isReactNative ? RN_SYSTEM_ADDENDUM : '';
-    const systemContext =
-      (options.scaffoldMode ? `${SCAFFOLD_SYSTEM_ADDENDUM}\n\n` : '') +
-      rnAddendum +
-      designManifestContext +
-      buildAgentContext({
-        projectPath: options.projectPath,
+      const systemContext =
+        (options.scaffoldMode ? `${SCAFFOLD_SYSTEM_ADDENDUM}\n\n` : '') +
+        `\n[ACTIVE PROJECT ROOT]\n${projectPath ? (await this.registry.detect(projectPath)).projectRoot : 'None'}\n` +
+        rnAddendum +
+        providerDetails +
+        intelligenceContext +
+        memoryContext +
+        designManifestContext +
+        buildAgentContext({
+          projectPath: options.projectPath,
         treeSummary,
         pubspec: pubspec ?? packageJson,
         mainDart: mainDart ?? appEntry,
@@ -294,6 +360,7 @@ export class AgentService {
                 shell,
                 env: process.env,
               });
+              this.activeToolProcesses.add(child);
 
               let stdout = '';
               let stderr = '';
@@ -306,16 +373,19 @@ export class AgentService {
               });
 
               const timeout = setTimeout(() => {
+                this.activeToolProcesses.delete(child);
                 child.kill();
                 resolve(`Command timed out after 120s.\nStdout:\n${stdout}\nStderr:\n${stderr}`);
               }, 120000);
 
               child.on('close', (code) => {
+                this.activeToolProcesses.delete(child);
                 clearTimeout(timeout);
                 resolve(`Command exited with code ${code}.\nStdout:\n${stdout}\nStderr:\n${stderr}`);
               });
 
               child.on('error', (err) => {
+                this.activeToolProcesses.delete(child);
                 clearTimeout(timeout);
                 resolve(`Command execution error: ${err.message}\nStdout:\n${stdout}\nStderr:\n${stderr}`);
               });
@@ -348,10 +418,9 @@ export class AgentService {
             return `Renamed: ${args.oldPath} → ${args.newPath}`;
           }
           case 'update_design_manifest': {
-            const incoming = args.manifest as Partial<DesignManifest>;
-            const existing = (await loadDesignManifest(projectPath) ?? {}) as Partial<DesignManifest>;
+            const incoming = args.manifest as any;
+            const existing = (await loadDesignManifest(projectPath) ?? {}) as any;
             // Merge deeply, with the AI's incoming manifest winning over existing fields.
-            // Cast to `unknown` then `DesignManifest` so TS accepts the partial spread.
             const merged = {
               ...existing,
               ...incoming,
@@ -361,14 +430,10 @@ export class AgentService {
               borderRadius: { ...(existing.borderRadius ?? {}), ...(incoming.borderRadius ?? {}) },
               elevation: { ...(existing.elevation ?? {}), ...(incoming.elevation ?? {}) },
               buttons: { ...(existing.buttons ?? {}), ...(incoming.buttons ?? {}) },
-              cards: { ...(existing.cards ?? {}), ...(incoming.cards ?? {}) },
-              navigation: { ...(existing.navigation ?? {}), ...(incoming.navigation ?? {}) },
-              motion: { ...(existing.motion ?? {}), ...(incoming.motion ?? {}) },
-              accessibility: { ...(existing.accessibility ?? {}), ...(incoming.accessibility ?? {}) },
-              generatedAt: (existing as DesignManifest).generatedAt ?? new Date().toISOString(),
+              generatedAt: existing?.generatedAt ?? new Date().toISOString(),
               lastUpdatedAt: new Date().toISOString(),
-              version: ((existing as DesignManifest).version ?? 0) + 1,
-            } as unknown as DesignManifest;
+              version: (existing?.version ?? 0) + 1,
+            } as any;
             await saveDesignManifest(projectPath, merged);
             return `Design Manifest saved to .peep/design.json (v${merged.version}).`;
           }
@@ -429,34 +494,342 @@ export class AgentService {
 
             this.emitEdits();
 
-            let diagOutput = '';
+            return `Proposed edit applied to ${path}.`;
+          }
+          case 'manage_plan': {
+            const jsonPath = this.resolvePath(projectPath, '.peep/plan.json');
+            const mdPath = this.resolvePath(projectPath, '.peep/plan.md');
+            let plan: any = { taskId: '', goal: '', complexity: 'medium', steps: [], status: 'in_progress' };
             try {
-              const isFlutter = await this.flutter.isFlutterProject(projectPath);
-              if (isFlutter) {
-                const diags = await this.flutter.analyze(projectPath);
-                if (diags.length > 0) {
-                  diagOutput = '\n\nActive compilation/analysis diagnostics after this change:\n' +
-                    diags.map(d => `- [${d.severity}] ${d.file}:${d.line}:${d.column} - ${d.message}`).join('\n');
-                } else {
-                  diagOutput = '\n\nAnalysis passed with 0 errors.';
-                }
-              } else if (this.rnService) {
-                const isRN = await this.rnService.isReactNativeProject(projectPath);
-                if (isRN) {
-                  const diags = await this.rnService.analyze(projectPath);
-                  if (diags.length > 0) {
-                    diagOutput = '\n\nActive React Native TS/ESLint diagnostics after this change:\n' +
-                      diags.map(d => `- [${d.severity}] ${d.file}:${d.line}:${d.column} - ${d.message}`).join('\n');
-                  } else {
-                    diagOutput = '\n\nAnalysis passed with 0 errors.';
-                  }
-                }
-              }
-            } catch (e) {
-              // Ignore errors
+              const content = await this.workspace.readFile(jsonPath);
+              plan = JSON.parse(content);
+            } catch {
+              // Ignore, start fresh
             }
 
-            return `Proposed edit applied to ${path}.${diagOutput}`;
+            if (args.action === 'init') {
+              plan = {
+                taskId: randomUUID(),
+                goal: args.goal || 'Software Engineering Task',
+                complexity: args.complexity || 'medium',
+                steps: (Array.isArray(args.steps) ? (args.steps as any[]) : []).map((s: any) => ({
+                  id: String(s.id),
+                  description: String(s.description),
+                  status: (s.status || 'pending') as any,
+                  attempts: 1,
+                  required: s.required !== false,
+                  relevantFiles: Array.isArray(s.relevantFiles) ? s.relevantFiles.map(String) : undefined,
+                  impactRadius: Array.isArray(s.impactRadius) ? s.impactRadius.map(String) : undefined
+                })),
+                acceptanceCriteria: (Array.isArray(args.acceptanceCriteria) ? (args.acceptanceCriteria as any[]) : []).map((c: any) => ({
+                  id: String(c.id),
+                  description: String(c.description),
+                  status: (c.status || 'pending') as any,
+                  verificationMethod: String(c.verificationMethod),
+                  linkedStepIds: Array.isArray(c.linkedStepIds) ? c.linkedStepIds.map(String) : undefined
+                })),
+                status: 'in_progress',
+                updatedAt: new Date().toISOString()
+              };
+            } else if (args.action === 'update_step') {
+              const step = plan.steps.find((s: any) => s.id === args.stepId);
+              if (step) {
+                step.status = args.status;
+                if (args.error) step.lastError = String(args.error);
+              }
+            } else if (args.action === 'retry_step') {
+              const step = plan.steps.find((s: any) => s.id === args.stepId);
+              if (step) {
+                const currentAttempts = (step.attempts || 1) + 1;
+                const maxRetries = step.maxRetries || 3;
+                if (currentAttempts > maxRetries) {
+                  step.status = 'failed';
+                  step.lastError = `Max retry limit (${maxRetries}) exhausted. Strategy failed.`;
+                } else {
+                  step.status = 'in_progress';
+                  step.attempts = currentAttempts;
+                  if (args.error) step.lastError = String(args.error);
+                  if (args.strategy) step.currentStrategy = String(args.strategy);
+                }
+              }
+            } else if (args.action === 'record_recovery') {
+              const step = plan.steps.find((s: any) => s.id === args.stepId);
+              if (step) {
+                step.history = step.history || [];
+                step.history.push({
+                  attempt: args.attempt || step.attempts || 1,
+                  strategy: args.strategy || 'unknown',
+                  error: args.error || { message: 'Tool execution error' },
+                  status: args.recoveryStatus || 'pending',
+                  timestamp: new Date().toISOString()
+                });
+              }
+            } else if (args.action === 'add_step') {
+              const st = args.step as any;
+              if (st) {
+                plan.steps.push({
+                  id: String(st.id),
+                  description: String(st.description),
+                  status: (st.status || 'pending') as any,
+                  attempts: 1,
+                  maxRetries: st.maxRetries || 3,
+                  required: st.required !== false,
+                  relevantFiles: Array.isArray(st.relevantFiles) ? st.relevantFiles.map(String) : undefined,
+                  impactRadius: Array.isArray(st.impactRadius) ? st.impactRadius.map(String) : undefined
+                });
+              }
+            } else if (args.action === 'remove_step') {
+              plan.steps = plan.steps.filter((s: any) => s.id !== args.stepId);
+            }
+
+            // Calculate overall plan status deterministically
+            let hasFailed = plan.steps.some((s: any) => s.status === 'failed' && s.required !== false);
+            let allCompleted = plan.steps.length > 0 && plan.steps.every((s: any) => s.status === 'completed' || s.required === false);
+            
+            // Phase 4: Enforce Acceptance Criteria validation
+            if (Array.isArray(plan.acceptanceCriteria) && plan.acceptanceCriteria.length > 0) {
+              const unverifiedCriteria = plan.acceptanceCriteria.filter((c: any) => c.status !== 'verified');
+              if (unverifiedCriteria.length > 0) {
+                allCompleted = false;
+                if (unverifiedCriteria.some((c: any) => c.status === 'failed')) {
+                  hasFailed = true;
+                }
+              }
+            }
+
+            if (hasFailed) {
+              plan.status = 'failed';
+            } else if (allCompleted) {
+              plan.status = 'completed';
+            } else {
+              plan.status = 'in_progress';
+            }
+            plan.updatedAt = new Date().toISOString();
+
+            await this.workspace.mkdir(this.resolvePath(projectPath, '.peep'), { recursive: true }).catch(() => {});
+            await this.workspace.writeFile(jsonPath, JSON.stringify(plan, null, 2));
+
+            // Format markdown checklist for .peep/plan.md
+            let md = `# Plan: ${plan.goal || 'Execution Plan'}\n\n`;
+            if (plan.complexity) md += `*Complexity:* ${String(plan.complexity).toUpperCase()}\n\n`;
+            
+            if (Array.isArray(plan.acceptanceCriteria) && plan.acceptanceCriteria.length > 0) {
+              md += `## Acceptance Criteria\n`;
+              for (const crit of plan.acceptanceCriteria) {
+                let check = '[ ]';
+                if (crit.status === 'verified') check = '[x]';
+                else if (crit.status === 'failed') check = '[!]';
+                else if (crit.status === 'not_verifiable') check = '[-]';
+                else if (crit.status === 'verifying') check = '[/]';
+                md += `- ${check} ${crit.description} *(Method: ${crit.verificationMethod})*\n`;
+              }
+              md += `\n`;
+            }
+
+            md += `## Steps\n`;
+            if (Array.isArray(plan.steps)) {
+              for (const step of plan.steps) {
+                let check = '[ ]';
+                if (step.status === 'completed') check = '[x]';
+                else if (step.status === 'in_progress') check = '[/]';
+                else if (step.status === 'failed') check = '[!]';
+
+                let line = `- ${check} ${step.description}`;
+                if (step.currentStrategy) {
+                  line += ` *(Strategy: ${step.currentStrategy})*`;
+                }
+                if (step.attempts && step.attempts > 1) {
+                  line += ` *(Attempts: ${step.attempts}/${step.maxRetries || 3})*`;
+                }
+                if (step.status === 'failed' && step.lastError) {
+                  line += ` — **Error:** ${step.lastError}`;
+                }
+                md += `${line}\n`;
+              }
+            }
+            await this.workspace.writeFile(mdPath, md);
+
+            this.mainWindow?.webContents.send('workspace:plan-updated', plan);
+
+            return `Plan successfully updated. Canonical plan state: ${JSON.stringify(plan)}`;
+          }
+          case 'verify_criterion': {
+            const jsonPath = this.resolvePath(projectPath, '.peep/plan.json');
+            let plan: any = null;
+            try {
+              plan = JSON.parse(await this.workspace.readFile(jsonPath));
+            } catch {
+              return 'Error: Could not read .peep/plan.json. Ensure plan is initialized.';
+            }
+
+            if (!plan.acceptanceCriteria || !Array.isArray(plan.acceptanceCriteria)) {
+              return 'Error: No acceptance criteria found in plan.';
+            }
+
+            const criterion = plan.acceptanceCriteria.find((c: any) => c.id === args.criterionId);
+            if (!criterion) {
+              return `Error: Criterion ID ${args.criterionId} not found.`;
+            }
+
+            criterion.status = args.status;
+            criterion.history = criterion.history || [];
+            criterion.history.push({
+              status: args.status,
+              verificationMethod: args.verificationMethod,
+              commandOrAction: args.commandOrAction,
+              outputSummary: args.outputSummary,
+              timestamp: new Date().toISOString(),
+              evidence: args.evidence
+            });
+
+            // If a criterion fails, and we are tracking step failure, the agent should handle recovery via manage_plan.
+            
+            await this.workspace.writeFile(jsonPath, JSON.stringify(plan, null, 2));
+            this.mainWindow?.webContents.send('workspace:plan-updated', plan);
+
+            return `Criterion ${args.criterionId} verified as ${args.status}. Evidence recorded.`;
+          }
+          case 'manage_memory': {
+            let memoryManager = this.memoryManagers.get(projectPath);
+            if (!memoryManager) {
+              memoryManager = new MemoryManager(projectPath);
+              await memoryManager.loadMemory();
+              this.memoryManagers.set(projectPath, memoryManager);
+            }
+
+            if (args.action === 'read') {
+              return JSON.stringify(memoryManager.getStore().entries, null, 2);
+            } else if (args.action === 'add') {
+              if (!args.category || !args.key || !args.value) return 'Error: category, key, and value are required for add.';
+              return await memoryManager.addMemory(args.category as any, String(args.key), String(args.value));
+            } else if (args.action === 'update') {
+              if (!args.key || !args.value) return 'Error: key and value are required for update.';
+              return await memoryManager.updateMemory(String(args.key), String(args.value));
+            } else if (args.action === 'remove') {
+              if (!args.key) return 'Error: key is required for remove.';
+              return await memoryManager.removeMemory(String(args.key));
+            }
+            return 'Invalid memory action.';
+          }
+          case 'validate_project': {
+            if (!projectPath) {
+              return JSON.stringify({
+                success: false,
+                framework: 'unknown',
+                environment: 'unknown',
+                checks: [],
+                blockingErrors: 1,
+                warnings: 0,
+                errorCategory: 'environment_error',
+                message: 'No project path specified for validation.'
+              });
+            }
+
+            const detection = await this.registry.detect(projectPath);
+            if (!detection.provider) {
+              return JSON.stringify({
+                success: false,
+                framework: 'unknown',
+                environment: 'unknown',
+                checks: [],
+                blockingErrors: 1,
+                warnings: 0,
+                errorCategory: 'environment_error',
+                message: 'Could not detect framework provider for this project.'
+              });
+            }
+
+            try {
+              const result = await detection.provider.validateProject(detection.projectRoot);
+              return JSON.stringify(result, null, 2);
+            } catch (error: any) {
+              return JSON.stringify({
+                success: false,
+                framework: detection.provider.id.includes('flutter') ? 'flutter' : 'react-native',
+                environment: detection.provider.id.includes('local') ? 'local' : 'managed',
+                checks: [{
+                  type: 'validation',
+                  success: false,
+                  exitCode: 1,
+                  stdout: '',
+                  stderr: error.message || String(error)
+                }],
+                blockingErrors: 1,
+                warnings: 0,
+                errorCategory: 'unknown_error',
+                message: `Validation failed with exception: ${error.message || String(error)}`
+              });
+            }
+          }
+          case 'bootstrap_project': {
+            if (!projectPath) return 'Error: No project path specified.';
+            const detection = await this.registry.detect(projectPath);
+            if (!detection.provider) return 'Error: Could not detect framework provider.';
+            const result = await detection.provider.bootstrapProject(detection.projectRoot, args as any);
+            
+            // Re-trigger Project Intelligence Indexing upon bootstrap
+            const indexer = this.indexers.get(detection.projectRoot);
+            if (indexer) {
+              await indexer.fullIndex();
+            }
+
+            return JSON.stringify(result, null, 2);
+          }
+          case 'install_dependencies': {
+            if (!projectPath) return 'Error: No project path specified.';
+            const detection = await this.registry.detect(projectPath);
+            if (!detection.provider) return 'Error: Could not detect framework provider.';
+            const result = await detection.provider.installDependencies(detection.projectRoot, args.packages as string[]);
+            
+            // Trigger incremental indexing update
+            const indexer = this.indexers.get(detection.projectRoot);
+            if (indexer) {
+              await indexer.fullIndex();
+            }
+
+            return JSON.stringify(result, null, 2);
+          }
+          case 'build_project': {
+            if (!projectPath) return 'Error: No project path specified.';
+            const detection = await this.registry.detect(projectPath);
+            if (!detection.provider) return 'Error: Could not detect framework provider.';
+            const result = await detection.provider.buildProject(detection.projectRoot, String(args.platform));
+            return JSON.stringify(result, null, 2);
+          }
+          case 'run_tests': {
+            if (!projectPath) return 'Error: No project path specified.';
+            const detection = await this.registry.detect(projectPath);
+            if (!detection.provider) return 'Error: Could not detect framework provider.';
+            const result = await detection.provider.runTests(detection.projectRoot);
+            return JSON.stringify(result, null, 2);
+          }
+          case 'start_app': {
+            if (!projectPath) return 'Error: No project path specified.';
+            const detection = await this.registry.detect(projectPath);
+            if (!detection.provider) return 'Error: Could not detect framework provider.';
+            const result = await detection.provider.startApplication(detection.projectRoot);
+            return JSON.stringify(result, null, 2);
+          }
+          case 'stop_app': {
+            if (!projectPath) return 'Error: No project path specified.';
+            const detection = await this.registry.detect(projectPath);
+            if (!detection.provider) return 'Error: Could not detect framework provider.';
+            const success = await detection.provider.stopApplication(Number(args.processId));
+            return JSON.stringify({ success });
+          }
+          case 'get_process_status': {
+            if (!projectPath) return 'Error: No project path specified.';
+            const detection = await this.registry.detect(projectPath);
+            if (!detection.provider) return 'Error: Could not detect framework provider.';
+            const result = await detection.provider.getApplicationStatus(Number(args.processId));
+            return JSON.stringify(result, null, 2);
+          }
+          case 'get_runtime_logs': {
+            if (!projectPath) return 'Error: No project path specified.';
+            const detection = await this.registry.detect(projectPath);
+            if (!detection.provider) return 'Error: Could not detect framework provider.';
+            const result = await detection.provider.getRuntimeLogs(Number(args.processId));
+            return JSON.stringify(result, null, 2);
           }
           default:
             throw new Error(`Unknown tool: ${name}`);
@@ -473,15 +846,42 @@ export class AgentService {
     );
 
     try {
+      // Production path: use ProductionAIGateway authenticated with the user's session token.
+      // Provider API keys (OpenAI, Gemini, Anthropic) must NEVER be present on the desktop client.
+      // Only ProductionAIGateway is supported in production. No local API keys allowed.
+      const GATEWAY_BASE_URL = settings.gatewayUrl || process.env.SYNKRO_GATEWAY_URL || 'https://api.synkro.com';
+      
+      console.log(`[AGENT_DEBUG] sessionToken present: ${!!settings.sessionToken}`);
+
+      if (!settings.sessionToken) {
+        this.emitStream({ type: 'error', content: 'AUTH_REQUIRED: You must sign in via Settings to use AI capabilities.' });
+        return;
+      }
+
+      const gateway = new ProductionAIGateway({ 
+          baseUrl: GATEWAY_BASE_URL, 
+          sessionToken: settings.sessionToken,
+          refreshToken: settings.refreshToken,
+          onTokensUpdated: async (newSession, newRefresh) => {
+            if (newSession === '' && newRefresh === '') {
+              await this.db.setSettings({ sessionToken: '', refreshToken: '' });
+              this.emitStream({ type: 'error', content: 'Session expired or not signed in. Please sign in via Settings → Account.' });
+              this.abortController?.abort();
+            } else {
+              await this.db.setSettings({ sessionToken: newSession, refreshToken: newRefresh });
+              settings.sessionToken = newSession;
+              settings.refreshToken = newRefresh;
+            }
+          }
+      });
+
+      console.log(`[AGENT_DEBUG] gateway selected: ProductionAIGateway`);
+
       await runAgentLoop(
         {
-          provider: settings.apiProvider ?? 'openai',
-          apiKey: settings.apiKey || (
-            (settings.apiProvider === 'google') ? process.env.GOOGLE_API_KEY :
-            (settings.apiProvider === 'anthropic') ? process.env.ANTHROPIC_API_KEY :
-            process.env.OPENAI_API_KEY
-          ) || '',
-          model: settings.apiModel,
+          capabilityTier: settings.capabilityTier || 'fast',
+          gateway,
+          sessionToken: settings.sessionToken,
         },
         systemContext,
         messages.slice(1),
@@ -489,7 +889,10 @@ export class AgentService {
         {
           onStatus: (message) => this.emitStream({ type: 'status', content: message }),
           onDelta: (text) => this.emitStream({ type: 'delta', content: text }),
-          onError: (message) => this.emitStream({ type: 'error', content: message }),
+          onError: (message) => {
+            const errStr = (message as any) instanceof Error ? (message as any).message : (typeof message === 'object' ? JSON.stringify(message) : String(message));
+            this.emitStream({ type: 'error', content: errStr });
+          },
           onDone: () => this.emitStream({ type: 'done', content: '' }),
         },
         signal,
@@ -500,8 +903,18 @@ export class AgentService {
         this.emitStream({ type: 'error', content: 'Cancelled' });
         return;
       }
-      const message = error instanceof Error ? error.message : String(error);
-      this.emitStream({ type: 'error', content: message });
+      const message = error instanceof Error ? error.message : (typeof error === 'object' ? JSON.stringify(error) : String(error));
+      console.error('[AgentService] Request failed:', error);
+      // Surface clear authentication errors to the user without leaking any secrets.
+      const isAuthError = /UNAUTHORIZED|FORBIDDEN|401|403|session|expired|revoked/i.test(message);
+      if (isAuthError) {
+        void this.db.setSettings({ sessionToken: '', refreshToken: '' }).then(() => {
+          this.mainWindow?.webContents.send(IPC_EVENTS.AUTH_SESSION_EXPIRED);
+        });
+        this.emitStream({ type: 'error', content: 'AUTH_REQUIRED: Your authentication session has expired or is invalid. Please sign in again.' });
+      } else {
+        this.emitStream({ type: 'error', content: message });
+      }
     } finally {
       this.abortController = null;
     }

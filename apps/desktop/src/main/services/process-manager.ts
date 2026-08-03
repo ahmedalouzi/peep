@@ -6,6 +6,11 @@ export interface ProcessInfo {
   id: number;
   command: string;
   process: ChildProcess;
+  status: 'starting' | 'running' | 'degraded' | 'error' | 'crashed' | 'stopped' | 'exited' | 'unknown';
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  startedAt: string;
 }
 
 export class ProcessManager {
@@ -40,12 +45,25 @@ export class ProcessManager {
       id: this.nextId++,
       command: [command, ...args].join(' '),
       process: child,
+      status: 'running',
+      stdout: '',
+      stderr: '',
+      exitCode: null,
+      startedAt: new Date().toISOString()
     };
+
+    child.stdout?.on('data', (chunk) => {
+      info.stdout += chunk.toString();
+    });
+    child.stderr?.on('data', (chunk) => {
+      info.stderr += chunk.toString();
+    });
 
     this.processes.set(info.id, info);
 
-    child.on('exit', () => {
-      this.processes.delete(info.id);
+    child.on('exit', (code) => {
+      info.exitCode = code;
+      info.status = code === 0 ? 'exited' : (code === null ? 'stopped' : 'crashed');
     });
 
     return info;
@@ -74,7 +92,7 @@ export class ProcessManager {
       info.process.kill();
     }
 
-    this.processes.delete(id);
+    info.status = 'stopped';
     return true;
   }
 

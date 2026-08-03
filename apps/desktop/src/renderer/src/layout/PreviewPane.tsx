@@ -1,19 +1,63 @@
 import { useState, useEffect, useRef } from 'react';
 import { usePreviewStore } from '../stores/preview-store';
 import { useWorkspaceStore } from '../stores/workspace-store';
-import { PhoneFrame, type DeviceType } from '../features/preview/PhoneFrame';
+import { PreviewAssembly } from '../features/preview/PreviewAssembly';
+import { DeviceType } from '../features/preview/PhoneFrame';
 import { useComposerStore } from '../stores/composer-store';
 import './PreviewPane.css';
 
-/* ── Device catalogue ─────────────────────────────────────────────── */
-export const DEVICES = [
-  { id: 'iphone-15' as const, label: 'iPhone 15', w: 290, h: 600, padding: 6, lw: 393 },
-  { id: 'iphone-15-pro' as const, label: 'iPhone 15 Pro', w: 290, h: 600, padding: 6, lw: 393 },
-  { id: 'iphone-se' as const, label: 'iPhone SE', w: 250, h: 510, padding: 4, lw: 375 },
-  { id: 'pixel-8' as const, label: 'Pixel 8', w: 270, h: 570, padding: 3, lw: 412 },
-  { id: 'pixel-fold' as const, label: 'Pixel Fold', w: 380, h: 520, padding: 3, lw: 840 },
-  { id: 'galaxy-s24' as const, label: 'Galaxy S24', w: 268, h: 560, padding: 3, lw: 360 },
-] as const;
+export type DeviceConfig = {
+  id: string;
+  label: string;
+  logicalViewport: { width: number; height: number };
+  artwork: { frameAsset: string };
+  screenCutout: { x: number; y: number; width: number; height: number; cornerRadius: number };
+};
+
+export const DEVICES: DeviceConfig[] = [
+  {
+    id: 'iphone-15',
+    label: 'iPhone 15',
+    logicalViewport: { width: 393, height: 852 },
+    artwork: { frameAsset: 'pf-iphone' },
+    screenCutout: { x: 16, y: 16, width: 393, height: 852, cornerRadius: 42 }
+  },
+  {
+    id: 'iphone-15-pro',
+    label: 'iPhone 15 Pro',
+    logicalViewport: { width: 393, height: 852 },
+    artwork: { frameAsset: 'pf-iphone pf-iphone--pro' },
+    screenCutout: { x: 16, y: 16, width: 393, height: 852, cornerRadius: 42 }
+  },
+  {
+    id: 'iphone-se',
+    label: 'iPhone SE',
+    logicalViewport: { width: 375, height: 667 },
+    artwork: { frameAsset: 'pf-iphone-se' },
+    screenCutout: { x: 12, y: 92, width: 375, height: 667, cornerRadius: 0 }
+  },
+  {
+    id: 'pixel-8',
+    label: 'Pixel 8',
+    logicalViewport: { width: 412, height: 892 },
+    artwork: { frameAsset: 'pf-pixel' },
+    screenCutout: { x: 14, y: 14, width: 412, height: 892, cornerRadius: 36 }
+  },
+  {
+    id: 'pixel-fold',
+    label: 'Pixel Fold',
+    logicalViewport: { width: 840, height: 768 },
+    artwork: { frameAsset: 'pf-pixel-fold' },
+    screenCutout: { x: 18, y: 18, width: 840, height: 768, cornerRadius: 24 }
+  },
+  {
+    id: 'galaxy-s24',
+    label: 'Galaxy S24',
+    logicalViewport: { width: 360, height: 780 },
+    artwork: { frameAsset: 'pf-galaxy' },
+    screenCutout: { x: 12, y: 12, width: 360, height: 780, cornerRadius: 28 }
+  }
+];
 
 function getPlatformLabel(p: string) {
   if (p === 'react-native') return 'RN';
@@ -70,13 +114,21 @@ export function PreviewPane() {
   }, [project?.path]);
 
   const [isInspectorActive, setIsInspectorActive] = useState(false);
-  const webviewRef = useRef<any>(null);
+  // Use HTMLIFrameElement — we use <iframe> instead of <webview> so the renderer
+  // process shares the same Chromium context as the host, giving correct viewport
+  // dimensions even when the frame is inside a CSS transform.
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const handleToggleInspector = () => {
     const nextActive = !isInspectorActive;
     setIsInspectorActive(nextActive);
-    webviewRef.current?.send('peep:toggle-inspector', nextActive);
+    // Send toggle message via postMessage to the iframe content
+    iframeRef.current?.contentWindow?.postMessage(
+      { type: 'peep:toggle-inspector', active: nextActive },
+      '*'
+    );
   };
+
   const selectedElement = usePreviewStore((s) => s.selectedElement);
   const setSelectedElement = usePreviewStore((s) => s.setSelectedElement);
   const promptInput = usePreviewStore((s) => s.promptInput);
@@ -116,29 +168,28 @@ Please modify the selected element and its corresponding component files as foll
 
   const session = usePreviewStore((s) => s.session);
   const isRunning = session?.status === 'running' && session.url;
-  const [webviewError, setWebviewError] = useState<{ code: number; desc: string; url: string } | null>(null);
+  const [iframeError, setIframeError] = useState(false);
 
   // Clear error when session starts running
   useEffect(() => {
     if (isRunning) {
-      setWebviewError(null);
+      setIframeError(false);
     }
   }, [isRunning, session?.url]);
 
+  // Listen for postMessage events from the iframe (inspector + element-selected)
   useEffect(() => {
-    const webview = webviewRef.current;
-    if (!webview) return;
+    const handleMessage = (e: MessageEvent) => {
+      if (!e.data || typeof e.data !== 'object') return;
 
-    const handleIpcMessage = (e: any) => {
-      if (e.channel === 'peep:element-selected') {
-        const metadata = e.args[0];
+      if (e.data.type === 'peep:element-selected') {
+        const metadata = e.data.metadata;
         setIsInspectorActive(false);
         setSelectedElement(metadata);
 
-        // Auto-open and position in Editor immediately
         const workspaceStore = useWorkspaceStore.getState();
         const { stageFile } = useComposerStore.getState();
-        
+
         const autoOpen = async () => {
           if (metadata.sourceFile) {
             try {
@@ -146,7 +197,7 @@ Please modify the selected element and its corresponding component files as foll
               const name = metadata.sourceFile.split(/[\\/]/).pop() || 'File';
               workspaceStore.openFile({ path: metadata.sourceFile, name, content, dirty: false });
               stageFile(metadata.sourceFile);
-              
+
               setTimeout(() => {
                 window.dispatchEvent(
                   new CustomEvent('peep:go-to-line', {
@@ -155,7 +206,7 @@ Please modify the selected element and its corresponding component files as foll
                 );
               }, 120);
             } catch (err) {
-              console.error("Auto open failed", err);
+              console.error('Auto open failed', err);
             }
           }
         };
@@ -163,37 +214,9 @@ Please modify the selected element and its corresponding component files as foll
       }
     };
 
-    webview.addEventListener('ipc-message', handleIpcMessage);
-
-    const onStartLoading = () => console.log('[WebView] did-start-loading');
-    const onStopLoading = () => console.log('[WebView] did-stop-loading');
-    const onFinishLoad = () => console.log('[WebView] did-finish-load');
-    const onFailLoad = (e: any) => {
-      console.error(`[WebView] did-fail-load: ${e.errorCode} ${e.errorDescription} at ${e.validatedURL}`);
-      setWebviewError({ code: e.errorCode, desc: e.errorDescription, url: e.validatedURL });
-    };
-    const onProcessGone = (e: any) => console.error('[WebView] render-process-gone:', e.details);
-    const onCrashed = () => console.error('[WebView] crashed');
-
-    webview.addEventListener('did-start-loading', onStartLoading);
-    webview.addEventListener('did-stop-loading', onStopLoading);
-    webview.addEventListener('did-finish-load', onFinishLoad);
-    webview.addEventListener('did-fail-load', onFailLoad);
-    webview.addEventListener('render-process-gone', onProcessGone);
-    webview.addEventListener('crashed', onCrashed);
-
-    return () => {
-      if (webview) {
-        webview.removeEventListener('ipc-message', handleIpcMessage);
-        webview.removeEventListener('did-start-loading', onStartLoading);
-        webview.removeEventListener('did-stop-loading', onStopLoading);
-        webview.removeEventListener('did-finish-load', onFinishLoad);
-        webview.removeEventListener('did-fail-load', onFailLoad);
-        webview.removeEventListener('render-process-gone', onProcessGone);
-        webview.removeEventListener('crashed', onCrashed);
-      }
-    };
-  }, [session?.status, isRunning]);
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [setSelectedElement]);
 
   const [isDetached, setIsDetached] = useState(false);
 
@@ -202,10 +225,9 @@ Please modify the selected element and its corresponding component files as foll
   const setDeviceId = usePreviewStore((s) => s.setDeviceId);
 
   /* ── Refs ── */
-  // Put on the outermost section — it ALWAYS has proper size from react-resizable-panels
   const paneRef = useRef<HTMLElement>(null);
-  // Keep latest device in a ref so the ResizeObserver closure sees the current value
   const deviceRef = useRef(deviceId);
+
   useEffect(() => { deviceRef.current = deviceId; }, [deviceId]);
 
   const setPreviewPaneOpen = useWorkspaceStore((s) => s.setPreviewPaneOpen);
@@ -221,11 +243,12 @@ Please modify the selected element and its corresponding component files as foll
 
     const compute = () => {
       const d = DEVICES.find((x) => x.id === deviceRef.current) ?? DEVICES[0]!;
-      // Available body area = pane minus: header(34) + gaps(20) [removed toolbar(30)]
       const availW = el.clientWidth - 24;
       const availH = el.clientHeight - 34 - 50;
       if (availW < 10 || availH < 10) return;
-      const s = Math.min(availW / d.w, availH / d.h);
+      const outerW = d.logicalViewport.width + d.screenCutout.x * 2;
+      const outerH = d.logicalViewport.height + d.screenCutout.y * 2;
+      const s = Math.min(availW / outerW, availH / outerH);
       setScale(Math.min(Math.max(s, 0.2), 1.0));
     };
 
@@ -233,7 +256,7 @@ Please modify the selected element and its corresponding component files as foll
     const ro = new ResizeObserver(compute);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []); // only once — paneRef is stable
+  }, []);
 
   // Recompute when device changes
   useEffect(() => {
@@ -243,7 +266,9 @@ Please modify the selected element and its corresponding component files as foll
     const availW = el.clientWidth - 24;
     const availH = el.clientHeight - 34 - 50;
     if (availW < 10 || availH < 10) return;
-    const s = Math.min(availW / d.w, availH / d.h);
+    const outerW = d.logicalViewport.width + d.screenCutout.x * 2;
+    const outerH = d.logicalViewport.height + d.screenCutout.y * 2;
+    const s = Math.min(availW / outerW, availH / outerH);
     setScale(Math.min(Math.max(s, 0.2), 1.0));
   }, [deviceId]);
 
@@ -406,11 +431,11 @@ Please modify the selected element and its corresponding component files as foll
             onClick={() => setPreviewPaneOpen(false)}>✕</button>
         </div>
       </div>
+
       <div className="preview-body" style={{
         flex: 1, position: 'relative', overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
-
 
         {/* ── Body ── */}
         <div className="panel-body preview-pane__body">
@@ -427,102 +452,112 @@ Please modify the selected element and its corresponding component files as foll
           ) : (
             <div className="preview-stage">
               <div className="preview-device-label">{device.label}</div>
-
-              {/* Scaled phone wrapper */}
-              <div className="phone-scale-outer" style={{
-                width: device.w * scale,
-                height: device.h * scale,
+              {/* Slot reserves scaled pixel space; transform div scales from top-left */}
+              <div className="phone-scale-slot" style={{
+                width: (device.logicalViewport.width + device.screenCutout.x * 2) * scale,
+                height: (device.logicalViewport.height + device.screenCutout.y * 2) * scale,
+                flexShrink: 0,
+                position: 'relative',
               }}>
-                <div className="phone-scale-inner" style={{
-                  width: device.w,
-                  height: device.h,
-                  transform: `scale(${scale})`,
-                  transformOrigin: 'top left',
-                }}>
-                  <PhoneFrame device={deviceId}>
-                    {session?.status === 'starting' && (
-                      <div className="preview-placeholder">
-                        <span className="preview-placeholder__icon preview-placeholder__spinner">⏳</span>
-                        <h3>Starting…</h3>
-                        <p>{getStartingMsg(platform)}</p>
-                      </div>
-                    )}
-                    {session?.status === 'error' && (
-                      <div className="preview-placeholder preview-placeholder--error">
-                        <span className="preview-placeholder__icon">⚠️</span>
-                        <h3>Preview failed</h3>
-                        <p>{session.error ?? `Could not start ${getPlatformLabel(platform)} preview.`}</p>
-                        <button type="button" className="preview-retry-btn"
-                          onClick={handleStart} disabled={!project}>Retry</button>
-                        <button type="button" className="preview-retry-btn"
-                          onClick={handleAutoHeal} disabled={!project}
-                          style={{ marginLeft: '8px', background: 'var(--gold)', color: '#000', borderColor: 'var(--gold)' }}
-                        >
-                          ✨ Auto-Fix Build
-                        </button>
-                      </div>
-                    )}
-                    {selectedDeviceId !== 'browser' && isRunning && (
-                      <div className="preview-placeholder preview-placeholder--native" style={{ padding: '20px', textAlign: 'center' }}>
-                        <span className="preview-placeholder__icon" style={{ fontSize: '32px' }}>📲</span>
-                        <h3 style={{ margin: '12px 0 6px 0', fontSize: '15px' }}>Natively Deploying</h3>
-                        <p style={{ fontSize: '11px', color: '#8b949e', marginBottom: '8px' }}>
-                          Running app on target device:
-                        </p>
-                        <code style={{ display: 'block', padding: '4px 8px', background: 'rgba(255,255,255,0.06)', borderRadius: '4px', fontSize: '10px', wordBreak: 'break-all' }}>
-                          {selectedDeviceId}
-                        </code>
-                        <p style={{ fontSize: '10px', color: 'var(--gold)', marginTop: '16px' }}>
-                          Check the logs panel below to inspect native compiler output.
-                        </p>
-                      </div>
-                    )}
-                    {selectedDeviceId === 'browser' && isRunning && webviewError && (
-                      <div className="preview-placeholder preview-placeholder--error" style={{ position: 'absolute', inset: 0, zIndex: 10, background: 'var(--bg-pane)' }}>
-                        <span className="preview-placeholder__icon">⚠️</span>
-                        <h3>WebView Load Error</h3>
-                        <p>Error Code: {webviewError.code}</p>
-                        <p>{webviewError.desc}</p>
-                        <p style={{ fontSize: '10px', wordBreak: 'break-all' }}>URL: {webviewError.url}</p>
-                        <button type="button" className="preview-retry-btn" onClick={() => {
-                          setWebviewError(null);
-                          if (webviewRef.current) webviewRef.current.reload();
-                        }}>Retry Load</button>
-                      </div>
-                    )}
-                    {selectedDeviceId === 'browser' && isRunning && (
-                      <webview
-                        key={iframeKey}
-                        ref={webviewRef}
-                        className="preview-iframe"
-                        src={session.url}
-                        preload={`file://${(window.peep as any).getInspectorPreloadPath()}`}
-                        style={{
-                          width: `${device.lw}px`,
-                          height: `${(device.h - device.padding * 2) / ((device.w - device.padding * 2) / device.lw)}px`,
-                          transform: `scale(${(device.w - device.padding * 2) / device.lw})`,
-                          transformOrigin: 'top left',
-                          border: 'none',
-                          display: webviewError ? 'none' : 'block'
-                        }}
-                      />
-                    )}
-                    {!session && (
-                      <div className="preview-placeholder">
-                        <span className="preview-placeholder__icon">📱</span>
-                        <h3>Live preview</h3>
-                        <p>{getIdleMsg(platform)}</p>
-                      </div>
-                    )}
-                    {session?.status === 'stopped' && (
-                      <div className="preview-placeholder">
-                        <span className="preview-placeholder__icon">⏹</span>
-                        <h3>Preview stopped</h3>
-                        <p>{getStoppedMsg(platform)}</p>
-                      </div>
-                    )}
-                  </PhoneFrame>
-                </div>
+              <div className="phone-scale-container" style={{
+                width: device.logicalViewport.width + device.screenCutout.x * 2,
+                height: device.logicalViewport.height + device.screenCutout.y * 2,
+                transform: `scale(${scale})`,
+                transformOrigin: 'top left',
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                /* Offset the device-assembly so the frame background (which extends
+                   -cutout.x/-cutout.y from device-assembly) aligns exactly with the
+                   container boundary — no visible edge left/right/top/bottom */
+                boxSizing: 'border-box',
+                paddingLeft: device.screenCutout.x,
+                paddingTop: device.screenCutout.y,
+              }}>
+                <PreviewAssembly device={device}>
+                  {session?.status === 'starting' && (
+                    <div className="preview-placeholder">
+                      <span className="preview-placeholder__icon preview-placeholder__spinner">⏳</span>
+                      <h3>Starting…</h3>
+                      <p>{getStartingMsg(platform)}</p>
+                    </div>
+                  )}
+                  {session?.status === 'error' && (
+                    <div className="preview-placeholder preview-placeholder--error">
+                      <span className="preview-placeholder__icon">⚠️</span>
+                      <h3>Preview failed</h3>
+                      <p>{session.error ?? `Could not start ${getPlatformLabel(platform)} preview.`}</p>
+                      <button type="button" className="preview-retry-btn"
+                        onClick={handleStart} disabled={!project}>Retry</button>
+                      <button type="button" className="preview-retry-btn"
+                        onClick={handleAutoHeal} disabled={!project}
+                        style={{ marginLeft: '8px', background: 'var(--gold)', color: '#000', borderColor: 'var(--gold)' }}
+                      >
+                        ✨ Auto-Fix Build
+                      </button>
+                    </div>
+                  )}
+                  {selectedDeviceId !== 'browser' && isRunning && (
+                    <div className="preview-placeholder preview-placeholder--native" style={{ padding: '20px', textAlign: 'center' }}>
+                      <span className="preview-placeholder__icon" style={{ fontSize: '32px' }}>📲</span>
+                      <h3 style={{ margin: '12px 0 6px 0', fontSize: '15px' }}>Natively Deploying</h3>
+                      <p style={{ fontSize: '11px', color: '#8b949e', marginBottom: '8px' }}>
+                        Running app on target device:
+                      </p>
+                      <code style={{ display: 'block', padding: '4px 8px', background: 'rgba(255,255,255,0.06)', borderRadius: '4px', fontSize: '10px', wordBreak: 'break-all' }}>
+                        {selectedDeviceId}
+                      </code>
+                      <p style={{ fontSize: '10px', color: 'var(--gold)', marginTop: '16px' }}>
+                        Check the logs panel below to inspect native compiler output.
+                      </p>
+                    </div>
+                  )}
+                  {selectedDeviceId === 'browser' && isRunning && iframeError && (
+                    <div className="preview-placeholder preview-placeholder--error" style={{ position: 'absolute', inset: 0, zIndex: 10, background: 'var(--bg-pane)' }}>
+                      <span className="preview-placeholder__icon">⚠️</span>
+                      <h3>Preview Load Error</h3>
+                    </div>
+                  )}
+                  {selectedDeviceId === 'browser' && isRunning && (
+                    /* ─────────────────────────────────────────────────────────────────
+                       Use <iframe> (same-process) instead of <webview> (OOP iframe).
+                       An OOP webview inside a CSS transform reports a scaled-down
+                       window.innerHeight to the guest page, causing layouts like Expo
+                       bottom-tabs to position themselves at the top of the screen.
+                       A same-process <iframe> always sees its own DOM dimensions
+                       regardless of parent transforms, matching the detached window.
+                    ───────────────────────────────────────────────────────────────── */
+                    <iframe
+                      key={iframeKey}
+                      ref={iframeRef}
+                      className="preview-iframe"
+                      src={session.url}
+                      title="Mobile Preview"
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        border: 'none',
+                        display: iframeError ? 'none' : 'block',
+                      }}
+                      onError={() => setIframeError(true)}
+                    />
+                  )}
+                  {!session && (
+                    <div className="preview-placeholder">
+                      <span className="preview-placeholder__icon">📱</span>
+                      <h3>Live preview</h3>
+                      <p>{getIdleMsg(platform)}</p>
+                    </div>
+                  )}
+                  {session?.status === 'stopped' && (
+                    <div className="preview-placeholder">
+                      <span className="preview-placeholder__icon">⏹</span>
+                      <h3>Preview stopped</h3>
+                      <p>{getStoppedMsg(platform)}</p>
+                    </div>
+                  )}
+                </PreviewAssembly>
+              </div>
               </div>
             </div>
           )}

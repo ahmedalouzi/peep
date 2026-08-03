@@ -1,8 +1,7 @@
 import { BrowserWindow } from 'electron';
 import { IPC_EVENTS } from '@peep/shared';
 import type { PreviewSession } from '@peep/shared';
-import type { FlutterService } from './flutter-service';
-import type { ReactNativeService } from './react-native-service';
+import type { FrameworkProvider } from './providers/base-provider';
 import { createServer } from 'node:net';
 
 function getFreePort(): Promise<number> {
@@ -21,6 +20,8 @@ function getFreePort(): Promise<number> {
 
 export class PreviewManager {
   private session: PreviewSession | null = null;
+  private activeProvider: FrameworkProvider | null = null;
+
   setMainWindow(_window: BrowserWindow | null): void {
     // no-op
   }
@@ -42,23 +43,22 @@ export class PreviewManager {
     }
   }
 
-  async start(projectRoot: string, flutter: FlutterService): Promise<PreviewSession> {
-    this.stop(flutter);
+  async start(projectRoot: string, provider: FrameworkProvider): Promise<PreviewSession> {
+    console.log('[DEBUG_RUNTIME] previewManager.start received projectRoot:', projectRoot);
+    this.stop();
 
+    this.activeProvider = provider;
     this.emit({ url: '', processId: 0, status: 'starting' });
 
     try {
-      await flutter.pubGet(projectRoot);
       const port = await getFreePort();
-      const { url, processId, logs } = await flutter.startWebPreview(projectRoot, port);
-
-      for (const line of logs) {
+      const { url, processId } = await provider.startPreview(projectRoot, port, (line) => {
         for (const win of BrowserWindow.getAllWindows()) {
           if (!win.isDestroyed()) {
             win.webContents.send(IPC_EVENTS.PREVIEW_LOG, line);
           }
         }
-      }
+      });
 
       const session: PreviewSession = { url, processId, status: 'running' };
       this.emit(session);
@@ -76,62 +76,17 @@ export class PreviewManager {
     }
   }
 
-  stop(flutter: FlutterService): void {
-    if (this.session?.processId) {
-      flutter.stopPreview(this.session.processId);
+  stop(): void {
+    if (this.session?.processId && this.activeProvider) {
+      this.activeProvider.stopPreview(this.session.processId);
     }
     this.emit({ url: '', processId: 0, status: 'stopped' });
+    this.activeProvider = null;
   }
 
-  reload(flutter: FlutterService): void {
-    if (this.session?.processId) {
-      flutter.reloadPreview(this.session.processId);
+  reload(): void {
+    if (this.session?.processId && this.activeProvider) {
+      this.activeProvider.reloadPreview(this.session.processId);
     }
-  }
-
-  async startRn(projectRoot: string, rnService: ReactNativeService): Promise<PreviewSession> {
-    this.stopRn(rnService);
-
-    this.emit({ url: '', processId: 0, status: 'starting' });
-
-    try {
-      // 1. Run npm/pnpm install
-      await rnService.install(projectRoot);
-
-      // 2. Resolve a free port
-      const port = await getFreePort();
-
-      // 3. Start Expo Web preview
-      const { url, processId, logs } = await rnService.startWebPreview(projectRoot, port);
-
-      for (const line of logs) {
-        for (const win of BrowserWindow.getAllWindows()) {
-          if (!win.isDestroyed()) {
-            win.webContents.send(IPC_EVENTS.PREVIEW_LOG, line);
-          }
-        }
-      }
-
-      const session: PreviewSession = { url, processId, status: 'running' };
-      this.emit(session);
-      return session;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const session: PreviewSession = {
-        url: '',
-        processId: 0,
-        status: 'error',
-        error: message,
-      };
-      this.emit(session);
-      throw error;
-    }
-  }
-
-  stopRn(rnService: ReactNativeService): void {
-    if (this.session?.processId) {
-      rnService.stopPreview(this.session.processId);
-    }
-    this.emit({ url: '', processId: 0, status: 'stopped' });
   }
 }

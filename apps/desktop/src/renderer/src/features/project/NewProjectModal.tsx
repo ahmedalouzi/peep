@@ -43,6 +43,7 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
   const [name, setName] = useState('my_app');
   const [parentPath, setParentPath] = useState('');
   const [prompt, setPrompt] = useState('');
+  const [envMode, setEnvMode] = useState<'beginner' | 'advanced'>('beginner');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
@@ -92,6 +93,8 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
           name: projectName,
           parentPath,
           templateId,
+          mode: envMode,
+          framework: platform,
         });
       } else {
         if (!prompt.trim()) throw new Error('Describe the app you want to build.');
@@ -99,7 +102,9 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
         project = await window.peep.createProjectFromPrompt({
           name: projectName,
           parentPath,
-          prompt: `[Platform: ${platform}] ${prompt.trim()}`,
+          prompt: prompt.trim(),
+          mode: envMode,
+          framework: platform,
         });
       }
 
@@ -152,6 +157,40 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
               </button>
             );
           })}
+        </div>
+
+        {/* Environment Mode picker */}
+        <div className="new-project-env-picker" style={{ display: 'flex', gap: '12px', margin: '16px 24px', padding: '16px', background: 'var(--surface-sunken)', borderRadius: '8px' }}>
+          <label style={{ flex: 1, display: 'flex', flexDirection: 'column', cursor: 'pointer' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 500 }}>
+              <input 
+                type="radio" 
+                name="envMode" 
+                value="beginner" 
+                checked={envMode === 'beginner'} 
+                onChange={() => setEnvMode('beginner')} 
+              />
+              Beginner Mode (Managed)
+            </div>
+            <small style={{ color: 'var(--text-muted)', marginLeft: '22px', marginTop: '4px' }}>
+              No SDKs required. Uses cloud/managed toolchains. Best for quick starts.
+            </small>
+          </label>
+          <label style={{ flex: 1, display: 'flex', flexDirection: 'column', cursor: 'pointer' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 500 }}>
+              <input 
+                type="radio" 
+                name="envMode" 
+                value="advanced" 
+                checked={envMode === 'advanced'} 
+                onChange={() => setEnvMode('advanced')} 
+              />
+              Advanced Mode (Local CLI)
+            </div>
+            <small style={{ color: 'var(--text-muted)', marginLeft: '22px', marginTop: '4px' }}>
+              Requires {platform === 'flutter' ? 'Flutter' : 'React Native'} SDK installed. Full system access.
+            </small>
+          </label>
         </div>
 
         {/* Mode tabs */}
@@ -229,7 +268,7 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
                 }
                 onChange={(e) => setPrompt(e.target.value)}
               />
-              <small>Requires OpenAI API key in Settings. AI will scaffold the initial code.</small>
+              <small>Requires an active Synkro subscription. AI will scaffold the initial code.</small>
             </label>
           )}
 

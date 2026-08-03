@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import { ActivityBar } from './ActivityBar';
 import { Sidebar } from './Sidebar';
 import { EditorPane } from './EditorPane';
@@ -10,8 +10,11 @@ import { StatusBar } from './StatusBar';
 import { NoProjectEmptyState } from '../features/shared/EmptyState';
 import { useWorkspaceStore } from '../stores/workspace-store';
 import { useWorkspace } from '../hooks/useWorkspace';
-import { ComposerOverlay } from '../features/composer/ComposerOverlay';
+import { useComposerStore } from '../stores/composer-store';
+import { PoCPreview } from '../features/preview/PoC';
 import './AppShell.css';
+
+const ComposerOverlay = lazy(() => import('../features/composer/ComposerOverlay').then(m => ({ default: m.ComposerOverlay })));
 
 interface AppShellProps {
   onOpenSettings: () => void;
@@ -24,6 +27,7 @@ export function AppShell({ onOpenSettings, onNewProject }: AppShellProps) {
   const agentPaneOpen = useWorkspaceStore((s) => s.agentPaneOpen);
   const previewPaneOpen = useWorkspaceStore((s) => s.previewPaneOpen);
   const { project, openProjectFolder } = useWorkspace();
+  const composerOpen = useComposerStore((s) => s.isOpen);
 
   const [terminalHeight, setTerminalHeight] = useState(160);
   const [isResizing, setIsResizing] = useState(false);
@@ -181,7 +185,9 @@ export function AppShell({ onOpenSettings, onNewProject }: AppShellProps) {
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, cursor: isResizing ? 'row-resize' : 'col-resize' }} />
       )}
 
-      <ComposerOverlay />
+      <Suspense fallback={null}>
+        {composerOpen && <ComposerOverlay />}
+      </Suspense>
     </>
   );
 }

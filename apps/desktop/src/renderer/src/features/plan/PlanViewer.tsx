@@ -62,6 +62,24 @@ export function PlanViewer({ content, mode = 'plan' }: PlanViewerProps) {
           </div>
         );
       }
+      if (trimmed.startsWith('- [/] ')) {
+        const text = trimmed.replace(/- \[\/\]\s*/, '');
+        return (
+          <div key={index} className="plan-checkbox-item plan-checkbox-item--in-progress">
+            <span className="checkbox checkbox--in-progress" style={{ color: '#60a5fa' }}>⏳</span>
+            <span className="checkbox-text" style={{ color: '#93c5fd', fontWeight: '500' }}>{text}</span>
+          </div>
+        );
+      }
+      if (trimmed.startsWith('- [!] ')) {
+        const text = trimmed.replace(/- \[!\]\s*/, '');
+        return (
+          <div key={index} className="plan-checkbox-item plan-checkbox-item--failed">
+            <span className="checkbox checkbox--failed" style={{ color: '#f87171' }}>❌</span>
+            <span className="checkbox-text" style={{ color: '#fca5a5', fontWeight: '500' }}>{text}</span>
+          </div>
+        );
+      }
       if (trimmed.startsWith('- [x] ') || trimmed.startsWith('- [X] ')) {
         const text = trimmed.replace(/- \[[xX]\]\s*/, '');
         return (

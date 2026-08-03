@@ -119,6 +119,8 @@ const api: IpcApi = {
   onDiagnostics: (callback) => subscribe<Diagnostic[]>(IPC_EVENTS.DIAGNOSTICS_UPDATED, callback),
   onPreviewLog: (callback) => subscribe<string>(IPC_EVENTS.PREVIEW_LOG, callback),
   onAgentStream: (callback) => subscribe<AgentStreamEvent>(IPC_EVENTS.AGENT_STREAM, callback),
+  // @ts-ignore - TS cache issue with IpcApi missing onAgentActivity
+  onAgentActivity: (callback: any) => subscribe<any>('agent:activity', callback),
   onProposedEdits: (callback) => subscribe<ProposedEdit[]>(IPC_EVENTS.AGENT_PROPOSED_EDITS, callback),
   onTerminalOutput: (callback) =>
     subscribe<{ id: string; data: string }>(IPC_EVENTS.TERMINAL_OUTPUT, callback),
@@ -131,9 +133,19 @@ const api: IpcApi = {
   installExtension: (id, url) => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_INSTALL, id, url) as Promise<void>,
   uninstallExtension: (id) => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_UNINSTALL, id) as Promise<void>,
   getExtensionDetails: (id) => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_DETAILS, id) as Promise<any>,
+  // Auth
+  authSignIn: (email, password) => ipcRenderer.invoke(IPC_CHANNELS.AUTH_SIGN_IN, email, password),
+  authSignUp: (email, password) => ipcRenderer.invoke(IPC_CHANNELS.AUTH_SIGN_UP, email, password),
+  authLogout: () => ipcRenderer.invoke(IPC_CHANNELS.AUTH_LOGOUT),
+  authGetAccount: () => ipcRenderer.invoke(IPC_CHANNELS.AUTH_GET_ACCOUNT),
   onPublishStatus: (callback: (status: import('@peep/shared').PublishStatus) => void) => subscribe<import('@peep/shared').PublishStatus>(IPC_EVENTS.PUBLISH_STATUS, callback),
   onPublishLog: (callback: (line: string) => void) => subscribe<string>(IPC_EVENTS.PUBLISH_LOG, callback),
   onOpenFile: (callback: (payload: { path: string; name: string; content: string; dirty: boolean }) => void) => subscribe<{ path: string; name: string; content: string; dirty: boolean }>('open:file', callback),
+  onAuthSessionExpired: (callback: () => void) => subscribe<void>(IPC_EVENTS.AUTH_SESSION_EXPIRED, callback),
+  onPlanUpdated: (callback: (plan: any) => void) => subscribe<any>('workspace:plan-updated', callback),
+  // PoC
+  pocToggle: (visible: boolean) => ipcRenderer.invoke('peep:poc-toggle', { visible }),
+  pocBounds: (bounds: any) => ipcRenderer.send('peep:poc-bounds', bounds),
 };
 
 contextBridge.exposeInMainWorld('peep', {

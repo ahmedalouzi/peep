@@ -1,84 +1,110 @@
-import type { FlutterService } from './flutter-service';
-import type { ReactNativeService } from './react-native-service';
-
-export type PlatformTarget = 'flutter' | 'react-native' | 'unknown';
+import { FrameworkProvider } from './providers/base-provider';
 
 export interface PlatformDetectionResult {
-  platform: PlatformTarget;
-  confidence: 'definite' | 'likely';
+  provider: FrameworkProvider | null;
+  projectRoot: string;
 }
 
-/**
- * Detects which mobile platform a project folder belongs to and
- * routes preview / analyze calls to the correct service.
- */
+import { join } from 'node:path';
+
+import { readdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+
 export class PlatformRegistry {
-  constructor(
-    private flutter: FlutterService,
-    private reactNative: ReactNativeService,
-  ) {}
+  private providers: FrameworkProvider[] = [];
 
-  async detect(root: string): Promise<PlatformDetectionResult> {
-    // pubspec.yaml → definite Flutter
-    const isFlutter = await this.flutter.isFlutterProject(root);
-    if (isFlutter) {
-      return { platform: 'flutter', confidence: 'definite' };
-    }
-
-    // package.json with react-native / expo → React Native
-    const isRN = await this.reactNative.isReactNativeProject(root);
-    if (isRN) {
-      return { platform: 'react-native', confidence: 'definite' };
-    }
-
-    return { platform: 'unknown', confidence: 'likely' };
+  register(provider: FrameworkProvider) {
+    this.providers.push(provider);
   }
 
-  async analyze(platform: PlatformTarget, root: string) {
-    if (platform === 'flutter') {
-      return this.flutter.analyze(root);
-    }
-    if (platform === 'react-native') {
-      return this.reactNative.analyze(root);
-    }
-    return [];
+  getProviders(): FrameworkProvider[] {
+    return this.providers;
   }
 
-  async install(platform: PlatformTarget, root: string): Promise<void> {
-    if (platform === 'flutter') {
-      await this.flutter.pubGet(root);
-    } else if (platform === 'react-native') {
-      await this.reactNative.install(root);
-    }
+  getProvider(id: string): FrameworkProvider {
+    const provider = this.providers.find(p => p.id === id);
+    if (!provider) throw new Error(`Provider not found: ${id}`);
+    return provider;
   }
 
-  async startPreview(
-    platform: PlatformTarget,
-    root: string,
-    port?: number,
-  ): Promise<{ url: string; processId: number; logs: string[] }> {
-    if (platform === 'flutter') {
-      return this.flutter.startWebPreview(root, port);
-    }
-    if (platform === 'react-native') {
-      return this.reactNative.startWebPreview(root, port);
-    }
-    throw new Error(`Cannot start preview for unknown platform`);
-  }
+  async detect(root: string, options: { requireProject?: boolean; timeoutMs?: number } = {}): Promise<PlatformDetectionResult> {
+    console.log(`[DEBUG_RUNTIME] PlatformRegistry.detect called with root: ${root} options:`, options);
 
-  stopPreview(platform: PlatformTarget, processId: number): void {
-    if (platform === 'flutter') {
-      this.flutter.stopPreview(processId);
-    } else if (platform === 'react-native') {
-      this.reactNative.stopPreview(processId);
-    }
-  }
+    const timeoutMs = options.timeoutMs || 0;
+    const startTime = Date.now();
 
-  reloadPreview(platform: PlatformTarget, processId: number): void {
-    if (platform === 'flutter') {
-      this.flutter.reloadPreview(processId);
-    } else if (platform === 'react-native') {
-      this.reactNative.reloadPreview(processId);
+    while (true) {
+      const foundProjects: { provider: FrameworkProvider; projectRoot: string; depth: number }[] = [];
+
+      // Helper to deeply scan for projects up to a given depth
+      const scanForProject = async (currentPath: string, currentDepth: number, maxDepth: number): Promise<void> => {
+        if (currentDepth > maxDepth) return;
+        
+        // Check current directory
+        for (const provider of this.providers) {
+          if (await provider.detect(currentPath)) {
+            console.log(`[DEBUG_RUNTIME] Provider ${provider.id} detected project at: ${currentPath} (depth: ${currentDepth})`);
+            foundProjects.push({ provider, projectRoot: currentPath, depth: currentDepth });
+            break; // Stop checking other providers for this directory
+          }
+        }
+
+        // Scan subdirectories
+        try {
+          if (existsSync(currentPath)) {
+            const files = await readdir(currentPath, { withFileTypes: true });
+            for (const file of files) {
+              if (file.isDirectory() && file.name !== '.git' && file.name !== '.peep' && file.name !== 'node_modules') {
+                const subPath = join(currentPath, file.name);
+                await scanForProject(subPath, currentDepth + 1, maxDepth);
+              }
+            }
+          }
+        } catch (err) {
+          console.log(`[DEBUG_RUNTIME] Error scanning ${currentPath}:`, err);
+        }
+      };
+
+      // 1. Try to find any valid project up to depth 3
+      await scanForProject(root, 0, 3);
+      
+      if (foundProjects.length > 0) {
+        // Sort by depth descending, so nested projects take precedence over the root
+        foundProjects.sort((a, b) => b.depth - a.depth);
+        const selected = foundProjects[0];
+        console.log(`[DEBUG_RUNTIME] Selected project at depth ${selected.depth}: ${selected.projectRoot}`);
+        return { provider: selected.provider, projectRoot: selected.projectRoot };
+      }
+
+      if (Date.now() - startTime >= timeoutMs) {
+        break;
+      }
+      
+      // Poll every 1000ms if not found yet
+      await new Promise(r => setTimeout(r, 1000));
     }
+
+    console.log(`[DEBUG_RUNTIME] No project detected within depth 3. Proceeding to fallback.`);
+
+    // If requireProject is strict, do NOT fall back to empty workspace logic
+    if (options.requireProject) {
+      return { provider: null, projectRoot: root };
+    }
+
+    // 3. Empty workspace fallback
+    try {
+      if (existsSync(root)) {
+        const files = await readdir(root);
+        const filtered = files.filter(f => f !== '.git' && f !== '.peep' && f !== '.DS_Store');
+        if (filtered.length === 0) {
+          const managed = this.providers.find(p => p.id === 'react-native-managed');
+          if (managed) return { provider: managed, projectRoot: root };
+        }
+      }
+    } catch {
+      // Ignore
+    }
+
+    return { provider: null, projectRoot: root };
   }
 }

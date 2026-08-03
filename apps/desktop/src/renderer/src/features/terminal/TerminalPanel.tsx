@@ -122,6 +122,46 @@ export function TerminalPanel() {
     const tempDiv = document.createElement('div');
     term.open(tempDiv);
     
+    // Fix: Allow Ctrl+C / Cmd+C to copy when text is selected
+    term.attachCustomKeyEventHandler((e) => {
+      if ((e.ctrlKey || e.metaKey) && e.code === 'KeyC') {
+        if (term.hasSelection()) {
+          if (e.type === 'keydown') {
+            navigator.clipboard.writeText(term.getSelection());
+          }
+          return false; // Prevent xterm from sending ^C to the pty
+        }
+      }
+
+      // Fix: Allow Ctrl+V / Cmd+V to paste
+      if ((e.ctrlKey || e.metaKey) && e.code === 'KeyV') {
+        if (e.type === 'keydown') {
+          navigator.clipboard.readText().then((text) => {
+            if (text) void window.peep.writeTerminal(id, text);
+          }).catch(err => console.error('Failed to read clipboard', err));
+        }
+        return false; // Prevent xterm from handling the event natively
+      }
+
+      // Fix: Allow Ctrl+Z / Cmd+Z to send suspend/EOF signal to the pty
+      if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') {
+        if (e.type === 'keydown') {
+          void window.peep.writeTerminal(id, '\x1a');
+        }
+        return false; // Prevent xterm or browser from treating it as an undo action
+      }
+
+      return true;
+    });
+
+    // Fix: Ensure 'copy' event (e.g. from app menu or context menu) gets the selection
+    tempDiv.addEventListener('copy', (e) => {
+      if (term.hasSelection()) {
+        e.clipboardData?.setData('text/plain', term.getSelection());
+        e.preventDefault();
+      }
+    });
+    
     term.onData((data) => {
       void window.peep.writeTerminal(id, data);
     });

@@ -1,8 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import type { Settings } from '@peep/shared';
 import './SettingsModal.css';
 
-type SettingsTab = 'ai' | 'sdk' | 'telemetry' | 'about';
+type SettingsTab = 'account' | 'sdk' | 'telemetry' | 'about';
+
+interface AccountInfo {
+  email: string;
+  plan: string;
+  usedCost: number;
+  budgetCost: number;
+  usedTokens: number;
+  budgetTokens: number;
+  gatewayConnected: boolean;
+}
 
 interface SettingsModalProps {
   open: boolean;
@@ -10,7 +20,7 @@ interface SettingsModalProps {
 }
 
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
-  const [tab, setTab] = useState<SettingsTab>('ai');
+  const [tab, setTab] = useState<SettingsTab>('account');
   const [flutterPath, setFlutterPath] = useState('');
   const [saving, setSaving] = useState(false);
   const [sdkVersion, setSdkVersion] = useState<string | null>(null);
@@ -18,39 +28,59 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [version, setVersion] = useState<string>('');
   const [perfInfo, setPerfInfo] = useState<{ heapUsedMB: number; rssMemMB: number } | null>(null);
 
-  const [apiProvider, setApiProvider] = useState<'openai' | 'anthropic' | 'google'>('openai');
-  const [apiModel, setApiModel] = useState('gpt-4o-mini');
-  const [_apiKeyConfigured, setApiKeyConfigured] = useState(false);
-  const [apiKey, setApiKey] = useState('');
+  // Account state — session auth only, never provider API keys
+  const [account, setAccount] = useState<AccountInfo | null>(null);
+  const [sessionActive, setSessionActive] = useState(false);
+  const [accountLoading, setAccountLoading] = useState(false);
 
-  // AI Keys
-  const [geminiKey, setGeminiKey] = useState('');
-  const [anthropicKey, setAnthropicKey] = useState('');
-  const [openaiKey, setOpenaiKey] = useState('');
-  const [showKeys, setShowKeys] = useState(false);
-  const [aiSaved, setAiSaved] = useState(false);
+  const [authMode, setAuthMode] = useState<'signin' | 'signup' | null>(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [authBusy, setAuthBusy] = useState(false);
 
+  const loadAccount = useCallback(async (settings: Settings) => {
+    setAccountLoading(true);
+    try {
+      // SECURITY: sessionToken is NEVER sent to the renderer.
+      // Use the sessionConfigured boolean flag instead to determine auth state.
+      const hasSession = !!settings.sessionConfigured;
+      setSessionActive(hasSession);
 
+      if (hasSession) {
+        const info = await window.peep.authGetAccount();
+        if (info) {
+          setAccount({
+            email: info.email,
+            plan: info.tier || info.plan || 'free',
+            usedCost: info.usedCost ?? info.usage ?? 0,
+            budgetCost: info.budgetCost ?? info.limit ?? 0,
+            usedTokens: info.usedTokens || 0,
+            budgetTokens: info.budgetTokens || 0,
+            gatewayConnected: info.gatewayConnected ?? true,
+          });
+        } else {
+          setSessionActive(false);
+          setAccount(null);
+        }
+      } else {
+        setAccount(null);
+      }
+    } finally {
+      setAccountLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!open) return;
     void window.peep.getSettings().then((s) => {
       setFlutterPath(s.flutterSdkPath ?? '');
-      setApiProvider(s.apiProvider ?? 'openai');
-      setApiModel(s.apiModel ?? 'gpt-4o-mini');
-      setApiKeyConfigured(!!s.apiKeyConfigured);
-      setApiKey(''); // Clear raw editing input on load
+      void loadAccount(s);
     });
     void window.peep.detectFlutterSdk().then((sdk) => setSdkVersion(sdk?.version ?? null));
     void window.peep.getTelemetryEnabled().then(setTelemetryEnabled);
     void window.peep.getVersion().then(setVersion);
-
-    // Load saved AI keys from localStorage
-    setGeminiKey(localStorage.getItem('peep_gemini_key') ?? '');
-    setAnthropicKey(localStorage.getItem('peep_anthropic_key') ?? '');
-    setOpenaiKey(localStorage.getItem('peep_openai_key') ?? '');
-    setAiSaved(false);
-  }, [open]);
+  }, [open, loadAccount]);
 
   useEffect(() => {
     if (tab === 'about') {
@@ -65,45 +95,17 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     onClose();
   };
 
-  const handleSave = async () => {
+  const handleSaveSdk = async () => {
     setSaving(true);
     try {
-      // Determine which key to send based on the current apiProvider
-      let keyToSend = apiKey;
-      if (!keyToSend) {
-        if (apiProvider === 'google' && geminiKey.trim()) keyToSend = geminiKey.trim();
-        else if (apiProvider === 'anthropic' && anthropicKey.trim()) keyToSend = anthropicKey.trim();
-        else if (apiProvider === 'openai' && openaiKey.trim()) keyToSend = openaiKey.trim();
-      }
-
       const partial: Partial<Settings> = {
         flutterSdkPath: flutterPath || undefined,
-        apiProvider,
-        apiModel,
       };
-      if (keyToSend) {
-        partial.apiKey = keyToSend;
-      }
-      
-      const nextSettings = await window.peep.setSettings(partial);
-      setApiKeyConfigured(!!nextSettings.apiKeyConfigured);
-      setApiKey('');
-      handleSaveAiKeys(); // also save locally
+      await window.peep.setSettings(partial);
       handleClose();
     } finally {
       setSaving(false);
     }
-  };
-
-  const handleSaveAiKeys = () => {
-    if (geminiKey.trim()) localStorage.setItem('peep_gemini_key', geminiKey.trim());
-    else localStorage.removeItem('peep_gemini_key');
-    if (anthropicKey.trim()) localStorage.setItem('peep_anthropic_key', anthropicKey.trim());
-    else localStorage.removeItem('peep_anthropic_key');
-    if (openaiKey.trim()) localStorage.setItem('peep_openai_key', openaiKey.trim());
-    else localStorage.removeItem('peep_openai_key');
-    setAiSaved(true);
-    setTimeout(() => setAiSaved(false), 2000);
   };
 
   const handleTelemetryToggle = async (enabled: boolean) => {
@@ -111,14 +113,47 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     await window.peep.setTelemetryEnabled(enabled);
   };
 
+  const handleAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthBusy(true);
+    setAuthError('');
+    try {
+      const res = authMode === 'signin' 
+        ? await window.peep.authSignIn(email, password)
+        : await window.peep.authSignUp(email, password);
+      
+      if (!res.success) {
+        setAuthError(res.error || 'Authentication failed');
+      } else {
+        setAuthMode(null);
+        setEmail('');
+        setPassword('');
+        const s = await window.peep.getSettings();
+        await loadAccount(s);
+      }
+    } catch (err: any) {
+      setAuthError(err.message || 'Authentication failed');
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    setAccountLoading(true);
+    await window.peep.authLogout();
+    const s = await window.peep.getSettings();
+    await loadAccount(s);
+  };
+
   const TABS: { id: SettingsTab; label: string }[] = [
-    { id: 'ai', label: '🤖 AI Keys' },
+    { id: 'account', label: '👤 Account' },
     { id: 'sdk', label: '🔧 SDK' },
     { id: 'telemetry', label: '🔒 Privacy' },
     { id: 'about', label: 'ℹ About' },
   ];
 
-  const inputType = showKeys ? 'text' : 'password';
+  const usedPct = account ? Math.min(100, (account.usedCost / account.budgetCost) * 100) : 0;
+  const quotaColor = usedPct > 90 ? '#f44336' : usedPct > 70 ? '#ff9800' : '#4CAF50';
 
   return (
     <div className="settings-overlay" onClick={handleClose}>
@@ -146,65 +181,162 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         {/* Body */}
         <div className="settings-modal__body">
 
-          {/* ── AI API Keys ── */}
-          {tab === 'ai' && (
+          {/* ── Account ── */}
+          {tab === 'account' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
               <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: 0, lineHeight: 1.6 }}>
-                Your API keys are stored locally in this browser context and never sent to any server except the respective AI provider.
+                AI capabilities are powered by the Synkro Gateway. No provider API keys are ever
+                stored on this device.
               </p>
 
-              {/* Gemini */}
-              <label className="settings-field">
-                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="10" /><path d="M12 2v20M2 12h20" /></svg>
-                  Google Gemini API Key
-                </span>
-                <input
-                  type={inputType}
-                  placeholder="AIza…"
-                  value={geminiKey}
-                  onChange={(e) => setGeminiKey(e.target.value)}
-                  style={{ fontFamily: 'var(--font-code)', letterSpacing: showKeys ? 'normal' : '0.1em' }}
-                />
-                {geminiKey && <small className="settings-field__ok">✓ Key set</small>}
-              </label>
+              {accountLoading ? (
+                <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', fontSize: '13px' }}>
+                  Loading account…
+                </div>
+              ) : authMode ? (
+                <form onSubmit={handleAuthSubmit} style={{ padding: '20px', background: 'var(--bg-card)', borderRadius: '10px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <div style={{ fontWeight: '600', fontSize: '15px' }}>{authMode === 'signin' ? 'Sign In' : 'Sign Up'}</div>
+                  
+                  {authError && (
+                    <div style={{ padding: '10px', background: 'rgba(244,67,54,0.1)', color: '#f44336', borderRadius: '6px', fontSize: '12px' }}>
+                      {authError}
+                    </div>
+                  )}
 
-              {/* Anthropic */}
-              <label className="settings-field">
-                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 2L2 19h20L12 2z" /></svg>
-                  Anthropic (Claude) API Key
-                </span>
-                <input
-                  type={inputType}
-                  placeholder="sk-ant-…"
-                  value={anthropicKey}
-                  onChange={(e) => setAnthropicKey(e.target.value)}
-                  style={{ fontFamily: 'var(--font-code)', letterSpacing: showKeys ? 'normal' : '0.1em' }}
-                />
-                {anthropicKey && <small className="settings-field__ok">✓ Key set</small>}
-              </label>
+                  <label className="settings-field">
+                    <span>Email</span>
+                    <input type="email" value={email} onChange={e => setEmail(e.target.value)} required disabled={authBusy} autoFocus />
+                  </label>
+                  
+                  <label className="settings-field">
+                    <span>Password</span>
+                    <input type="password" value={password} onChange={e => setPassword(e.target.value)} required disabled={authBusy} minLength={8} />
+                  </label>
 
-              {/* OpenAI */}
-              <label className="settings-field">
-                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M2 12h2M20 12h2" /></svg>
-                  OpenAI API Key
-                </span>
-                <input
-                  type={inputType}
-                  placeholder="sk-…"
-                  value={openaiKey}
-                  onChange={(e) => setOpenaiKey(e.target.value)}
-                  style={{ fontFamily: 'var(--font-code)', letterSpacing: showKeys ? 'normal' : '0.1em' }}
-                />
-                {openaiKey && <small className="settings-field__ok">✓ Key set</small>}
-              </label>
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                    <button type="submit" className="btn btn-primary" disabled={authBusy} style={{ flex: 1 }}>
+                      {authBusy ? 'Please wait…' : authMode === 'signin' ? 'Sign In' : 'Create Account'}
+                    </button>
+                    <button type="button" className="btn btn-ghost" onClick={() => { setAuthMode(null); setAuthError(''); }} disabled={authBusy}>
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : !sessionActive || !account ? (
+                /* ── Signed-out state ── */
+                <div style={{ padding: '20px', background: 'var(--bg-card)', borderRadius: '10px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '36px' }}>🔐</div>
+                  <div>
+                    <div style={{ fontWeight: '600', fontSize: '15px', marginBottom: '6px' }}>Not signed in</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                      Sign in to your Synkro account to unlock AI features.<br />
+                      You will never be asked to enter a provider API key.
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px', width: '100%' }}>
+                    <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={() => setAuthMode('signin')}>
+                      Sign In
+                    </button>
+                    <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setAuthMode('signup')}>
+                      Sign Up
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* ── Signed-in state ── */
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {/* Account card */}
+                  <div style={{ padding: '16px', background: 'var(--bg-card)', borderRadius: '10px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Account</span>
+                      <span style={{ fontSize: '11px', color: '#4CAF50', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ width: '6px', height: '6px', background: '#4CAF50', borderRadius: '50%', display: 'inline-block' }} />
+                        Gateway Connected
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Email</span>
+                      <span style={{ fontWeight: '500' }}>{account.email}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Plan</span>
+                      <span style={{
+                        background: 'linear-gradient(135deg, #667eea, #764ba2)',
+                        color: '#fff',
+                        padding: '2px 10px',
+                        borderRadius: '12px',
+                        fontSize: '11px',
+                        fontWeight: '700',
+                        letterSpacing: '0.05em'
+                      }}>
+                        {account.plan.toUpperCase()}
+                      </span>
+                    </div>
+                  </div>
 
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--text-muted)', cursor: 'pointer', userSelect: 'none' }}>
-                <input type="checkbox" checked={showKeys} onChange={(e) => setShowKeys(e.target.checked)} />
-                Show keys
-              </label>
+                  {/* Usage card */}
+                  <div style={{ padding: '16px', background: 'var(--bg-card)', borderRadius: '10px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Monthly Usage</span>
+
+                    {/* Cost quota */}
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '5px' }}>
+                        <span>Cost</span>
+                        <span style={{ fontWeight: '600' }}>
+                          ${account.usedCost.toFixed(2)} <span style={{ color: 'var(--text-muted)', fontWeight: '400' }}>/ ${account.budgetCost.toFixed(2)}</span>
+                        </span>
+                      </div>
+                      <div style={{ height: '6px', background: 'rgba(128,128,128,0.15)', borderRadius: '3px', overflow: 'hidden' }}>
+                        <div style={{ width: `${usedPct}%`, height: '100%', background: quotaColor, borderRadius: '3px', transition: 'width 0.4s ease' }} />
+                      </div>
+                    </div>
+
+                    {/* Token quota */}
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '5px' }}>
+                        <span>Tokens</span>
+                        <span style={{ fontWeight: '600' }}>
+                          {(account.usedTokens / 1000).toFixed(1)}K <span style={{ color: 'var(--text-muted)', fontWeight: '400' }}>/ {(account.budgetTokens / 1000000).toFixed(1)}M</span>
+                        </span>
+                      </div>
+                      <div style={{ height: '6px', background: 'rgba(128,128,128,0.15)', borderRadius: '3px', overflow: 'hidden' }}>
+                        <div style={{
+                          width: `${Math.min(100, (account.usedTokens / account.budgetTokens) * 100)}%`,
+                          height: '100%',
+                          background: '#667eea',
+                          borderRadius: '3px',
+                          transition: 'width 0.4s ease'
+                        }} />
+                      </div>
+                    </div>
+
+                    <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
+                      Usage is tracked and enforced server-side. Resets monthly.
+                    </p>
+                  </div>
+
+                  {/* Gateway connection status */}
+                  <div style={{ padding: '12px 16px', background: 'var(--bg-card)', borderRadius: '10px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Synkro AI Gateway</span>
+                    {account.gatewayConnected ? (
+                      <span style={{ color: '#4CAF50', fontWeight: '600', fontSize: '12px' }}>✓ Operational</span>
+                    ) : (
+                      <span style={{ color: '#f44336', fontWeight: '600', fontSize: '12px' }}>⚠ Unreachable</span>
+                    )}
+                  </div>
+
+                  {/* Security notice and Logout */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.6, padding: '0 2px', flex: 1 }}>
+                      🔒 Provider API keys (OpenAI, Gemini, Anthropic) are never stored on this device.
+                      All AI requests are routed securely through the Synkro Gateway.
+                    </div>
+                    <button type="button" className="btn btn-ghost" style={{ fontSize: '12px', padding: '4px 8px', marginLeft: '10px' }} onClick={handleLogout}>
+                      Sign out
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -320,29 +452,22 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         </div>
 
         {/* Footer */}
-        {tab === 'ai' && (
-          <div className="settings-modal__footer">
-            <button type="button" className="btn btn-ghost" onClick={handleClose}>Cancel</button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={handleSaveAiKeys}
-            >
-              {aiSaved ? '✓ Saved!' : 'Save Keys'}
-            </button>
-          </div>
-        )}
         {tab === 'sdk' && (
           <div className="settings-modal__footer">
             <button type="button" className="btn btn-ghost" onClick={handleClose}>Cancel</button>
             <button
               type="button"
               className="btn btn-primary"
-              onClick={() => void handleSave()}
+              onClick={() => void handleSaveSdk()}
               disabled={saving}
             >
               {saving ? 'Saving…' : 'Save'}
             </button>
+          </div>
+        )}
+        {tab === 'account' && !accountLoading && !sessionActive && (
+          <div className="settings-modal__footer">
+            <button type="button" className="btn btn-ghost" onClick={handleClose}>Close</button>
           </div>
         )}
       </div>

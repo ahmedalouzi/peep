@@ -11,19 +11,20 @@ publish:
 win:
   target: nsis
   icon: resources/icons/icon.ico
-  # Add Authenticode signing configurations here when cert is ready:
-  # certificateFile: "build/certs/win_cert.pfx"
-  # certificatePassword: "WIN_CERT_PASSWORD"
+  certificateSha1: ${env.WIN_CSC_SHA1} # GitHub Secrets / AWS Secrets integration
+  signAndEditExecutable: true
 mac:
   target:
     - dmg
     - zip
   category: public.app-category.developer-tools
   icon: resources/icons/icon.icns
-  # Add Apple Developer ID code signing & notarization configurations here:
-  # identity: "Developer ID Application: Your Name (TeamID)"
-  # entitlements: "build/entitlements.mac.plist"
-  # entitlementsInherit: "build/entitlements.mac.plist"
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: "build/entitlements.mac.plist"
+  entitlementsInherit: "build/entitlements.mac.plist"
+  notarize:
+    teamId: ${env.APPLE_TEAM_ID}
   # gatekeeperAssess: false
   # hardentedRuntime: true
 nsis:

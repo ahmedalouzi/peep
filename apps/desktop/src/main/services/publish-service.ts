@@ -1,7 +1,8 @@
-import { join } from 'node:path';
 import { access } from 'node:fs/promises';
 import { BrowserWindow } from 'electron';
 import type { ProcessManager } from './process-manager';
+
+import type { PlatformRegistry } from './platform-registry';
 
 export interface PublishStatus {
   status: 'idle' | 'building' | 'deploying' | 'completed' | 'error';
@@ -15,7 +16,10 @@ export class PublishService {
   private activeProcessId: number | null = null;
   private status: PublishStatus = { status: 'idle', message: 'Ready to publish', logs: [] };
 
-  constructor(private processManager: ProcessManager) {}
+  constructor(
+    private processManager: ProcessManager,
+    private registry: PlatformRegistry
+  ) {}
 
   // Called by ipc/index.ts — no-op since we broadcast via BrowserWindow.getAllWindows()
   setMainWindow(_window: BrowserWindow | null): void {}
@@ -64,7 +68,6 @@ export class PublishService {
 
   async buildAndDeploy(
     projectPath: string,
-    platform: 'flutter' | 'react-native',
     target: 'vercel' | 'netlify',
     token?: string
   ): Promise<void> {
@@ -72,23 +75,16 @@ export class PublishService {
     this.status = { status: 'building', message: 'Building production bundle...', logs: [] };
     this.emit({});
 
-    let buildCmd = '';
-    let buildArgs: string[] = [];
     let buildDir = '';
 
-    if (platform === 'flutter') {
-      buildCmd = 'flutter';
-      buildArgs = ['build', 'web', '--release'];
-      buildDir = join(projectPath, 'build', 'web');
-    } else {
-      buildCmd = this.getBin('npx');
-      buildArgs = ['expo', 'export', '--platform', 'web'];
-      buildDir = join(projectPath, 'dist');
-    }
-
     try {
-      this.emitLog(`> Starting production build for ${platform}...`);
-      await this.runCommand(buildCmd, buildArgs, projectPath);
+      this.emitLog(`> Detecting project provider...`);
+      const { provider } = await this.registry.detect(projectPath);
+      if (!provider) {
+        throw new Error('Could not detect mobile framework provider for the project.');
+      }
+      this.emitLog(`> Starting production build using ${provider.name}...`);
+      buildDir = await provider.buildWeb(projectPath);
       this.emitLog(`✓ Production build finished successfully.`);
     } catch (err: any) {
       this.emit({ status: 'error', message: `Build failed: ${err.message}` });

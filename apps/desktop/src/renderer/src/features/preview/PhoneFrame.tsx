@@ -1,7 +1,16 @@
 import './PhoneFrame.css';
 import { useState, useEffect } from 'react';
+import { DeviceConfig } from '../../layout/PreviewPane';
 
-/** Shows live clock matching the system time */
+export type DeviceType =
+  | 'iphone-15'
+  | 'iphone-15-pro'
+  | 'iphone-se'
+  | 'pixel-8'
+  | 'pixel-fold'
+  | 'galaxy-s24';
+
+/** Live clock — system time */
 function useClock() {
   const fmt = () => {
     const now = new Date();
@@ -17,182 +26,175 @@ function useClock() {
   return time;
 }
 
-export type DeviceType =
-  | 'iphone-15'
-  | 'iphone-15-pro'
-  | 'iphone-se'
-  | 'pixel-8'
-  | 'pixel-fold'
-  | 'galaxy-s24';
-
-interface PhoneFrameProps {
-  device: DeviceType;
-  children: React.ReactNode;
+/** Chassis background (the dark body behind the screen) */
+export function FrameBackground({ device }: { device: DeviceConfig }) {
+  if (!device.artwork.frameAsset) return null;
+  return (
+    <div
+      className={`pf ${device.artwork.frameAsset}`}
+      style={{ width: '100%', height: '100%' }}
+    />
+  );
 }
 
-/** iPhone 15 / 15 Pro — Dynamic Island, titanium frame, rounded corners */
-function IPhoneFrame({ pro, children }: { pro?: boolean; children: React.ReactNode }) {
+/** Status-bar icons */
+function BatteryIcon() {
+  return (
+    <div className="pf-icon-battery">
+      <div className="pf-icon-battery-level" />
+    </div>
+  );
+}
+
+function WifiIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 18"
+      fill="white"
+      style={{ width: '16px', height: '12px' }}
+    >
+      {/* Three arcs + dot, same shape as iOS */}
+      <path d="M12 14.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z" />
+      <path d="M12 10a6 6 0 0 1 4.24 1.76l1.42-1.42A8 8 0 0 0 4.34 10.34l1.42 1.42A6 6 0 0 1 12 10z" />
+      <path d="M12 5.5a10.5 10.5 0 0 1 7.42 3.08l1.41-1.41A12.5 12.5 0 0 0 12 3a12.5 12.5 0 0 0-8.83 4.17l1.41 1.41A10.5 10.5 0 0 1 12 5.5z" />
+    </svg>
+  );
+}
+
+function CellularIcon() {
+  return (
+    <div className="pf-icon-cellular">
+      <span /><span /><span /><span />
+    </div>
+  );
+}
+
+/** Foreground overlay (Dynamic Island, status bar, buttons) */
+export function FrameForeground({ device }: { device: DeviceConfig }) {
   const time = useClock();
-  return (
-    <div className={`pf pf-iphone ${pro ? 'pf-iphone--pro' : ''}`}>
-      {/* ── Side hardware buttons ── */}
-      <div className="pf-btn pf-btn--mute" />
-      <div className="pf-btn pf-btn--vol-up" />
-      <div className="pf-btn pf-btn--vol-down" />
-      <div className="pf-btn pf-btn--power" />
 
-      {/* ── Screen bezel ── */}
-      <div className="pf-bezel">
-        {/* Status Bar */}
-        <div className="pf-status-bar">
-          <div className="pf-status-left">
-            <span>{time}</span>
+  const Wrapper = ({ children }: { children: React.ReactNode }) => (
+    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+      {children}
+    </div>
+  );
+
+  /* ── iPhone 15 / 15 Pro ───────────────────────────────────────── */
+  if (device.id.startsWith('iphone-15')) {
+    return (
+      <Wrapper>
+        {/* Physical side buttons */}
+        <div className="pf-btn pf-btn--mute" />
+        <div className="pf-btn pf-btn--vol-up" />
+        <div className="pf-btn pf-btn--vol-down" />
+        <div className="pf-btn pf-btn--power" />
+
+        {/* Top-edge specular highlight — removed (pure black chassis) */}
+
+        {/* Foreground HUD — sits over the screen */}
+        <div className="pf-bezel">
+          {/* Status bar — time left, icons right, Dynamic Island centred */}
+          <div className="pf-status-bar">
+            <div className="pf-status-left">
+              <span>{time}</span>
+            </div>
+            <div className="pf-status-right">
+              <CellularIcon />
+              <WifiIcon />
+              <BatteryIcon />
+            </div>
           </div>
-          <div className="pf-status-right">
-            {/* Cellular bars: short-to-tall, left-to-right */}
-            <div className="pf-icon-cellular">
-              <span/><span/><span/><span/>
-            </div>
-            {/* WiFi icon */}
-            <div className="pf-icon-wifi">
-              <svg viewBox="1 8 22 14" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" style={{ width: '16px', height: '12px' }}>
-                <path d="M5 12 A10 10 0 0 1 19 12" />
-                <path d="M8.5 15.5 A5 5 0 0 1 15.5 15.5" />
-                <circle cx="12" cy="19" r="1.5" fill="currentColor" stroke="none" />
-              </svg>
-            </div>
-            {/* Battery */}
-            <div className="pf-icon-battery">
-              <div className="pf-icon-battery-level"></div>
-            </div>
+
+          {/* Dynamic Island — pill-shaped, centred at top */}
+          <div className="pf-dynamic-island">
+            <div className="pf-di-cam" />
+            <div className="pf-di-speaker" />
           </div>
+
+          {/* Home indicator bar at bottom */}
+          <div className="pf-home-indicator" />
         </div>
 
-        {/* Dynamic Island */}
-        <div className="pf-dynamic-island">
-          <div className="pf-di-cam" />
-          <div className="pf-di-speaker" />
-        </div>
-
-        {/* Screen */}
-        <div className="pf-screen">
-          {children}
-        </div>
-
-        {/* Home indicator */}
-        <div className="pf-home-indicator" />
-      </div>
-
-      {/* Frame shine overlay */}
-      <div className="pf-shine" />
-    </div>
-  );
-}
-
-/** iPhone SE — Touch ID button, smaller, classic notch */
-function IPhoneSEFrame({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="pf pf-iphone-se">
-      <div className="pf-btn pf-btn--vol-up" style={{ top: '90px' }} />
-      <div className="pf-btn pf-btn--vol-down" style={{ top: '130px' }} />
-      <div className="pf-btn pf-btn--power" style={{ top: '80px' }} />
-
-      <div className="pf-bezel">
-        {/* SE notch: small FaceTime camera area */}
-        <div className="pf-se-topbar">
-          <div className="pf-se-speaker" />
-          <div className="pf-se-cam" />
-        </div>
-
-        <div className="pf-screen">
-          {children}
-        </div>
-
-        {/* SE has physical home button */}
-        <div className="pf-se-home-btn">
-          <div className="pf-se-home-ring" />
-        </div>
-      </div>
-
-      <div className="pf-shine" />
-    </div>
-  );
-}
-
-/** Pixel 8 — Punch-hole camera, flat Android design */
-function PixelFrame({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="pf pf-pixel">
-      <div className="pf-btn pf-btn--power pf-btn--android-power" />
-      <div className="pf-btn pf-btn--vol-up pf-btn--android-vol-up" />
-      <div className="pf-btn pf-btn--vol-down pf-btn--android-vol-down" />
-
-      <div className="pf-bezel pf-bezel--android">
-        <div className="pf-screen">
-          {/* Punch-hole camera */}
-          <div className="pf-punchhole" />
-          {children}
-        </div>
-        {/* Android gesture bar */}
-        <div className="pf-android-bar" />
-      </div>
-
-      <div className="pf-shine pf-shine--android" />
-    </div>
-  );
-}
-
-/** Pixel Fold — Foldable design */
-function PixelFoldFrame({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="pf pf-pixel-fold">
-      <div className="pf-btn pf-btn--power pf-btn--android-power" />
-      <div className="pf-btn pf-btn--vol-up pf-btn--android-vol-up" />
-      <div className="pf-btn pf-btn--vol-down pf-btn--android-vol-down" />
-
-      <div className="pf-bezel pf-bezel--android pf-bezel--fold">
-        <div className="pf-screen">
-          <div className="pf-punchhole pf-punchhole--fold" />
-          {children}
-        </div>
-        <div className="pf-fold-hinge" />
-        <div className="pf-android-bar" />
-      </div>
-
-      <div className="pf-shine pf-shine--android" />
-    </div>
-  );
-}
-
-/** Galaxy S24 — Samsung design, flat sides, small punch-hole */
-function GalaxyFrame({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="pf pf-galaxy">
-      <div className="pf-btn pf-btn--power pf-btn--samsung-power" />
-      <div className="pf-btn pf-btn--vol-up pf-btn--samsung-vol-up" />
-      <div className="pf-btn pf-btn--vol-down pf-btn--samsung-vol-down" />
-
-      <div className="pf-bezel pf-bezel--android pf-bezel--samsung">
-        <div className="pf-screen">
-          <div className="pf-punchhole pf-punchhole--samsung" />
-          {children}
-        </div>
-        <div className="pf-android-bar" />
-      </div>
-
-      <div className="pf-shine pf-shine--android" />
-    </div>
-  );
-}
-
-export function PhoneFrame({ device, children }: PhoneFrameProps) {
-  switch (device) {
-    case 'iphone-15':     return <IPhoneFrame>{children}</IPhoneFrame>;
-    case 'iphone-15-pro': return <IPhoneFrame pro>{children}</IPhoneFrame>;
-    case 'iphone-se':     return <IPhoneSEFrame>{children}</IPhoneSEFrame>;
-    case 'pixel-8':       return <PixelFrame>{children}</PixelFrame>;
-    case 'pixel-fold':    return <PixelFoldFrame>{children}</PixelFoldFrame>;
-    case 'galaxy-s24':    return <GalaxyFrame>{children}</GalaxyFrame>;
-    default:              return <IPhoneFrame>{children}</IPhoneFrame>;
+      </Wrapper>
+    );
   }
+
+  /* ── iPhone SE ──────────────────────────────────────────────────── */
+  if (device.id === 'iphone-se') {
+    return (
+      <Wrapper>
+        <div className="pf-btn pf-btn--vol-up" style={{ top: '96px' }} />
+        <div className="pf-btn pf-btn--vol-down" style={{ top: '160px' }} />
+        <div className="pf-btn pf-btn--power" style={{ top: '86px' }} />
+
+        <div className="pf-bezel">
+          {/* Top bar: speaker + front cam */}
+          <div className="pf-se-topbar">
+            <div className="pf-se-speaker" />
+            <div className="pf-se-cam" />
+          </div>
+
+          {/* Home button */}
+          <div className="pf-se-home-btn">
+            <div className="pf-se-home-ring" />
+          </div>
+        </div>
+
+        <div className="pf-shine" />
+      </Wrapper>
+    );
+  }
+
+  /* ── Pixel 8 ─────────────────────────────────────────────────────── */
+  if (device.id === 'pixel-8') {
+    return (
+      <Wrapper>
+        <div className="pf-btn pf-btn--power pf-btn--android-power" />
+        <div className="pf-btn pf-btn--vol-up pf-btn--android-vol-up" />
+        <div className="pf-btn pf-btn--vol-down pf-btn--android-vol-down" />
+
+        <div className="pf-bezel pf-bezel--android">
+          <div className="pf-punchhole" />
+          <div className="pf-android-bar" />
+        </div>
+
+      </Wrapper>
+    );
+  }
+
+  /* ── Pixel Fold ──────────────────────────────────────────────────── */
+  if (device.id === 'pixel-fold') {
+    return (
+      <Wrapper>
+        <div className="pf-btn pf-btn--power pf-btn--android-power" />
+        <div className="pf-btn pf-btn--vol-up pf-btn--android-vol-up" />
+
+        <div className="pf-bezel pf-bezel--fold">
+          <div className="pf-fold-hinge" />
+          <div className="pf-punchhole pf-punchhole--fold" />
+          <div className="pf-android-bar" />
+        </div>
+
+      </Wrapper>
+    );
+  }
+
+  /* ── Galaxy S24 ──────────────────────────────────────────────────── */
+  if (device.id === 'galaxy-s24') {
+    return (
+      <Wrapper>
+        <div className="pf-btn pf-btn--samsung-power" />
+        <div className="pf-btn pf-btn--samsung-vol-up" />
+        <div className="pf-btn pf-btn--samsung-vol-down" />
+
+        <div className="pf-bezel pf-bezel--samsung">
+          <div className="pf-punchhole pf-punchhole--samsung" />
+          <div className="pf-android-bar" />
+        </div>
+
+      </Wrapper>
+    );
+  }
+
+  return null;
 }

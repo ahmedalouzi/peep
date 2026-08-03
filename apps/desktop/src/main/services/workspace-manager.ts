@@ -125,8 +125,13 @@ export class WorkspaceManager {
   }
 
   async writeFile(filePath: string, content: string): Promise<void> {
-    await mkdir(dirname(filePath), { recursive: true });
-    await writeFile(filePath, content, 'utf-8');
+    const dir = dirname(filePath);
+    await mkdir(dir, { recursive: true });
+    return writeFile(filePath, content, 'utf-8');
+  }
+
+  async mkdir(dirPath: string, options?: { recursive?: boolean }): Promise<void> {
+    await mkdir(dirPath, options);
   }
 
   async createDir(dirPath: string): Promise<void> {

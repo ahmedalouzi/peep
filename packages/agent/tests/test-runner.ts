@@ -11,6 +11,12 @@ async function main() {
 
   console.log(`\n🚀 Running Synkro Unit Tests (${testFiles.length} suites)...\n`);
 
+  process.env.DATABASE_URL = 'postgres://testuser:testpass@localhost:5432/peep_test';
+  const { initDbSchema } = await import('../src/models/db');
+  console.log('  Running database migrations...');
+  await initDbSchema();
+  console.log('  Database ready.\n');
+
   let passed = 0;
   let failed = 0;
 

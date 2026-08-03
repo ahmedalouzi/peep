@@ -18,6 +18,7 @@ import { ProjectService } from '../services/project-service';
 import { TelemetryService } from '../services/telemetry-service';
 import { AutoUpdateService } from '../services/auto-update-service';
 import { ReactNativeService } from '../services/react-native-service';
+import { ReactNativeManagedProvider } from '../services/providers/react-native-managed';
 import { PlatformRegistry } from '../services/platform-registry';
 import { buildAuditReport, capturePerformanceSnapshot } from '../services/audit-service';
 import { ExtensionService } from '../services/extension-service';
@@ -49,8 +50,12 @@ export function setMainWindow(window: BrowserWindow | null): void {
   publishService?.setMainWindow(window);
 }
 
+import { globalIpcBatcher } from '../utils/ipc-batcher';
+
 function notifyGitChanged(): void {
-  mainWindow?.webContents.send(IPC_EVENTS.GIT_CHANGED);
+  globalIpcBatcher.throttle(IPC_EVENTS.GIT_CHANGED, 500, () => {
+    mainWindow?.webContents.send(IPC_EVENTS.GIT_CHANGED);
+  });
 }
 
 async function runAnalyze(projectPath: string, flutter: FlutterService): Promise<void> {
@@ -67,58 +72,37 @@ async function runRnAnalyze(projectPath: string, rn: ReactNativeService): Promis
 async function openProjectAtPath(
   projectPath: string,
   workspace: WorkspaceManager,
-  flutter: FlutterService,
-  rnService: ReactNativeService,
+  registry: PlatformRegistry,
   previewManager: PreviewManager,
+  agentSvc: AgentService,
 ): Promise<Awaited<ReturnType<WorkspaceManager['openFolder']>>> {
   const project = await workspace.openFolder(projectPath);
-  await onProjectOpened(project.path, flutter, rnService, previewManager);
+  await onProjectOpened(project.path, registry, previewManager, agentSvc);
   notifyGitChanged();
   return project;
 }
 
 async function onProjectOpened(
   projectPath: string,
-  flutter: FlutterService,
-  rnService: ReactNativeService,
+  registry: PlatformRegistry,
   previewManager: PreviewManager,
+  agentSvc: AgentService,
 ): Promise<void> {
-  const isFlutter = await flutter.isFlutterProject(projectPath);
-  const isRN = !isFlutter && (await rnService.isReactNativeProject(projectPath));
+  const { provider, projectRoot } = await registry.detect(projectPath, { requireProject: true, timeoutMs: 2000 });
+  if (!provider) return;
 
-  fileWatcher.watch(projectPath, mainWindow, () => {
-    if (isFlutter) {
-      void runAnalyze(projectPath, flutter);
-      previewManager.reload(flutter);
-    } else if (isRN) {
-      void runRnAnalyze(projectPath, rnService);
-      const session = previewManager.getSession();
-      if (session && session.processId && session.status === 'running') {
-        rnService.reloadPreview(session.processId);
-      }
+  fileWatcher.watch(projectPath, mainWindow, (event, path) => {
+    const session = previewManager.getSession();
+    if (session && session.processId && session.status === 'running') {
+      provider.reloadPreview(session.processId);
     }
+    agentSvc.onFileChanged(projectPath, event, path);
   });
 
-  if (isFlutter) {
-    void runAnalyze(projectPath, flutter);
-
-    previewManager.start(projectPath, flutter).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      mainWindow?.webContents.send(IPC_EVENTS.PREVIEW_LOG, `[preview] ${message}`);
-    });
-  } else if (isRN) {
-    void runRnAnalyze(projectPath, rnService);
-
-    rnService.startWebPreview(projectPath, undefined, (text) => {
-      mainWindow?.webContents.send(IPC_EVENTS.PREVIEW_LOG, text);
-    }).then((result) => {
-      previewManager.setSession({ url: result.url, processId: result.processId, status: 'running' });
-    }).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      mainWindow?.webContents.send(IPC_EVENTS.PREVIEW_LOG, `\r\n[preview error] ${message}\r\n`);
-      previewManager.setSession({ url: '', processId: 0, status: 'error', error: message });
-    });
-  }
+  previewManager.start(projectRoot, provider).catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    mainWindow?.webContents.send(IPC_EVENTS.PREVIEW_LOG, `[preview error] ${message}`);
+  });
 }
 
 export async function registerIpcHandlers(): Promise<{
@@ -147,11 +131,17 @@ export async function registerIpcHandlers(): Promise<{
   terminalService.setFlutterSdkPath(settings.flutterSdkPath);
   const flutter = new FlutterService(processManager, settings.flutterSdkPath);
   rnService = new ReactNativeService(processManager);
-  platformRegistry = new PlatformRegistry(flutter, rnService);
-  publishService = new PublishService(processManager);
-  agentService = new AgentService(db, workspace, flutter, rnService);
+  platformRegistry = new PlatformRegistry();
+  platformRegistry.register(flutter);
+  platformRegistry.register(rnService);
+  
+  // Register the managed provider
+  platformRegistry.register(new ReactNativeManagedProvider(processManager));
+
+  publishService = new PublishService(processManager, platformRegistry);
+  agentService = new AgentService(db, workspace, platformRegistry);
   agentService.setMainWindow(mainWindow);
-  const projectService = new ProjectService(flutter, workspace);
+  const projectService = new ProjectService(platformRegistry, workspace);
   const deviceService = new DeviceService();
 
   ipcMain.handle(IPC_CHANNELS.DEVICE_GET_LIST, async () => {
@@ -203,6 +193,20 @@ export async function registerIpcHandlers(): Promise<{
   });
 
   ipcMain.handle(IPC_CHANNELS.DIALOG_OPEN_FOLDER, async () => {
+    if (process.env.E2E_TESTING === '1') {
+      const e2ePath = require('path').join(__dirname, '..', '..', '..', '..', 'e2e-fresh-workspace', 'TestFlow');
+      const projectName = require('path').basename(e2ePath);
+      const project: import('@peep/shared').ProjectInfo = {
+        id: `local-${projectName}-${Date.now()}`,
+        name: projectName,
+        path: e2ePath,
+        lastOpened: new Date().toISOString(),
+        platform: 'react-native',
+      };
+      await db!.upsertProject(project);
+      return project;
+    }
+
     const options = {
       properties: ['openDirectory' as const],
       title: 'Open Flutter Project',
@@ -215,7 +219,7 @@ export async function registerIpcHandlers(): Promise<{
       return null;
     }
 
-    const project = await openProjectAtPath(result.filePaths[0], workspace, flutter, rnService!, previewManager);
+    const project = await openProjectAtPath(result.filePaths[0], workspace, platformRegistry!, previewManager, agentService!);
     return project;
   });
 
@@ -281,7 +285,7 @@ export async function registerIpcHandlers(): Promise<{
   });
 
   ipcMain.handle(IPC_CHANNELS.WORKSPACE_OPEN_FOLDER, async (_event, folderPath: string) => {
-    return openProjectAtPath(folderPath, workspace, flutter, rnService!, previewManager);
+    return openProjectAtPath(folderPath, workspace, platformRegistry!, previewManager, agentService!);
   });
 
   ipcMain.handle(IPC_CHANNELS.WORKSPACE_GET_RECENT, () => {
@@ -324,7 +328,7 @@ export async function registerIpcHandlers(): Promise<{
       const isRN = !isFlutter && (await rnService!.isReactNativeProject(project.path));
       if (isFlutter) {
         void runAnalyze(project.path, flutter);
-        previewManager.reload(flutter);
+        previewManager.reload();
       } else if (isRN) {
         void runRnAnalyze(project.path, rnService!);
         const session = previewManager.getSession();
@@ -399,11 +403,11 @@ export async function registerIpcHandlers(): Promise<{
   });
 
   ipcMain.handle(IPC_CHANNELS.PREVIEW_STOP, () => {
-    previewManager.stop(flutter);
+    previewManager.stop();
   });
 
   ipcMain.handle(IPC_CHANNELS.PREVIEW_RELOAD, () => {
-    previewManager.reload(flutter);
+    previewManager.reload();
   });
 
   ipcMain.handle(IPC_CHANNELS.PREVIEW_GET_SESSION, () => {
@@ -482,7 +486,7 @@ export async function registerIpcHandlers(): Promise<{
       const isFlutter = await flutter.isFlutterProject(project.path);
       const isRN = !isFlutter && (await rnService!.isReactNativeProject(project.path));
       if (isFlutter) {
-        previewManager.reload(flutter);
+        previewManager.reload();
       } else if (isRN) {
         const session = previewManager.getSession();
         if (session && session.processId && session.status === 'running') {
@@ -499,7 +503,7 @@ export async function registerIpcHandlers(): Promise<{
       const isFlutter = await flutter.isFlutterProject(project.path);
       const isRN = !isFlutter && (await rnService!.isReactNativeProject(project.path));
       if (isFlutter) {
-        previewManager.reload(flutter);
+        previewManager.reload();
       } else if (isRN) {
         const session = previewManager.getSession();
         if (session && session.processId && session.status === 'running') {
@@ -583,7 +587,7 @@ export async function registerIpcHandlers(): Promise<{
 
   ipcMain.handle(IPC_CHANNELS.PROJECT_CREATE, async (_event, options) => {
     const projectPath = await projectService.createFromTemplate(options);
-    return openProjectAtPath(projectPath, workspace, flutter, rnService!, previewManager);
+    return openProjectAtPath(projectPath, workspace, platformRegistry!, previewManager, agentService!);
   });
 
   ipcMain.handle(IPC_CHANNELS.PROJECT_CREATE_FROM_PROMPT, async (_event, options) => {
@@ -599,7 +603,7 @@ export async function registerIpcHandlers(): Promise<{
     });
 
     await agentService!.scaffold(projectPath, options.prompt);
-    return openProjectAtPath(projectPath, workspace, flutter, rnService!, previewManager);
+    return openProjectAtPath(projectPath, workspace, platformRegistry!, previewManager, agentService!);
   });
 
   // ── Telemetry ──────────────────────────────────────────────────────────────
@@ -656,6 +660,149 @@ export async function registerIpcHandlers(): Promise<{
     return extensionService.getExtensionDetails(id);
   });
 
+  // ── Auth ─────────────────────────────────────────────────────────────
+
+  ipcMain.handle(IPC_CHANNELS.AUTH_SIGN_IN, async (_event, email, password) => {
+    if (process.env.NODE_ENV !== 'production' && process.env.SYNKRO_DEV_AUTH_BYPASS === 'true') {
+      await db!.setSettings({
+        sessionToken: 'dev_test_session',
+        refreshToken: 'dev_test_refresh'
+      });
+      return { success: true };
+    }
+    const settings = db!.getSettingsRaw();
+    const gatewayUrl = settings.gatewayUrl || process.env.SYNKRO_GATEWAY_URL || 'https://api.synkro.com';
+    try {
+      const res = await fetch(`${gatewayUrl}/v1/auth/signin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Login failed');
+      
+      await db!.setSettings({
+        sessionToken: data.sessionToken,
+        refreshToken: data.refreshToken
+      });
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.AUTH_SIGN_UP, async (_event, email, password) => {
+    if (process.env.NODE_ENV !== 'production' && process.env.SYNKRO_DEV_AUTH_BYPASS === 'true') {
+      await db!.setSettings({
+        sessionToken: 'dev_test_session',
+        refreshToken: 'dev_test_refresh'
+      });
+      return { success: true };
+    }
+    const settings = db!.getSettingsRaw();
+    const gatewayUrl = settings.gatewayUrl || process.env.SYNKRO_GATEWAY_URL || 'https://api.synkro.com';
+    try {
+      const res = await fetch(`${gatewayUrl}/v1/auth/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Sign up failed');
+      
+      await db!.setSettings({
+        sessionToken: data.sessionToken,
+        refreshToken: data.refreshToken
+      });
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.AUTH_LOGOUT, async () => {
+    const settings = db!.getSettingsRaw();
+    const gatewayUrl = settings.gatewayUrl || process.env.SYNKRO_GATEWAY_URL || 'https://api.synkro.com';
+    try {
+      if (settings.sessionToken) {
+        await fetch(`${gatewayUrl}/v1/auth/logout`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${settings.sessionToken}`
+          },
+          body: JSON.stringify({ refreshToken: settings.refreshToken })
+        });
+      }
+    } catch {
+      // Ignore network errors on logout
+    } finally {
+      await db!.setSettings({ sessionToken: '', refreshToken: '' });
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.AUTH_GET_ACCOUNT, async () => {
+    const settings = db!.getSettingsRaw();
+    if (process.env.NODE_ENV !== 'production' && process.env.SYNKRO_DEV_AUTH_BYPASS === 'true') {
+      if (settings.sessionToken === 'dev_test_session') {
+        return {
+          email: 'dev@synkro.local',
+          tier: 'premium',
+          plan: 'Developer Bypass Plan',
+          usage: 0.125,
+          limit: 100.0,
+          usedCost: 0.125,
+          budgetCost: 100.0,
+          usedTokens: 12500,
+          budgetTokens: 10000000,
+          gatewayConnected: true
+        };
+      }
+    }
+    if (!settings.sessionToken) return null;
+    const gatewayUrl = settings.gatewayUrl || process.env.SYNKRO_GATEWAY_URL || 'https://api.synkro.com';
+    try {
+      const res = await fetch(`${gatewayUrl}/v1/account/status`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${settings.sessionToken}`
+        }
+      });
+      if (res.status === 401 && settings.refreshToken) {
+        // Try refresh
+        const refreshRes = await fetch(`${gatewayUrl}/v1/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken: settings.refreshToken })
+        });
+        if (refreshRes.ok) {
+          const data = await refreshRes.json();
+          await db!.setSettings({ sessionToken: data.sessionToken, refreshToken: data.refreshToken });
+          // Retry
+          const retryRes = await fetch(`${gatewayUrl}/v1/account/status`, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${data.sessionToken}`
+            }
+          });
+          if (retryRes.ok) return retryRes.json();
+        } else {
+          // Token reuse or expired refresh token
+          await db!.setSettings({ sessionToken: '', refreshToken: '' });
+          return null;
+        }
+      }
+      if (res.ok) {
+        return await res.json();
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  });
+
   // ── React Native ───────────────────────────────────────────────────────────
 
   ipcMain.handle(IPC_CHANNELS.PLATFORM_DETECT, async (_event, projectPath: string) => {
@@ -681,15 +828,31 @@ export async function registerIpcHandlers(): Promise<{
   });
 
   ipcMain.handle(IPC_CHANNELS.RN_START_PREVIEW, async (_event, projectPath: string) => {
-    return previewManager.startRn(projectPath, rnService!);
+    console.log('[DEBUG_RUNTIME] IPC RN_START_PREVIEW invoked');
+    console.log('[DEBUG_RUNTIME] original projectPath:', projectPath);
+    
+    // Use strict mode with a 15-second bounded retry to wait for package.json to appear
+    const { provider, projectRoot } = await platformRegistry!.detect(projectPath, {
+      requireProject: true,
+      timeoutMs: 15000
+    });
+    
+    console.log('[DEBUG_RUNTIME] detected projectRoot:', projectRoot);
+    if (!provider) {
+      console.log('[DEBUG_RUNTIME] PROJECT_NOT_READY: No valid project detected at', projectPath);
+      throw new Error(`PROJECT_NOT_READY: No valid project detected in workspace: ${projectPath}`);
+    }
+    
+    console.log('[DEBUG_RUNTIME] Calling previewManager.start with projectRoot');
+    return previewManager.start(projectRoot, provider);
   });
 
-  ipcMain.handle(IPC_CHANNELS.RN_STOP_PREVIEW, async (_event, _processId: number) => {
-    previewManager.stopRn(rnService!);
+  ipcMain.handle(IPC_CHANNELS.RN_STOP_PREVIEW, async (_event, _projectPath: string) => {
+    previewManager.stop();
   });
 
-  ipcMain.handle(IPC_CHANNELS.RN_RELOAD_PREVIEW, async (_event, processId: number) => {
-    rnService!.reloadPreview(processId);
+  ipcMain.handle(IPC_CHANNELS.RN_RELOAD_PREVIEW, async (_event, _projectPath: string) => {
+    previewManager.reload();
   });
 
 
@@ -715,17 +878,17 @@ export async function registerIpcHandlers(): Promise<{
     publishService?.cancel();
   });
 
-  ipcMain.handle(IPC_CHANNELS.PUBLISH_DEPLOY, async (_event, projectPath: string, platform: 'flutter' | 'react-native', target: 'vercel' | 'netlify', token?: string) => {
+  ipcMain.handle(IPC_CHANNELS.PUBLISH_DEPLOY, async (_event, projectPath: string, _platform: 'flutter' | 'react-native', target: 'vercel' | 'netlify', token?: string) => {
     if (!publishService) throw new Error('Publish service not initialized');
-    return publishService.buildAndDeploy(projectPath, platform, target, token);
+    return publishService.buildAndDeploy(projectPath, target, token);
   });
 
   return { db, workspace, flutter, processManager, previewManager, agentService, gitService, terminalService, telemetryService, autoUpdateService: autoUpdateService! };
 }
 
-export function cleanupServices(flutter: FlutterService): void {
+export function cleanupServices(): void {
   fileWatcher.stop();
-  previewManager.stop(flutter);
+  previewManager.stop();
   agentService?.cancel();
   publishService?.cancel();
   terminalService.destroyAll();

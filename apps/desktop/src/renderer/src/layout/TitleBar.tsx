@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useWorkspaceStore } from '../stores/workspace-store';
 import { usePreviewStore } from '../stores/preview-store';
 import { useWorkspace } from '../hooks/useWorkspace';
+import { useAuthStore } from '../stores/auth-store';
 import { DEVICES } from './PreviewPane';
 import './TitleBar.css';
 
@@ -11,6 +12,7 @@ interface TitleBarProps {
 
 export function TitleBar({ onNewProject }: TitleBarProps) {
   const { project } = useWorkspace();
+  const { user, settings, logout } = useAuthStore();
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -238,6 +240,152 @@ export function TitleBar({ onNewProject }: TitleBarProps) {
               <path d="M3 3h10a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H4.5l-2.5 2V4a1 1 0 0 1 1-1z" />
             </svg>
           </button>
+
+          {/* User Account Menu similar to Antigravity */}
+          {user && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '6px' }}>
+              {settings?.isDevBypassActive && (
+                <div style={{
+                  fontSize: '9px',
+                  background: '#ef4444',
+                  color: '#fff',
+                  padding: '2px 6px',
+                  borderRadius: '10px',
+                  fontWeight: 'bold',
+                  letterSpacing: '0.05em',
+                  textTransform: 'uppercase',
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  whiteSpace: 'nowrap'
+                }} title="Development Authentication Bypass Active">
+                  Dev Mode
+                </div>
+              )}
+              <div style={{ position: 'relative' }}>
+              <button 
+                className={`layout-btn avatar-btn ${activeMenu === 'user-account' ? 'active' : ''}`}
+                onClick={() => toggleMenu('user-account')}
+                title="Account Menu"
+                style={{ 
+                  width: '24px', 
+                  height: '24px', 
+                  borderRadius: '50%', 
+                  background: 'linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%)',
+                  color: '#fff',
+                  fontWeight: 'bold',
+                  fontSize: '11px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  padding: 0
+                }}
+              >
+                {user.email.charAt(0).toUpperCase()}
+              </button>
+              
+              {activeMenu === 'user-account' && (
+                <div 
+                  className="title-menu-dropdown user-dropdown" 
+                  style={{ 
+                    top: '100%', 
+                    right: 0, 
+                    left: 'auto', 
+                    minWidth: '240px',
+                    padding: '12px',
+                    background: '#121218',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    borderRadius: '8px',
+                    boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px'
+                  }}
+                >
+                  {/* User info */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingBottom: '6px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    {settings?.isDevBypassActive && (
+                      <span style={{ fontSize: '9px', fontWeight: 'bold', color: '#ef4444', marginBottom: '2px' }}>⚠️ DEV AUTH BYPASS ENABLED</span>
+                    )}
+                    <span style={{ fontSize: '13px', fontWeight: '600', color: '#f1f5f9', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.email}</span>
+                    <span style={{ 
+                      fontSize: '10px', 
+                      fontWeight: '700', 
+                      color: '#a78bfa',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em'
+                    }}>
+                      {user.plan || user.tier || 'Free Plan'}
+                    </span>
+                  </div>
+
+                  {/* Quota Usage */}
+                  {user.budgetTokens !== undefined && user.usedTokens !== undefined && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#94a3b8' }}>
+                        <span>Token Quota</span>
+                        <span>{((user.usedTokens || 0) / 1000).toFixed(1)}K / {((user.budgetTokens || 1000000) / 1000000).toFixed(1)}M</span>
+                      </div>
+                      <div style={{ height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
+                        <div style={{ 
+                          width: `${Math.min(100, ((user.usedTokens || 0) / (user.budgetTokens || 1000000)) * 100)}%`, 
+                          height: '100%', 
+                          background: '#a78bfa',
+                          borderRadius: '2px'
+                        }} />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Quota Cost */}
+                  {user.budgetCost !== undefined && user.usedCost !== undefined && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#94a3b8' }}>
+                        <span>Budget Usage</span>
+                        <span>${(user.usedCost || 0).toFixed(2)} / ${(user.budgetCost || 10).toFixed(2)}</span>
+                      </div>
+                      <div style={{ height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
+                        <div style={{ 
+                          width: `${Math.min(100, ((user.usedCost || 0) / (user.budgetCost || 10)) * 100)}%`, 
+                          height: '100%', 
+                          background: '#60a5fa',
+                          borderRadius: '2px'
+                        }} />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="dropdown-separator" style={{ margin: '4px 0' }} />
+
+                  {/* Actions */}
+                  <button 
+                    className="dropdown-item" 
+                    onClick={() => handleMenuClick(() => window.open('https://synkro.com/upgrade'))}
+                    style={{ padding: '6px 8px', borderRadius: '4px', fontSize: '12px', color: '#f1f5f9', display: 'flex', alignItems: 'center', gap: '8px' }}
+                  >
+                    🚀 Upgrade / Manage Plan
+                  </button>
+
+                  <button 
+                    className="dropdown-item" 
+                    onClick={() => handleMenuClick(() => window.dispatchEvent(new CustomEvent('peep:open-settings')))}
+                    style={{ padding: '6px 8px', borderRadius: '4px', fontSize: '12px', color: '#f1f5f9', display: 'flex', alignItems: 'center', gap: '8px' }}
+                  >
+                    ⚙ Settings
+                  </button>
+
+                  <button 
+                    className="dropdown-item" 
+                    onClick={() => handleMenuClick(() => void logout())}
+                    style={{ padding: '6px 8px', borderRadius: '4px', fontSize: '12px', color: '#f87171', display: 'flex', alignItems: 'center', gap: '8px' }}
+                  >
+                    🚪 Sign Out
+                  </button>
+                </div>
+              )}
+            </div>
+            </div>
+          )}
         </div>
 
       </div>

@@ -43,6 +43,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [aiProvider, setAiProvider] = useState('gemini');
   const [aiProviderApiKey, setAiProviderApiKey] = useState('');
   const [aiProviderApiKeyConfigured, setAiProviderApiKeyConfigured] = useState(false);
+  const [developerMode, setDeveloperMode] = useState(false);
 
   const loadAccount = useCallback(async (settings: Settings) => {
     setAccountLoading(true);
@@ -82,6 +83,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       setFlutterPath(s.flutterSdkPath ?? '');
       setAiProvider(s.aiProvider || 'gemini');
       setAiProviderApiKeyConfigured(!!s.aiProviderApiKeyConfigured);
+      setDeveloperMode(!!s.developerMode);
       void loadAccount(s);
     });
     void window.peep.detectFlutterSdk().then((sdk) => setSdkVersion(sdk?.version ?? null));
@@ -139,6 +141,14 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     await window.peep.setTelemetryEnabled(enabled);
   };
 
+  const handleDeveloperModeToggle = async (enabled: boolean) => {
+    setDeveloperMode(enabled);
+    await window.peep.setSettings({ developerMode: enabled });
+    if (!enabled && tab === 'local_ai') {
+      setTab('account');
+    }
+  };
+
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthBusy(true);
@@ -171,9 +181,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     await loadAccount(s);
   };
 
-  const TABS: { id: SettingsTab; label: string }[] = [
+  const TABS: { id: SettingsTab; label: string; hidden?: boolean }[] = [
     { id: 'account', label: '👤 Account' },
-    { id: 'local_ai', label: '🤖 Local AI' },
+    { id: 'local_ai', label: '🤖 Local AI', hidden: !developerMode },
     { id: 'sdk', label: '🔧 SDK' },
     { id: 'telemetry', label: '🔒 Privacy' },
     { id: 'about', label: 'ℹ About' },
@@ -193,7 +203,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
         {/* Tabs */}
         <div className="settings-tabs">
-          {TABS.map((t) => (
+          {TABS.filter(t => !t.hidden).map((t) => (
             <button
               key={t.id}
               type="button"
@@ -522,6 +532,21 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               </div>
 
               <div className="settings-about__links">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--bg-card)', borderRadius: '10px', border: '1px solid var(--border-color)', marginBottom: '16px' }}>
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: '600' }}>Developer Mode</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Enable experimental local AI features.</div>
+                  </div>
+                  <label className="settings-toggle">
+                    <input
+                      type="checkbox"
+                      checked={developerMode}
+                      onChange={(e) => void handleDeveloperModeToggle(e.target.checked)}
+                    />
+                    <span className="settings-toggle__slider" />
+                  </label>
+                </div>
+                
                 <button
                   type="button"
                   className="btn btn-ghost"

@@ -206,9 +206,10 @@ export interface Settings {
   aiProvider?: string;
   /** Secret API Key for the Local AI Provider. */
   aiProviderApiKey?: string;
-  /** Safe boolean indicator that a local key is configured (avoids sending the secret to renderer). */
   aiProviderApiKeyConfigured?: boolean;
   isDevBypassActive?: boolean;
+  /** Developer Mode enables advanced or experimental settings, like Local AI. */
+  developerMode?: boolean;
 }
 
 export type UpdateStatus = 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'ready' | 'error';

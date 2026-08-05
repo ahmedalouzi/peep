@@ -4,3 +4,5 @@ export * from './classifier';
 export * from './router';
 export * from './mock-gateway';
 export * from './production-gateway';
+export * from './backend-gateway';
+export * from './google-adapter';

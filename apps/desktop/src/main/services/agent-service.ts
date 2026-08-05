@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process';
 import type { BrowserWindow } from 'electron';
 import { IPC_EVENTS } from '@peep/shared';
 import type { ProposedEdit, AgentStreamEvent, AgentSendOptions } from '@peep/shared';
-import { buildAgentContext, runAgentLoop, SCAFFOLD_SYSTEM_ADDENDUM, type ChatMessage, classifyCommand, loadDesignManifest, saveDesignManifest, serializeDesignManifest, ProductionAIGateway, MockAIGateway } from '@peep/agent';
+import { buildAgentContext, runAgentLoop, SCAFFOLD_SYSTEM_ADDENDUM, type ChatMessage, classifyCommand, loadDesignManifest, saveDesignManifest, serializeDesignManifest, ProductionAIGateway, MockAIGateway, GoogleGeminiAdapter } from '@peep/agent';
 import type { DatabaseService } from './db';
 import type { WorkspaceManager } from './workspace-manager';
 import { searchFiles } from './file-search';
@@ -846,19 +846,15 @@ export class AgentService {
     );
 
     try {
-      // Production path: use ProductionAIGateway authenticated with the user's session token.
-      // Provider API keys (OpenAI, Gemini, Anthropic) must NEVER be present on the desktop client.
-      // Only ProductionAIGateway is supported in production. No local API keys allowed.
       const GATEWAY_BASE_URL = settings.gatewayUrl || process.env.SYNKRO_GATEWAY_URL || 'https://api.synkro.com';
-      
       console.log(`[AGENT_DEBUG] sessionToken present: ${!!settings.sessionToken}`);
 
       let gateway: any;
 
-      if (settings.sessionToken === 'dev_test_session' || process.env.SYNKRO_USE_MOCK_GATEWAY === 'true') {
-        console.log(`[AGENT_DEBUG] Using MockAIGateway for dev_test_session`);
+      if (process.env.SYNKRO_USE_MOCK_GATEWAY === 'true') {
+        console.log(`[AGENT_DEBUG] Using MockAIGateway (Explicitly Enabled)`);
         gateway = new MockAIGateway();
-      } else if (settings.sessionToken) {
+      } else if (settings.sessionToken && settings.sessionToken !== 'dev_test_session') {
         gateway = new ProductionAIGateway({ 
             baseUrl: GATEWAY_BASE_URL, 
             sessionToken: settings.sessionToken,
@@ -875,12 +871,16 @@ export class AgentService {
               }
             }
         });
-      } else if (process.env.NODE_ENV !== 'production' || (settings as any).isDevBypassActive) {
-        console.log(`[AGENT_DEBUG] Using MockAIGateway (Dev Bypass Fallback)`);
-        gateway = new MockAIGateway();
       } else {
-        this.emitStream({ type: 'error', content: 'AUTH_REQUIRED: You must sign in via Settings to use AI capabilities.' });
-        return;
+        // Fallback to local Gemini Adapter for development without SaaS session
+        const geminiKey = process.env.GOOGLE_API_KEY || process.env.GOOGLE_GEMINI_API_KEY;
+        if (geminiKey) {
+          console.log(`[AGENT_DEBUG] Using Local GoogleGeminiAdapter`);
+          gateway = new GoogleGeminiAdapter(geminiKey);
+        } else {
+          this.emitStream({ type: 'error', content: 'AUTH_REQUIRED: You must sign in via Settings, or provide GOOGLE_API_KEY to use the Agent locally.' });
+          return;
+        }
       }
 
       console.log(`[AGENT_DEBUG] gateway selected: ${gateway.constructor?.name || 'AIGateway'}`);
@@ -918,12 +918,17 @@ export class AgentService {
         const errMsg = loopErr?.message || String(loopErr);
         const isNetworkFail = errCode === 'NETWORK_FAILURE' || errMsg.includes('fetch failed') || errMsg.includes('NETWORK_FAILURE');
 
-        // Automatic fallback to MockAIGateway in dev mode if remote gateway endpoint is not running locally
-        if (isNetworkFail && (process.env.NODE_ENV !== 'production' || (settings as any).isDevBypassActive || !settings.gatewayUrl)) {
-          console.warn(`[AgentService] ProductionAIGateway fetch failed at ${GATEWAY_BASE_URL}. Auto-falling back to MockAIGateway for local environment.`);
-          this.emitStream({ type: 'status', content: 'Remote AI Gateway unreachable. Operating in local dev mode…' });
-          await executeRunLoop(new MockAIGateway());
-          return;
+        // Automatic fallback to local Gemini adapter in dev mode if remote gateway endpoint is not running locally
+        if (isNetworkFail && gateway.constructor?.name === 'ProductionAIGateway') {
+          const geminiKey = process.env.GOOGLE_API_KEY || process.env.GOOGLE_GEMINI_API_KEY;
+          if (geminiKey) {
+            console.warn(`[AgentService] ProductionAIGateway fetch failed at ${GATEWAY_BASE_URL}. Falling back to local GoogleGeminiAdapter.`);
+            this.emitStream({ type: 'status', content: 'Remote AI Gateway unreachable. Switching to local LLM...' });
+            await executeRunLoop(new GoogleGeminiAdapter(geminiKey));
+            return;
+          } else {
+            console.warn(`[AgentService] ProductionAIGateway fetch failed and no local API key found.`);
+          }
         }
         throw loopErr;
       }

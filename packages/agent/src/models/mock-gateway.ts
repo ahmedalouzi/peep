@@ -39,7 +39,7 @@ export class MockAIGateway implements AIGateway {
 
     if (this.scenario === 'tool_call') {
       return {
-        content: 'I need to run a command.',
+        content: 'I need to run a command to assist with your project.',
         toolCalls: [
           this.customToolCall || {
             id: 'call-1',
@@ -52,8 +52,24 @@ export class MockAIGateway implements AIGateway {
       };
     }
 
+    const lastUserMsg = request.messages.filter((m: any) => m.role === 'user').pop();
+    const promptText = (typeof lastUserMsg?.content === 'string' ? lastUserMsg.content : '').trim();
+    const lowerPrompt = promptText.toLowerCase();
+
+    let content = 'Hello! I am your AI development assistant. How can I help you build, modify, or debug your app today?';
+
+    if (/\b(merhaba|selam|hi|hello|hey|greetings|hola|bonjour)\b/i.test(lowerPrompt)) {
+      if (/\b(merhaba|selam)\b/i.test(lowerPrompt)) {
+        content = 'Merhaba! Size nasıl yardımcı olabilirim? Projenizdeki ekranları, UI tasarımlarını veya kod yapısını düzenlemeye hazırım.';
+      } else {
+        content = 'Hello! How can I help you with your application today? I can help modify components, design UI screens, or resolve build issues.';
+      }
+    } else if (promptText.length > 0) {
+      content = `I understand you would like help with: "${promptText}". I am ready to analyze your project context and assist with your request.`;
+    }
+
     return {
-      content: `Response for request tier: ${JSON.stringify(request.messages)}`,
+      content,
       usage: { inputTokens: 10, outputTokens: 15, totalTokens: 25 },
       cost: { cost: 0.0005, currency: 'USD' }
     };

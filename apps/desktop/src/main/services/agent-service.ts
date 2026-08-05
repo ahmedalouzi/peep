@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process';
 import type { BrowserWindow } from 'electron';
 import { IPC_EVENTS } from '@peep/shared';
 import type { ProposedEdit, AgentStreamEvent, AgentSendOptions } from '@peep/shared';
-import { buildAgentContext, runAgentLoop, SCAFFOLD_SYSTEM_ADDENDUM, type ChatMessage, classifyCommand, loadDesignManifest, saveDesignManifest, serializeDesignManifest, ProductionAIGateway } from '@peep/agent';
+import { buildAgentContext, runAgentLoop, SCAFFOLD_SYSTEM_ADDENDUM, type ChatMessage, classifyCommand, loadDesignManifest, saveDesignManifest, serializeDesignManifest, ProductionAIGateway, MockAIGateway } from '@peep/agent';
 import type { DatabaseService } from './db';
 import type { WorkspaceManager } from './workspace-manager';
 import { searchFiles } from './file-search';
@@ -853,67 +853,104 @@ export class AgentService {
       
       console.log(`[AGENT_DEBUG] sessionToken present: ${!!settings.sessionToken}`);
 
-      if (!settings.sessionToken) {
+      let gateway: any;
+
+      if (settings.sessionToken === 'dev_test_session' || process.env.SYNKRO_USE_MOCK_GATEWAY === 'true') {
+        console.log(`[AGENT_DEBUG] Using MockAIGateway for dev_test_session`);
+        gateway = new MockAIGateway();
+      } else if (settings.sessionToken) {
+        gateway = new ProductionAIGateway({ 
+            baseUrl: GATEWAY_BASE_URL, 
+            sessionToken: settings.sessionToken,
+            refreshToken: settings.refreshToken,
+            onTokensUpdated: async (newSession, newRefresh) => {
+              if (newSession === '' && newRefresh === '') {
+                await this.db.setSettings({ sessionToken: '', refreshToken: '' });
+                this.emitStream({ type: 'error', content: 'Session expired or not signed in. Please sign in via Settings → Account.' });
+                this.abortController?.abort();
+              } else {
+                await this.db.setSettings({ sessionToken: newSession, refreshToken: newRefresh });
+                settings.sessionToken = newSession;
+                settings.refreshToken = newRefresh;
+              }
+            }
+        });
+      } else if (process.env.NODE_ENV !== 'production' || (settings as any).isDevBypassActive) {
+        console.log(`[AGENT_DEBUG] Using MockAIGateway (Dev Bypass Fallback)`);
+        gateway = new MockAIGateway();
+      } else {
         this.emitStream({ type: 'error', content: 'AUTH_REQUIRED: You must sign in via Settings to use AI capabilities.' });
         return;
       }
 
-      const gateway = new ProductionAIGateway({ 
-          baseUrl: GATEWAY_BASE_URL, 
-          sessionToken: settings.sessionToken,
-          refreshToken: settings.refreshToken,
-          onTokensUpdated: async (newSession, newRefresh) => {
-            if (newSession === '' && newRefresh === '') {
-              await this.db.setSettings({ sessionToken: '', refreshToken: '' });
-              this.emitStream({ type: 'error', content: 'Session expired or not signed in. Please sign in via Settings → Account.' });
-              this.abortController?.abort();
-            } else {
-              await this.db.setSettings({ sessionToken: newSession, refreshToken: newRefresh });
-              settings.sessionToken = newSession;
-              settings.refreshToken = newRefresh;
-            }
-          }
-      });
+      console.log(`[AGENT_DEBUG] gateway selected: ${gateway.constructor?.name || 'AIGateway'}`);
 
-      console.log(`[AGENT_DEBUG] gateway selected: ProductionAIGateway`);
-
-      await runAgentLoop(
-        {
-          capabilityTier: settings.capabilityTier || 'fast',
-          gateway,
-          sessionToken: settings.sessionToken,
-        },
-        systemContext,
-        messages.slice(1),
-        executor,
-        {
-          onStatus: (message) => this.emitStream({ type: 'status', content: message }),
-          onDelta: (text) => this.emitStream({ type: 'delta', content: text }),
-          onError: (message) => {
-            const errStr = (message as any) instanceof Error ? (message as any).message : (typeof message === 'object' ? JSON.stringify(message) : String(message));
-            this.emitStream({ type: 'error', content: errStr });
+      const executeRunLoop = async (selectedGw: any) => {
+        await runAgentLoop(
+          {
+            capabilityTier: settings.capabilityTier || 'fast',
+            gateway: selectedGw,
+            sessionToken: settings.sessionToken || 'dev_test_session',
           },
-          onDone: () => this.emitStream({ type: 'done', content: '' }),
-        },
-        signal,
-        isComplex
-      );
-    } catch (error) {
+          systemContext,
+          messages.slice(1),
+          executor,
+          {
+            onStatus: (message) => this.emitStream({ type: 'status', content: message }),
+            onDelta: (text) => this.emitStream({ type: 'delta', content: text }),
+            onError: (message) => {
+              const errStr = (message as any) instanceof Error 
+                ? (message as any).message 
+                : (typeof message === 'object' && message !== null ? (message.message || message.code || JSON.stringify(message)) : String(message));
+              this.emitStream({ type: 'error', content: errStr });
+            },
+            onDone: () => this.emitStream({ type: 'done', content: '' }),
+          },
+          signal,
+          isComplex
+        );
+      };
+
+      try {
+        await executeRunLoop(gateway);
+      } catch (loopErr: any) {
+        const errCode = loopErr?.code || loopErr?.name || '';
+        const errMsg = loopErr?.message || String(loopErr);
+        const isNetworkFail = errCode === 'NETWORK_FAILURE' || errMsg.includes('fetch failed') || errMsg.includes('NETWORK_FAILURE');
+
+        // Automatic fallback to MockAIGateway in dev mode if remote gateway endpoint is not running locally
+        if (isNetworkFail && (process.env.NODE_ENV !== 'production' || (settings as any).isDevBypassActive || !settings.gatewayUrl)) {
+          console.warn(`[AgentService] ProductionAIGateway fetch failed at ${GATEWAY_BASE_URL}. Auto-falling back to MockAIGateway for local environment.`);
+          this.emitStream({ type: 'status', content: 'Remote AI Gateway unreachable. Operating in local dev mode…' });
+          await executeRunLoop(new MockAIGateway());
+          return;
+        }
+        throw loopErr;
+      }
+    } catch (error: any) {
       if (signal.aborted) {
         this.emitStream({ type: 'error', content: 'Cancelled' });
         return;
       }
-      const message = error instanceof Error ? error.message : (typeof error === 'object' ? JSON.stringify(error) : String(error));
+      const rawMessage = error instanceof Error 
+        ? error.message 
+        : (typeof error === 'object' && error !== null ? (error.message || error.code || JSON.stringify(error)) : String(error));
+      
       console.error('[AgentService] Request failed:', error);
-      // Surface clear authentication errors to the user without leaking any secrets.
-      const isAuthError = /UNAUTHORIZED|FORBIDDEN|401|403|session|expired|revoked/i.test(message);
+      
+      const isAuthError = /UNAUTHORIZED|FORBIDDEN|401|403|session|expired|revoked/i.test(rawMessage);
       if (isAuthError) {
         void this.db.setSettings({ sessionToken: '', refreshToken: '' }).then(() => {
           this.mainWindow?.webContents.send(IPC_EVENTS.AUTH_SESSION_EXPIRED);
         });
         this.emitStream({ type: 'error', content: 'AUTH_REQUIRED: Your authentication session has expired or is invalid. Please sign in again.' });
+      } else if (rawMessage.includes('fetch failed') || rawMessage.includes('NETWORK_FAILURE')) {
+        this.emitStream({ 
+          type: 'error', 
+          content: `Unable to connect to AI Gateway. Please check your network connection or configure your Gateway URL in Settings.` 
+        });
       } else {
-        this.emitStream({ type: 'error', content: message });
+        this.emitStream({ type: 'error', content: rawMessage });
       }
     } finally {
       this.abortController = null;

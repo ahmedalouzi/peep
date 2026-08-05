@@ -47,7 +47,7 @@ export class MockOpenAIAdapter implements ProviderAdapter {
   }
 }
 
-import { AuthService } from './auth';
+import { AuthenticationRouter } from './auth-router';
 import { ServerModelRouter } from './server-router';
 import { ServerUsageStore } from './usage-store';
 import { ServerBudgetGuard } from './budget-guard';
@@ -55,7 +55,7 @@ import { GoogleGeminiAdapter } from './google-adapter';
 
 export class BackendAIGateway {
   private adapters = new Map<string, ProviderAdapter>();
-  readonly authService = new AuthService();
+  readonly authService = new AuthenticationRouter();
   private router = new ServerModelRouter();
   readonly usageStore = new ServerUsageStore();
   readonly budgetGuard = new ServerBudgetGuard();

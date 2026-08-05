@@ -20,7 +20,9 @@ export interface UserAccount {
   passwordHash: string; // format: 'scrypt:salt:hash'
 }
 
-export class AuthService {
+import type { IAuthProvider } from './auth-provider';
+
+export class AuthService implements IAuthProvider {
   private readonly WINDOW_MS = 15 * 60 * 1000; // 15 mins
   private readonly MAX_ATTEMPTS = 10;
 

@@ -10,6 +10,8 @@ class MockDB extends DatabaseService {
   private mockSettings: Settings = {
     theme: 'dark',
     autoSave: true,
+    sessionToken: 'dev_test_session', // Bootstrapped session
+    developerMode: true
   };
   
   constructor() {
@@ -26,15 +28,10 @@ class MockDB extends DatabaseService {
 }
 
 async function run() {
-  console.log("=== STARTING AUTH VERIFICATION ===");
+  console.log("=== STARTING RUNTIME AUTH VERIFICATION ===");
   
-  // Set the environment variables just like the user does
   process.env.SYNKRO_DEV_AUTH_BYPASS = 'true';
   process.env.SYNKRO_GATEWAY_URL = 'http://localhost:3000';
-  
-  // We make sure google API key is NOT set (since the user is relying on bypass)
-  delete process.env.GOOGLE_API_KEY;
-  delete process.env.GOOGLE_GEMINI_API_KEY;
   
   const db = new MockDB();
   const workspace = {
@@ -47,20 +44,18 @@ async function run() {
   
   const agentService = new AgentService(db, workspace, registry);
   
-  // Intercept emitStream to capture AUTH_REQUIRED
   (agentService as any).emitStream = (event: any) => {
     console.log(`\n[STREAM EMITTED] type: ${event.type}`);
     console.log(`[STREAM EMITTED] content: ${event.content}`);
   };
 
-  console.log("\n--- EXECUTING AgentService.send() ---");
   await agentService.send({
     projectPath: path.resolve('./'),
-    message: 'Improve this project',
+    message: 'Test message',
     isContinuation: false,
   });
   
-  console.log("\n=== AUTH VERIFICATION COMPLETE ===");
+  console.log("\n=== VERIFICATION COMPLETE ===");
 }
 
 run().catch(console.error);

@@ -81,6 +81,9 @@ export class ProductionAIGateway implements AIGateway {
       throw err;
     }
 
+    console.log(`\n[HTTP_TRACE] POST URL: ${url}`);
+    console.log(`[HTTP_TRACE] Headers: Content-Type=application/json, Authorization=Bearer ***, Session=${this.options.sessionToken}`);
+
     let response: Response;
     try {
       response = await fetch(url, {
@@ -92,15 +95,26 @@ export class ProductionAIGateway implements AIGateway {
         body: JSON.stringify(requestData),
         signal
       });
+      console.log(`[HTTP_TRACE] HTTP Status: ${response.status} ${response.statusText}`);
+      
+      // We can only clone the response to read the body safely without breaking the stream reader
+      const clone = response.clone();
+      try {
+        const responseText = await clone.text();
+        console.log(`[HTTP_TRACE] HTTP Body Preview: ${responseText.substring(0, 500)}`);
+      } catch (e) {
+        console.log(`[HTTP_TRACE] HTTP Body Preview Failed: ${e}`);
+      }
     } catch (e: any) {
       if (e.name === 'AbortError') {
         throw new Error('Request aborted');
       }
+      console.log(`[HTTP_TRACE] Fetch Exception: ${e.message}`);
       const err: AIError = { code: 'NETWORK_FAILURE', message: `Network request failed: ${e.message}` };
       throw err;
     }
 
-    if (response.status === 401 && !isRetry && this.options.refreshToken && this.options.onTokensUpdated) {
+    if (!response.ok && response.status === 401 && !isRetry && this.options.refreshToken && this.options.onTokensUpdated) {
       // Attempt transparent refresh
       try {
         const refreshRes = await fetch(`${this.options.baseUrl}/v1/auth/refresh`, {

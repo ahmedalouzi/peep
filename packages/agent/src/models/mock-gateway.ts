@@ -56,16 +56,56 @@ export class MockAIGateway implements AIGateway {
     const promptText = (typeof lastUserMsg?.content === 'string' ? lastUserMsg.content : '').trim();
     const lowerPrompt = promptText.toLowerCase();
 
-    let content = 'Hello! I am your AI development assistant. How can I help you build, modify, or debug your app today?';
+    let content = '';
 
-    if (/\b(merhaba|selam|hi|hello|hey|greetings|hola|bonjour)\b/i.test(lowerPrompt)) {
-      if (/\b(merhaba|selam)\b/i.test(lowerPrompt)) {
-        content = 'Merhaba! Size nasıl yardımcı olabilirim? Projenizdeki ekranları, UI tasarımlarını veya kod yapısını düzenlemeye hazırım.';
+    // 1. Identity & Understanding Queries
+    const isIdentityQuery = /\b(who are you|what are you|who created|who built|what is your name|do you understand|can you hear|what can you do)\b/i.test(lowerPrompt) ||
+      /\b(sen kimsin|kimsin|adın ne|ismin ne|seni kim yaptı|beni anlıyor|anladın mı|beni duyuyor|ne yapabilirsin)\b/i.test(lowerPrompt) ||
+      /(من أنت|من انت|ما اسمك|من طورك|من صنعك|هل تفهمني|هل تسمعني|ماذا يمكنك أن تفعل)/i.test(promptText);
+
+    // 2. Greetings
+    const isGreeting = /\b(hi|hello|hey|greetings|good morning|good afternoon|good evening|howdy|whats up|what's up)\b/i.test(lowerPrompt) ||
+      /\b(merhaba|selam|günaydın|iyi günler|iyi akşamlar|nasılsın|neler yapıyorsun)\b/i.test(lowerPrompt) ||
+      /(مرحبا|مرحباً|أهلا|أهلاً|سلام|صباح الخير|مساء الخير|كيفك|كيف حالك)/i.test(promptText);
+
+    // 3. Explicit Coding / Project Tasks
+    const isExplicitCodingTask = /\b(create|add|build|implement|fix|debug|refactor|review|edit|modify|change|update|write|check|screen|button|component|file|error|code)\b/i.test(lowerPrompt) ||
+      /\b(oluştur|ekle|yap|düzelt|güncelle|incele|yaz|düzenle|değiştir|hata|buton|ekran|bileşen|dosya|kod)\b/i.test(lowerPrompt) ||
+      /(أنشئ|أضف|اصنع|أصلح|عدل|راجع|اكتب|غير|حين|خطأ|زر|شاشة|ملف|كود)/i.test(promptText);
+
+    if (isIdentityQuery) {
+      if (/\b(sen|beni|kimsin|adın|anladın)\b/i.test(lowerPrompt)) {
+        content = 'Ben Synkro, sizin AI kodlama ve geliştirme asistanınızım. Evet, sizi gayet iyi anlıyorum! Sorularınızı yanıtlayabilir, sohbet edebilir veya projenizde kod düzenlemeleri yapmamı istediğinizde bana bildirebilirsiniz.';
+      } else if (/(أنت|انت|اسمك|تفهمني|تسمعني)/i.test(promptText)) {
+        content = 'أنا سفيان (Synkro)، مساعدك الذكي للتطوير والبرمجة. نعم، أفهمك بشكل ممتاز! يمكنني الإجابة على أسئلتك، والتحدث معك، أو مساعدتك في كتابة وتعديل الكود وإصلاح الأخطاء.';
       } else {
-        content = 'Hello! How can I help you with your application today? I can help modify components, design UI screens, or resolve build issues.';
+        content = 'I am Synkro, your AI development assistant. Yes, I understand you perfectly! I can answer general questions, discuss ideas, or help you write and debug code whenever you explicitly request it.';
       }
-    } else if (promptText.length > 0) {
-      content = `I understand you would like help with: "${promptText}". I am ready to analyze your project context and assist with your request.`;
+    } else if (isGreeting) {
+      if (/\b(merhaba|selam|günaydın|iyi|nasılsın)\b/i.test(lowerPrompt)) {
+        content = 'Merhaba! Size nasıl yardımcı olabilirim? İster sohbet edelim, ister projeniz üzerinde çalışalım.';
+      } else if (/(مرحبا|مرحباً|أهلا|أهلاً|سلام|صباح|مساء)/i.test(promptText)) {
+        content = 'مرحباً بك! كيف يمكنني مساعدتك اليوم؟ أنا هنا للإجابة على أسئلتك أو العمل على مشروعك.';
+      } else {
+        content = 'Hello! How can I help you today? Feel free to ask a question or let me know if you would like to work on your project.';
+      }
+    } else if (isExplicitCodingTask) {
+      if (/\b(ekle|düzelt|yaz|düzenle|oluştur|hata|buton)\b/i.test(lowerPrompt)) {
+        content = `Projenizde istediğiniz düzenleme için hemen yardımcı oluyorum: "${promptText}". Kod yapısını inceleyip gerekli değişiklikleri hazırlıyorum.`;
+      } else if (/(أضف|أصلح|عدل|أنشئ|خطأ|زر)/i.test(promptText)) {
+        content = `سأساعدك في تعديل مشروعك فوراً: "${promptText}". أقوم بتحليل الملفات وإعداد التعديلات المطلوبة.`;
+      } else {
+        content = `I'll help you with your project request: "${promptText}". Analyzing your project context and preparing the changes for you.`;
+      }
+    } else {
+      // General Conversation & Information
+      if (/\b(nedir|nasıl|neden|açıkla)\b/i.test(lowerPrompt)) {
+        content = `Sorunuz için teşekkürler! "${promptText}" hakkında bilgi almak istiyorsunuz. Ben Synkro olarak hem genel sorularınızı yanıtlayabilir hem de mobil uygulama projenizi geliştirebilirim.`;
+      } else if (/(ما هو|كيف|لماذا|اشرح)/i.test(promptText)) {
+        content = `شكراً لسؤالك! حول "${promptText}": بصفتي مساعدك الذكي، يمكنني الإجابة على استفساراتك العامة بالإضافة إلى تطوير وتعديل تطبيقاتك.`;
+      } else {
+        content = `I understand your message: "${promptText}". How would you like me to assist you with this?`;
+      }
     }
 
     return {

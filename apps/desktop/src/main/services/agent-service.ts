@@ -881,13 +881,20 @@ export class AgentService {
             }
         });
       } else {
-        // Fallback to local Gemini Adapter for development without SaaS session
-        const geminiKey = process.env.GOOGLE_API_KEY || process.env.GOOGLE_GEMINI_API_KEY;
-        if (geminiKey) {
-          console.log(`[AGENT_DEBUG] Using Local GoogleGeminiAdapter`);
-          gateway = new GoogleGeminiAdapter(geminiKey);
+        // Fallback to local AI Provider for development without SaaS session
+        const providerName = settings.aiProvider || 'gemini';
+        const localKey = settings.aiProviderApiKey || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GEMINI_API_KEY;
+        
+        if (localKey) {
+          if (providerName === 'gemini') {
+            console.log(`[AGENT_DEBUG] Using Local GoogleGeminiAdapter`);
+            gateway = new GoogleGeminiAdapter(localKey);
+          } else {
+            this.emitStream({ type: 'error', content: `AUTH_REQUIRED: The selected local provider '${providerName}' is not yet supported in the desktop build.` });
+            return;
+          }
         } else {
-          this.emitStream({ type: 'error', content: 'AUTH_REQUIRED: You must sign in via Settings, or provide GOOGLE_API_KEY to use the Agent locally.' });
+          this.emitStream({ type: 'error', content: 'AUTH_REQUIRED: You must sign in via Settings, or configure a Local AI Provider API Key.' });
           return;
         }
       }

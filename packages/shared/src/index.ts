@@ -198,13 +198,16 @@ export interface Settings {
   sessionToken?: string;
   /** Base URL for the Synkro AI Gateway backend. */
   gatewayUrl?: string;
-  /**
-   * True if a sessionToken is stored. The sessionToken itself is NEVER sent to the renderer.
-   * The renderer must only read this flag to determine authentication state.
-   */
-  sessionConfigured?: boolean;
-  /** The refresh token for the session. Never sent to the renderer. */
+  /** Refresh token for session recovery. */
   refreshToken?: string;
+  /** Indicates whether a session token is currently present. */
+  sessionConfigured?: boolean;
+  /** Local AI Provider configuration. */
+  aiProvider?: string;
+  /** Secret API Key for the Local AI Provider. */
+  aiProviderApiKey?: string;
+  /** Safe boolean indicator that a local key is configured (avoids sending the secret to renderer). */
+  aiProviderApiKeyConfigured?: boolean;
   isDevBypassActive?: boolean;
 }
 

@@ -62,6 +62,9 @@ export class DatabaseService {
       if (settings.refreshToken) {
         settings.refreshToken = decryptSecret(settings.refreshToken);
       }
+      if (settings.aiProviderApiKey) {
+        settings.aiProviderApiKey = decryptSecret(settings.aiProviderApiKey);
+      }
       this.data = {
         projects: parsed.projects ?? [],
         settings,
@@ -83,6 +86,9 @@ export class DatabaseService {
     if (settingsCopy.refreshToken) {
       settingsCopy.refreshToken = encryptSecret(settingsCopy.refreshToken);
     }
+    if (settingsCopy.aiProviderApiKey) {
+      settingsCopy.aiProviderApiKey = encryptSecret(settingsCopy.aiProviderApiKey);
+    }
     const storeCopy = {
       ...this.data,
       settings: settingsCopy
@@ -99,6 +105,8 @@ export class DatabaseService {
       sessionToken: undefined,
       refreshToken: undefined,
       sessionConfigured: Boolean(this.data.settings.sessionToken) || isDevBypass,
+      aiProviderApiKey: undefined,
+      aiProviderApiKeyConfigured: !!this.data.settings.aiProviderApiKey,
       isDevBypassActive: isDevBypass,
     } as Settings;
   }

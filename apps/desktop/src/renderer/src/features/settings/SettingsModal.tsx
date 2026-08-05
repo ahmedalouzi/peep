@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import type { Settings } from '@peep/shared';
 import './SettingsModal.css';
 
-type SettingsTab = 'account' | 'sdk' | 'telemetry' | 'about';
+type SettingsTab = 'account' | 'local_ai' | 'sdk' | 'telemetry' | 'about';
 
 interface AccountInfo {
   email: string;
@@ -38,6 +38,11 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
+
+  // Local AI State
+  const [aiProvider, setAiProvider] = useState('gemini');
+  const [aiProviderApiKey, setAiProviderApiKey] = useState('');
+  const [aiProviderApiKeyConfigured, setAiProviderApiKeyConfigured] = useState(false);
 
   const loadAccount = useCallback(async (settings: Settings) => {
     setAccountLoading(true);
@@ -75,6 +80,8 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     if (!open) return;
     void window.peep.getSettings().then((s) => {
       setFlutterPath(s.flutterSdkPath ?? '');
+      setAiProvider(s.aiProvider || 'gemini');
+      setAiProviderApiKeyConfigured(!!s.aiProviderApiKeyConfigured);
       void loadAccount(s);
     });
     void window.peep.detectFlutterSdk().then((sdk) => setSdkVersion(sdk?.version ?? null));
@@ -103,6 +110,25 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       };
       await window.peep.setSettings(partial);
       handleClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveLocalAi = async () => {
+    setSaving(true);
+    try {
+      const partial: Partial<Settings> = { aiProvider };
+      // Only update the key if the user typed a new one.
+      if (aiProviderApiKey) {
+        partial.aiProviderApiKey = aiProviderApiKey;
+      }
+      await window.peep.setSettings(partial);
+      // Update local state to show it's configured
+      if (aiProviderApiKey) {
+        setAiProviderApiKeyConfigured(true);
+        setAiProviderApiKey('');
+      }
     } finally {
       setSaving(false);
     }
@@ -147,6 +173,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
   const TABS: { id: SettingsTab; label: string }[] = [
     { id: 'account', label: '👤 Account' },
+    { id: 'local_ai', label: '🤖 Local AI' },
     { id: 'sdk', label: '🔧 SDK' },
     { id: 'telemetry', label: '🔒 Privacy' },
     { id: 'about', label: 'ℹ About' },
@@ -337,6 +364,62 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ── Local AI ── */}
+          {tab === 'local_ai' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0, lineHeight: 1.6 }}>
+                  If you do not have a Synkro SaaS account, you can configure a local AI provider here. 
+                  The API key will be encrypted and stored securely on your local device.
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <label className="settings-field">
+                  <span>AI Provider</span>
+                  <select
+                    value={aiProvider}
+                    onChange={(e) => setAiProvider(e.target.value)}
+                    style={{
+                      background: 'var(--bg-input)',
+                      color: 'var(--text)',
+                      border: '1px solid var(--border)',
+                      padding: '8px',
+                      borderRadius: '6px',
+                      fontSize: '13px'
+                    }}
+                  >
+                    <option value="gemini">Google Gemini</option>
+                    <option value="openai">OpenAI (Coming Soon)</option>
+                    <option value="anthropic">Anthropic (Coming Soon)</option>
+                    <option value="ollama">Local Ollama (Coming Soon)</option>
+                  </select>
+                </label>
+
+                <label className="settings-field">
+                  <span>Provider API Key</span>
+                  <input
+                    type="password"
+                    placeholder={aiProviderApiKeyConfigured ? "•••••••••••••••• (Configured)" : "Enter API Key..."}
+                    value={aiProviderApiKey}
+                    onChange={(e) => setAiProviderApiKey(e.target.value)}
+                  />
+                </label>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+                  <button 
+                    type="button" 
+                    className="btn btn-primary" 
+                    onClick={handleSaveLocalAi}
+                    disabled={saving}
+                  >
+                    {saving ? 'Saving...' : 'Save Configuration'}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 

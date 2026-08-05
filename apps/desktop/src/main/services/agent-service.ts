@@ -856,14 +856,17 @@ export class AgentService {
 
     try {
       const GATEWAY_BASE_URL = settings.gatewayUrl || process.env.SYNKRO_GATEWAY_URL || 'https://api.synkro.com';
-      console.log(`[AGENT_DEBUG] sessionToken present: ${!!settings.sessionToken}`);
+      
+      console.log('\n[AUTH_TRACE]');
+      console.log(`sessionToken=${settings.sessionToken}`);
 
       let gateway: any;
 
       if (process.env.SYNKRO_USE_MOCK_GATEWAY === 'true') {
-        console.log(`[AGENT_DEBUG] Using MockAIGateway (Explicitly Enabled)`);
         gateway = new MockAIGateway();
-      } else if (settings.sessionToken && settings.sessionToken !== 'dev_test_session') {
+      } else if (settings.sessionToken) {
+        console.log('\n[AUTH_TRACE]');
+        console.log('Gateway=ProductionAIGateway\n');
         gateway = new ProductionAIGateway({ 
             baseUrl: GATEWAY_BASE_URL, 
             sessionToken: settings.sessionToken,
@@ -887,13 +890,15 @@ export class AgentService {
         
         if (localKey) {
           if (providerName === 'gemini') {
-            console.log(`[AGENT_DEBUG] Using Local GoogleGeminiAdapter`);
+            console.log(`[AUTH_TRACE] selected gateway: GoogleGeminiAdapter`);
             gateway = new GoogleGeminiAdapter(localKey);
           } else {
+            console.log(`[AUTH_TRACE] selected gateway: None (Throwing AUTH_REQUIRED due to unsupported local provider)`);
             this.emitStream({ type: 'error', content: `AUTH_REQUIRED: The selected local provider '${providerName}' is not yet supported in the desktop build.` });
             return;
           }
         } else {
+          console.log(`[AUTH_TRACE] selected gateway: None (Throwing AUTH_REQUIRED due to missing local key and invalid session)`);
           this.emitStream({ type: 'error', content: 'AUTH_REQUIRED: You must sign in via Settings, or configure a Local AI Provider API Key.' });
           return;
         }

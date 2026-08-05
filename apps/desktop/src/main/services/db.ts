@@ -72,6 +72,19 @@ export class DatabaseService {
     } catch {
       await this.persist();
     }
+
+    // --- Dev Auth Bypass Bootstrap ---
+    if (process.env.SYNKRO_DEV_AUTH_BYPASS === 'true' && !this.data.settings.sessionToken) {
+      this.data.settings.sessionToken = 'dev_test_session';
+      this.data.settings.developerMode = true;
+      console.log('\n[BOOTSTRAP]');
+      console.log('devAuthBypass=true');
+      console.log('\n[BOOTSTRAP]');
+      console.log('sessionToken=dev_test_session');
+      console.log('\n[BOOTSTRAP]');
+      console.log('developerMode=true\n');
+      await this.persist();
+    }
   }
 
   private async persist(): Promise<void> {

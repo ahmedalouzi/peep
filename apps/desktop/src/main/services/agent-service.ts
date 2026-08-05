@@ -209,7 +209,10 @@ export class AgentService {
     let intelligenceContext = '';
     let memoryContext = '';
     
+    console.log(`[E2E_VERIFICATION] 1. Chat UI -> IPC -> AgentService (Message: "${options.message}")`);
+
     if (projectPath) {
+      console.log(`[E2E_VERIFICATION] 2. Executing Context Discovery...`);
       let indexer = this.indexers.get(projectPath);
       if (!indexer) {
         indexer = new ProjectIndexer(projectPath, isReactNative ? 'react-native' : 'flutter');
@@ -220,10 +223,12 @@ export class AgentService {
         }
       }
       
+      console.log(`[E2E_VERIFICATION] 3. Querying Project Index...`);
       const retrieval = new ProjectRetrieval(indexer.getIndex(), projectPath);
       const retrievalResult = retrieval.retrieveRelevantContext(options.message);
       intelligenceContext = '\n\n' + retrievalResult.summary;
 
+      console.log(`[E2E_VERIFICATION] 4. Loading Memory Engine...`);
       let memoryManager = this.memoryManagers.get(projectPath);
       if (!memoryManager) {
         memoryManager = new MemoryManager(projectPath);
@@ -252,6 +257,7 @@ export class AgentService {
     }
 
     const rnAddendum = isReactNative ? RN_SYSTEM_ADDENDUM : '';
+      console.log(`[E2E_VERIFICATION] 5. Building System Prompt...`);
       const systemContext =
         (options.scaffoldMode ? `${SCAFFOLD_SYSTEM_ADDENDUM}\n\n` : '') +
         `\n[ACTIVE PROJECT ROOT]\n${projectPath ? (await this.registry.detect(projectPath)).projectRoot : 'None'}\n` +
@@ -277,6 +283,8 @@ export class AgentService {
         previewError: options.previewError,
       });
 
+    console.log(`[E2E_VERIFICATION] 5. System Prompt Built (Size: ${systemContext.length} chars)`);
+
     const messages: ChatMessage[] = [
       { role: 'system', content: systemContext },
     ];
@@ -294,6 +302,7 @@ export class AgentService {
     const executor = {
       lastOriginalContent: '',
       execute: async (name: string, args: Record<string, unknown>): Promise<string> => {
+        console.log(`[E2E_VERIFICATION] 7. Tool Execution Requested by LLM: ${name}`);
         if (!projectPath) {
           throw new Error('No project workspace open. Please open a project first.');
         }
@@ -883,7 +892,7 @@ export class AgentService {
         }
       }
 
-      console.log(`[AGENT_DEBUG] gateway selected: ${gateway.constructor?.name || 'AIGateway'}`);
+      console.log(`[E2E_VERIFICATION] 6. Gateway Selected: ${gateway.constructor?.name || 'AIGateway'} — Initializing Orchestrator Loop`);
 
       const executeRunLoop = async (selectedGw: any) => {
         await runAgentLoop(
@@ -904,7 +913,10 @@ export class AgentService {
                 : (typeof message === 'object' && message !== null ? (message.message || message.code || JSON.stringify(message)) : String(message));
               this.emitStream({ type: 'error', content: errStr });
             },
-            onDone: () => this.emitStream({ type: 'done', content: '' }),
+            onDone: () => {
+               console.log(`[E2E_VERIFICATION] 8. Final stream completed.`);
+               this.emitStream({ type: 'done', content: '' })
+            },
           },
           signal,
           isComplex

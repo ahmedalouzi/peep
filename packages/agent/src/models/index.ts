@@ -5,3 +5,4 @@ export * from './router';
 export * from './mock-gateway';
 export * from './production-gateway';
 export * from './google-adapter';
+export * from './backend-gateway';

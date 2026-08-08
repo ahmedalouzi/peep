@@ -1,5 +1,5 @@
 import express from 'express';
-import { BackendAIGateway } from '@peep/agent/src/models/backend-gateway';
+import { BackendAIGateway } from '@peep/agent';
 import { fetchProductionSecrets } from './secrets';
 import * as Sentry from '@sentry/node';
 import { nodeProfilingIntegration } from '@sentry/profiling-node';

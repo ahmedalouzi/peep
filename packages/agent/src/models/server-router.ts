@@ -37,7 +37,7 @@ export class ServerModelRouter {
       costOutputPerMillion: 15.00,
       fallback: {
         providerId: 'google',
-        modelId: 'gemini-1.5-pro'
+        modelId: 'gemini-3-pro'
       }
     },
     premium: {

@@ -924,7 +924,7 @@ export class AgentService {
           {
             onStatus: (message) => this.emitStream({ type: 'status', content: message }),
             onDelta: (text) => this.emitStream({ type: 'delta', content: text }),
-            onError: (message) => {
+            onError: (message: any) => {
               const errStr = (message as any) instanceof Error 
                 ? (message as any).message 
                 : (typeof message === 'object' && message !== null ? (message.message || message.code || JSON.stringify(message)) : String(message));

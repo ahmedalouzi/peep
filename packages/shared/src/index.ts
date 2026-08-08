@@ -719,6 +719,8 @@ export interface IpcApi {
   onOpenFile: (callback: (file: any) => void) => () => void;
   onAuthSessionExpired: (callback: () => void) => () => void;
   onPlanUpdated: (callback: (plan: AgentPlan) => void) => () => void;
+  pocToggle?: (visible: boolean) => Promise<void>;
+  pocBounds?: (bounds: any) => void;
 }
 
 declare global {

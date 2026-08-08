@@ -3,7 +3,7 @@ import { ipcMain, WebContentsView, BrowserWindow } from 'electron';
 let pocView: WebContentsView | null = null;
 
 export function setupPoCIpc(mainWindow: BrowserWindow | null) {
-  ipcMain.handle('peep:poc-toggle', async (event, { visible }) => {
+  ipcMain.handle('peep:poc-toggle', async (_event, { visible }) => {
     if (!mainWindow) return { success: false, error: 'No main window' };
 
     if (!visible) {
@@ -52,7 +52,7 @@ export function setupPoCIpc(mainWindow: BrowserWindow | null) {
     return { success: true };
   });
 
-  ipcMain.on('peep:poc-bounds', (event, { x, y, width, height, logicalWidth, logicalHeight, scale }) => {
+  ipcMain.on('peep:poc-bounds', (_event, { x, y, width, height, logicalWidth, logicalHeight, scale }) => {
     if (!pocView || !mainWindow) return;
     
     pocView.setBounds({

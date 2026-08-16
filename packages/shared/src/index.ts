@@ -753,10 +753,10 @@ export interface IpcApi {
   onPublishLog: (callback: (line: string) => void) => () => void;
   onOpenFile: (callback: (file: any) => void) => () => void;
   onAuthSessionExpired: (callback: () => void) => () => void;
-  onPlanUpdated: (callback: (plan: any) => void) => () => void;
+  onPlanUpdated: (callback: (plan: AgentPlan) => void) => () => void;
   onWorkspaceChanged?: (callback: (payload: { event: string; path: string }) => void) => () => void;
   onWorkspaceChangedBatch?: (callback: (payload: { events: WorkspaceChangeEvent[] }) => void) => () => void;
-  pocToggle?: (visible: boolean) => Promise<any>;
+  pocToggle?: (visible: boolean) => Promise<void>;
   pocBounds?: (bounds: any) => void;
 }
 

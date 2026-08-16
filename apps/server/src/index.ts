@@ -8,7 +8,7 @@ config({ path: path.join(__dirname, '../../.env') });
 config({ path: path.join(__dirname, '../../../.env') });
 
 import express from 'express';
-import { BackendAIGateway } from '@peep/agent/src/models/backend-gateway';
+import { BackendAIGateway } from '@peep/agent';
 import { fetchProductionSecrets } from './secrets';
 import { execSync } from 'node:child_process';
 

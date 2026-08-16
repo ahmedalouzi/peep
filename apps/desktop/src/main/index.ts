@@ -8,7 +8,7 @@ config(); // Load .env from root
 
 Sentry.init({
   dsn: process.env.SENTRY_DSN || '',
-  beforeSend(event) {
+  beforeSend(event: any) {
     // Redact sensitive data from crash reports (chain of thought, files, tokens)
     if (event.request && event.request.data) {
       delete event.request.data;

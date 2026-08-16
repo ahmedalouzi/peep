@@ -62,10 +62,11 @@ export class WorkspaceManager {
 
   async openFolder(folderPath: string): Promise<ProjectInfo> {
     const platform = await detectPlatformRecursively(folderPath);
+    const normalizedPath = folderPath.replace(/\\/g, '/');
 
     const project: ProjectInfo = {
       id: randomUUID(),
-      path: folderPath,
+      path: normalizedPath,
       name: basename(folderPath),
       lastOpened: new Date().toISOString(),
       platform,
@@ -88,7 +89,7 @@ export class WorkspaceManager {
       const promises = entries.map(async (entry) => {
         if (IGNORED.has(entry.name)) return null;
 
-        const fullPath = join(dirPath, entry.name);
+        const fullPath = join(dirPath, entry.name).replace(/\\/g, '/');
         const fileEntry: FileEntry = {
           name: entry.name,
           path: fullPath,

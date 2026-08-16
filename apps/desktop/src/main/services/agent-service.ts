@@ -927,13 +927,16 @@ export class AgentService {
             onError: (message) => {
               const errStr = (message as any) instanceof Error 
                 ? (message as any).message 
-                : (typeof message === 'object' && message !== null ? (message.message || message.code || JSON.stringify(message)) : String(message));
+                : (typeof message === 'object' && message !== null ? ((message as Record<string, any>).message || (message as Record<string, any>).code || JSON.stringify(message)) : String(message));
               this.emitStream({ type: 'error', content: errStr });
             },
             onDone: () => {
                console.log(`[E2E_VERIFICATION] 8. Final stream completed.`);
                this.emitStream({ type: 'done', content: '' })
             },
+            onTimelineActivity: (activity) => {
+               this.mainWindow?.webContents.send(IPC_EVENTS.AGENT_TIMELINE, activity);
+            }
           },
           signal,
           isComplex

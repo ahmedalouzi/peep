@@ -51,6 +51,13 @@ export function Sidebar() {
     setCreatingItem({ type, baseDir: normalizedBase });
   };
 
+  const handleRefresh = async () => {
+    if (project) {
+      const tree = await window.peep.listDir(project.path);
+      useWorkspaceStore.getState().setFileTree(tree);
+    }
+  };
+
   return (
     <div className="sidebar">
       <div className="sidebar-header">
@@ -61,6 +68,9 @@ export function Sidebar() {
           </button>
           <button className="sidebar-btn" title="New Folder" onClick={() => handleNewItem('folder')}>
             <svg style={{width:'12px',height:'12px',stroke:'currentColor',fill:'none',strokeWidth:'2'}} viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          </button>
+          <button className="sidebar-btn" title="Refresh Explorer" onClick={handleRefresh}>
+            <svg style={{width:'12px',height:'12px',stroke:'currentColor',fill:'none',strokeWidth:'2'}} viewBox="0 0 24 24"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
           </button>
           <button className="sidebar-btn" title="Collapse" onClick={() => {
             // Simplest way to collapse is to trigger a re-render of FileTree with all nodes closed.

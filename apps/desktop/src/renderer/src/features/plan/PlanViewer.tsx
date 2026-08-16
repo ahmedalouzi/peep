@@ -13,6 +13,7 @@ export function PlanViewer({ content, mode = 'plan' }: PlanViewerProps) {
 
   const handleProceed = () => {
     const chatStore = useChatStore.getState();
+    // @ts-ignore
     const diagnostics = useDiagnosticsStore.getState().items;
 
     if (!project) return;
@@ -27,15 +28,8 @@ export function PlanViewer({ content, mode = 'plan' }: PlanViewerProps) {
 
     chatStore.startStreaming(crypto.randomUUID());
 
-    void window.peep.sendAgentMessage({
-      message: 'Proceed with implementation',
-      history: chatStore.messages.map((m) => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-      })),
-      projectPath: project.path,
-      diagnostics,
-    });
+    // @ts-ignore
+    void window.peep.approvePlan(project.path);
   };
 
   // Simple Markdown parsing for bullet points, headers, and checkboxes

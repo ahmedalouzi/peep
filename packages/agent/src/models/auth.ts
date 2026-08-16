@@ -184,7 +184,9 @@ export class AuthService implements IAuthProvider {
     };
   }
 
-  async validateSession(sessionToken: string): Promise<{ userId: string; email: string }> {
+  async validateSession(sessionToken: string, requestId?: string): Promise<{ userId: string; email: string }> {
+    const reqId = requestId || 'UNKNOWN';
+    console.log(`[REQ ${reqId}] AuthService.validateSession entered`);
     const res = await db.query(
       `SELECT s.user_id, u.email, s.expires_at 
        FROM sessions s 

@@ -97,7 +97,7 @@ const server = http.createServer((req, res) => {
   }
 });
 
-server.listen(PORT, () => {
-  console.log(`[TEST-GATEWAY] Listening on port ${PORT}`);
+server.listen(PORT, '127.0.0.1', () => {
+  console.log(`[TEST-GATEWAY] Listening on http://127.0.0.1:${PORT}`);
   console.log(`[TEST-GATEWAY] DEV_ONLY_AUTH active`);
 });

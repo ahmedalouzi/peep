@@ -105,6 +105,24 @@ export interface AgentActivityEvent {
   estimatedCost: number;
 }
 
+export type AgentTimelineActivityType =
+  | 'understanding' | 'exploring' | 'searching' | 'reading'
+  | 'editing' | 'creating' | 'deleting' | 'running'
+  | 'validating' | 'completed' | 'error';
+
+export interface AgentTimelineActivity {
+  id: string;
+  runId: string;
+  type: AgentTimelineActivityType;
+  message: string;
+  status: 'in_progress' | 'completed' | 'failed';
+  timestamp: string;
+  file?: string;
+  files?: string[];
+  command?: string;
+  count?: number;
+}
+
 export interface BuildResult {
   success: boolean;
   framework: string;
@@ -322,6 +340,12 @@ export interface AgentSendOptions {
   autoApplyEdits?: boolean;
   scaffoldMode?: boolean;
   previewError?: string;
+  /** Controls plan-approval UX:
+   * - 'approve'  → user clicked "Proceed with Implementation"
+   * - 'refine'   → user is modifying the plan before approval
+   * - 'normal'   → default, no special handling
+   */
+  planApprovalMode?: 'approve' | 'refine' | 'normal' | 'auto';
 }
 
 export interface ProjectTemplateInfo {
@@ -444,6 +468,7 @@ export const IPC_CHANNELS = {
   PREVIEW_RELOAD: 'preview:reload',
   AGENT_SEND: 'agent:send',
   AGENT_CANCEL: 'agent:cancel',
+  AGENT_APPROVE_PLAN: 'agent:approvePlan',
   AGENT_APPLY_EDITS: 'agent:applyEdits',
   AGENT_REJECT_EDITS: 'agent:rejectEdits',
   AGENT_GET_PENDING_EDITS: 'agent:getPendingEdits',
@@ -605,10 +630,16 @@ export const IPC_EVENTS = {
   PUBLISH_STATUS: 'publish:status',
   PUBLISH_LOG: 'publish:log',
   AUTH_SESSION_EXPIRED: 'auth:sessionExpired',
+  AGENT_TIMELINE: 'agent:timeline',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
 export type IpcEvent = (typeof IPC_EVENTS)[keyof typeof IPC_EVENTS];
+
+export interface WorkspaceChangeEvent {
+  type: 'add' | 'addDir' | 'change' | 'unlink' | 'unlinkDir';
+  path: string;
+}
 
 export interface IpcApi {
   openFolder: () => Promise<ProjectInfo | null>;
@@ -620,7 +651,7 @@ export interface IpcApi {
   maximizeWindow: () => Promise<void>;
   openProjectByPath: (path: string) => Promise<ProjectInfo>;
   getRecentProjects: () => Promise<ProjectInfo[]>;
-  listDir: (dirPath: string) => Promise<FileEntry[]>;
+  listDir: (dirPath: string, maxDepth?: number) => Promise<FileEntry[]>;
   readFile: (filePath: string) => Promise<string>;
   readImage: (filePath: string) => Promise<string>;
   writeFile: (filePath: string, content: string) => Promise<void>;
@@ -649,6 +680,9 @@ export interface IpcApi {
   isPreviewDetached: () => Promise<boolean>;
   sendAgentMessage: (options: AgentSendOptions) => Promise<void>;
   cancelAgent: () => Promise<void>;
+  /** Approve the pending Implementation Plan and start autonomous execution. */
+  approvePlan: (projectPath?: string) => Promise<void>;
+
   applyAgentEdits: (editIds: string[]) => Promise<void>;
   rejectAgentEdits: (editIds?: string[]) => Promise<void>;
   getPendingEdits: () => Promise<ProposedEdit[]>;
@@ -687,6 +721,7 @@ export interface IpcApi {
   onPreviewLog: (callback: (line: string) => void) => () => void;
   onAgentStream: (callback: (event: AgentStreamEvent) => void) => () => void;
   onAgentActivity: (callback: (event: AgentActivityEvent) => void) => () => void;
+  onAgentTimeline: (callback: (activity: AgentTimelineActivity) => void) => () => void;
   onProposedEdits: (callback: (edits: ProposedEdit[]) => void) => () => void;
   onTerminalOutput: (callback: (payload: { id: string; data: string }) => void) => () => void;
   onTerminalExit: (callback: (payload: { id: string; code: number }) => void) => () => void;
@@ -718,7 +753,11 @@ export interface IpcApi {
   onPublishLog: (callback: (line: string) => void) => () => void;
   onOpenFile: (callback: (file: any) => void) => () => void;
   onAuthSessionExpired: (callback: () => void) => () => void;
-  onPlanUpdated: (callback: (plan: AgentPlan) => void) => () => void;
+  onPlanUpdated: (callback: (plan: any) => void) => () => void;
+  onWorkspaceChanged?: (callback: (payload: { event: string; path: string }) => void) => () => void;
+  onWorkspaceChangedBatch?: (callback: (payload: { events: WorkspaceChangeEvent[] }) => void) => () => void;
+  pocToggle?: (visible: boolean) => Promise<any>;
+  pocBounds?: (bounds: any) => void;
 }
 
 declare global {

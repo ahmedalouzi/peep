@@ -10,6 +10,100 @@ export class GoogleGeminiAdapter implements ProviderAdapter {
 
   constructor(private apiKey?: string) {}
 
+  private availableModelsPromise: Promise<string[]> | null = null;
+
+  private getAvailableModels(): Promise<string[]> {
+    if (!this.availableModelsPromise) {
+      this.availableModelsPromise = (async () => {
+        try {
+          const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${this.apiKey}`;
+          const res = await fetch(url);
+          if (!res.ok) {
+            throw new Error(`Failed to list models: ${res.statusText}`);
+          }
+          const data = await res.json();
+          const list = data?.models?.map((m: any) => m.name.replace('models/', '')) || [];
+          console.log('[GoogleGeminiAdapter] Fetched available models:', list);
+          return list;
+        } catch (err) {
+          console.error('[GoogleGeminiAdapter] Failed to fetch models list, using defaults:', err);
+          this.availableModelsPromise = null; // Retry next time
+          return [
+            'gemini-3.6-flash',
+            'gemini-3.1-pro-preview',
+            'gemini-2.5-flash',
+            'gemini-2.0-flash',
+          ];
+        }
+      })();
+    }
+    return this.availableModelsPromise;
+  }
+
+  private async resolveModelId(modelId: string): Promise<string> {
+    const available = await this.getAvailableModels();
+    const lowerRequested = modelId.toLowerCase();
+
+    // 1. If requested model is exactly supported (case-insensitive), return it
+    const exactMatch = available.find(m => m.toLowerCase() === lowerRequested);
+    if (exactMatch) {
+      return exactMatch;
+    }
+
+    // 2. Map suffix of the fictitious model IDs
+    if (lowerRequested === 'gemini-3.1-pro') {
+      const match = available.find(m => m.toLowerCase() === 'gemini-3.1-pro-preview');
+      if (match) return match;
+    }
+
+    // 3. Identify if request is for a "Pro" model
+    const isPro = lowerRequested.includes('pro') || 
+                  lowerRequested.includes('strong') || 
+                  lowerRequested.includes('opus') || 
+                  lowerRequested.includes('sonnet') || 
+                  lowerRequested.includes('gpt-4o') || 
+                  lowerRequested.includes('ultra') || 
+                  lowerRequested.includes('o1') || 
+                  lowerRequested.includes('o3') || 
+                  lowerRequested.includes('reasoning') ||
+                  lowerRequested.includes('premium');
+    const isMini = lowerRequested.includes('-mini') || lowerRequested.includes('haiku') || lowerRequested.includes('flash');
+
+    const targetType = (isPro && !isMini) ? 'pro' : 'flash';
+
+    // 4. Filter available models by type ('pro' or 'flash')
+    const candidates = available.filter(m => {
+      const lowerM = m.toLowerCase();
+      if (targetType === 'pro') {
+        return lowerM.includes('pro') && !lowerM.includes('embed') && !lowerM.includes('imagen') && !lowerM.includes('veo');
+      } else {
+        return lowerM.includes('flash') && !lowerM.includes('embed') && !lowerM.includes('imagen') && !lowerM.includes('veo');
+      }
+    });
+
+    if (candidates.length > 0) {
+      // Sort candidates by parsed version number in descending order
+      candidates.sort((a, b) => {
+        const getVer = (name: string) => {
+          const match = name.match(/gemini-(\d+(?:\.\d+)?)/);
+          return match ? parseFloat(match[1]) : 0;
+        };
+        return getVer(b) - getVer(a);
+      });
+      return candidates[0];
+    }
+
+    // Fallbacks if no direct matches found
+    if (targetType === 'pro') {
+      const fallbackPro = available.find(m => m.toLowerCase().includes('pro'));
+      if (fallbackPro) return fallbackPro;
+    }
+    const fallbackFlash = available.find(m => m.toLowerCase().includes('flash'));
+    if (fallbackFlash) return fallbackFlash;
+
+    return available[0] || 'gemini-3.6-flash';
+  }
+
   private mapMessages(messages: any[]): { contents: any[]; systemInstruction?: any } {
     let systemInstruction: any = undefined;
     const contents: any[] = [];
@@ -77,7 +171,16 @@ export class GoogleGeminiAdapter implements ProviderAdapter {
         contents.push({ role: 'user', parts });
       }
     }
-    return { contents, systemInstruction };
+    const consolidatedContents: any[] = [];
+    for (const content of contents) {
+      if (consolidatedContents.length > 0 && consolidatedContents[consolidatedContents.length - 1].role === content.role) {
+        consolidatedContents[consolidatedContents.length - 1].parts.push(...content.parts);
+      } else {
+        consolidatedContents.push(content);
+      }
+    }
+
+    return { contents: consolidatedContents, systemInstruction };
   }
 
   private mapTools(tools: any[] | undefined): any[] | undefined {
@@ -93,10 +196,18 @@ export class GoogleGeminiAdapter implements ProviderAdapter {
     return [{ functionDeclarations }];
   }
 
-  async generate(request: AIRequest, options?: { signal?: AbortSignal } & { resolvedModelId?: string }): Promise<AIResponse> {
+  async generate(request: AIRequest, options?: { signal?: AbortSignal; resolvedModelId?: string; latencyOut?: any }): Promise<AIResponse> {
     if (!this.apiKey) throw new Error('GOOGLE_API_KEY is not configured');
     
-    const modelId = options?.resolvedModelId || 'gemini-1.5-flash';
+    const rawModel = options?.resolvedModelId || 'gemini-1.5-flash';
+    const listStart = Date.now();
+    const modelId = await this.resolveModelId(rawModel);
+    const listEnd = Date.now();
+    if (options?.latencyOut) {
+      options.latencyOut.listModelsDuration = listEnd - listStart;
+    }
+    
+    console.log(`[GoogleGeminiAdapter] [generate] Original requested model: ${rawModel} -> Normalized: ${modelId}`);
     const { contents, systemInstruction } = this.mapMessages(request.messages);
     const tools = this.mapTools(request.tools);
 
@@ -105,16 +216,28 @@ export class GoogleGeminiAdapter implements ProviderAdapter {
     if (tools) payload.tools = tools;
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${this.apiKey}`;
+    console.log(`[GoogleGeminiAdapter] [generate] Sending POST request to: https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent`);
+    console.log(`[GoogleGeminiAdapter] [generate] Headers: Content-Type=application/json`);
+    console.log(`[GoogleGeminiAdapter] [generate] Payload summary: ${JSON.stringify({ systemInstruction: systemInstruction ? 'present' : 'none', tools: tools ? 'present' : 'none', messageCount: contents.length })}`);
     
+    console.log(`[GoogleGeminiAdapter] [generate] Tools declaration:`, JSON.stringify(tools, null, 2));
+
+    const apiStart = Date.now();
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       signal: options?.signal
     });
+    const apiEnd = Date.now();
+    if (options?.latencyOut) {
+      options.latencyOut.geminiCallDuration = apiEnd - apiStart;
+    }
 
     if (!response.ok) {
       const errBody = await response.text();
+      console.error(`[GoogleGeminiAdapter] [generate] Gemini API returned error status: ${response.status} ${response.statusText}`);
+      console.error(`[GoogleGeminiAdapter] [generate] Gemini API error response body:`, errBody);
       throw new Error(`Gemini API error: ${response.status} ${response.statusText} - ${errBody}`);
     }
 
@@ -146,10 +269,18 @@ export class GoogleGeminiAdapter implements ProviderAdapter {
     return result;
   }
 
-  async *stream(request: AIRequest, options?: { signal?: AbortSignal } & { resolvedModelId?: string }): AsyncIterable<AIStreamEvent> {
+  async *stream(request: AIRequest, options?: { signal?: AbortSignal; resolvedModelId?: string; latencyOut?: any }): AsyncIterable<AIStreamEvent> {
     if (!this.apiKey) throw new Error('GOOGLE_API_KEY is not configured');
     
-    const modelId = options?.resolvedModelId || 'gemini-1.5-flash';
+    const rawModel = options?.resolvedModelId || 'gemini-1.5-flash';
+    const listStart = Date.now();
+    const modelId = await this.resolveModelId(rawModel);
+    const listEnd = Date.now();
+    if (options?.latencyOut) {
+      options.latencyOut.listModelsDuration = listEnd - listStart;
+    }
+    
+    console.log(`[GoogleGeminiAdapter] [stream] Original requested model: ${rawModel} -> Normalized: ${modelId}`);
     const { contents, systemInstruction } = this.mapMessages(request.messages);
     const tools = this.mapTools(request.tools);
 
@@ -158,16 +289,28 @@ export class GoogleGeminiAdapter implements ProviderAdapter {
     if (tools) payload.tools = tools;
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:streamGenerateContent?alt=sse&key=${this.apiKey}`;
+    console.log(`[GoogleGeminiAdapter] [stream] Sending POST stream request to: https://generativelanguage.googleapis.com/v1beta/models/${modelId}:streamGenerateContent`);
+    console.log(`[GoogleGeminiAdapter] [stream] Headers: Content-Type=application/json`);
+    console.log(`[GoogleGeminiAdapter] [stream] Payload summary: ${JSON.stringify({ systemInstruction: systemInstruction ? 'present' : 'none', tools: tools ? 'present' : 'none', messageCount: contents.length })}`);
     
+    console.log(`[GoogleGeminiAdapter] [stream] Tools declaration:`, JSON.stringify(tools, null, 2));
+
+    const apiStart = Date.now();
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       signal: options?.signal
     });
+    const apiEnd = Date.now();
+    if (options?.latencyOut) {
+      options.latencyOut.geminiCallDuration = apiEnd - apiStart;
+    }
 
     if (!response.ok) {
       const errBody = await response.text();
+      console.error(`[GoogleGeminiAdapter] [stream] Gemini API returned error status: ${response.status} ${response.statusText}`);
+      console.error(`[GoogleGeminiAdapter] [stream] Gemini API error response body:`, errBody);
       throw new Error(`Gemini API error: ${response.status} ${response.statusText} - ${errBody}`);
     }
 

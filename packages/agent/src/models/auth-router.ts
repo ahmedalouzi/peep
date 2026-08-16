@@ -7,17 +7,19 @@ export class AuthenticationRouter implements IAuthProvider {
   private devProvider = new DevelopmentAuthProvider();
 
   private getProvider(): IAuthProvider {
-    if (
-      process.env.NODE_ENV !== 'production' &&
-      process.env.SYNKRO_DEV_AUTH_BYPASS === 'true'
-    ) {
+    const devBypass = process.env.NODE_ENV !== 'production' && process.env.SYNKRO_DEV_AUTH_BYPASS === 'true';
+    if (devBypass) {
       return this.devProvider;
     }
     return this.productionProvider;
   }
 
-  async validateSession(sessionToken: string): Promise<{ userId: string; email: string }> {
-    return this.getProvider().validateSession(sessionToken);
+  async validateSession(sessionToken: string, requestId?: string): Promise<{ userId: string; email: string }> {
+    const provider = this.getProvider();
+    const reqId = requestId || 'UNKNOWN';
+    console.log(`[REQ ${reqId}] AuthenticationRouter.validateSession entered`);
+    console.log(`[REQ ${reqId}] Selected provider = ${provider.constructor.name}`);
+    return provider.validateSession(sessionToken, reqId);
   }
   
   async signup(email: string, password: string) {

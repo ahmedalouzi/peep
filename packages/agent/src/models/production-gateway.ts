@@ -85,17 +85,31 @@ export class ProductionAIGateway implements AIGateway {
     console.log(`[HTTP_TRACE] Headers: Content-Type=application/json, Authorization=Bearer ***, Session=${this.options.sessionToken}`);
 
     let response: Response;
+    const fetchStart = Date.now();
     try {
       response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.options.sessionToken}`
+          'Authorization': `Bearer ${this.options.sessionToken}`,
+          'X-Synkro-Client-Start': fetchStart.toString()
         },
         body: JSON.stringify(requestData),
         signal
       });
+      const fetchEnd = Date.now();
+      const clientRoundtrip = fetchEnd - fetchStart;
+      
       console.log(`[HTTP_TRACE] HTTP Status: ${response.status} ${response.statusText}`);
+      const serverVersion = response.headers.get('x-synkro-server-version') || '(unknown)';
+      console.log(`[HTTP_TRACE] Server Version: ${serverVersion}`);
+      
+      const latencyHeader = response.headers.get('x-synkro-latency');
+      if (latencyHeader) {
+        console.log(`[LATENCY_TRACE] ${latencyHeader} | Client Roundtrip: ${clientRoundtrip}ms`);
+      } else {
+        console.log(`[LATENCY_TRACE] Client Roundtrip: ${clientRoundtrip}ms`);
+      }
       
       // We can only clone the response to read the body safely without breaking the stream reader
       const clone = response.clone();

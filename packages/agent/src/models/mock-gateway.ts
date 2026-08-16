@@ -52,9 +52,10 @@ export class MockAIGateway implements AIGateway {
       };
     }
 
-    const lastUserMsg = request.messages.filter((m: any) => m.role === 'user').pop();
-    const promptText = (typeof lastUserMsg?.content === 'string' ? lastUserMsg.content : '').trim();
+    const lastUserMsg = request.messages ? request.messages.filter((m: any) => m.role === 'user').pop() : null;
+    const promptText = (typeof lastUserMsg?.content === 'string' ? lastUserMsg.content : ('')).trim();
     const lowerPrompt = promptText.toLowerCase();
+
 
     let content = '';
 

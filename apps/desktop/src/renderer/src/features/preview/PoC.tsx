@@ -17,7 +17,6 @@ export function PoCPreview() {
     const syncBounds = () => {
       if (containerRef.current) {
         const rect = containerRef.current.getBoundingClientRect();
-        const dpr = window.devicePixelRatio;
 
         (window as any).peep?.pocBounds({
           x: rect.x,

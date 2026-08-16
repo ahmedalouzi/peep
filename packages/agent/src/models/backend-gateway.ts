@@ -9,8 +9,8 @@ import { randomUUID } from 'node:crypto';
 
 export interface ProviderAdapter {
   id: string;
-  generate(request: AIRequest, options?: { signal?: AbortSignal; resolvedModelId?: string }): Promise<AIResponse>;
-  stream(request: AIRequest, options?: { signal?: AbortSignal; resolvedModelId?: string }): AsyncIterable<AIStreamEvent>;
+  generate(request: AIRequest, options?: { signal?: AbortSignal; resolvedModelId?: string; latencyOut?: any }): Promise<AIResponse>;
+  stream(request: AIRequest, options?: { signal?: AbortSignal; resolvedModelId?: string; latencyOut?: any }): AsyncIterable<AIStreamEvent>;
 }
 
 export class MockOpenAIAdapter implements ProviderAdapter {
@@ -47,6 +47,195 @@ export class MockOpenAIAdapter implements ProviderAdapter {
   }
 }
 
+export class OpenAIAdapter implements ProviderAdapter {
+  readonly id = 'openai';
+  constructor(private apiKey: string) {}
+
+  async generate(request: AIRequest, options?: { signal?: AbortSignal; resolvedModelId?: string }): Promise<AIResponse> {
+    const modelId = options?.resolvedModelId || 'gpt-4o-mini';
+    const payload = {
+      model: modelId,
+      messages: request.messages.map(m => ({ role: m.role, content: m.content })),
+      tools: request.tools,
+      temperature: 0.2
+    };
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.apiKey}`
+      },
+      body: JSON.stringify(payload),
+      signal: options?.signal
+    });
+    if (!response.ok) {
+      const errBody = await response.text();
+      throw new Error(`OpenAI API error: ${response.status} - ${errBody}`);
+    }
+    const data = await response.json();
+    const message = data?.choices?.[0]?.message;
+    const result: AIResponse = { content: message?.content || '' };
+    if (message?.tool_calls) {
+      result.toolCalls = message.tool_calls.map((tc: any) => ({
+        id: tc.id,
+        name: tc.function.name,
+        arguments: tc.function.arguments
+      }));
+    }
+    return result;
+  }
+
+  async *stream(request: AIRequest, options?: { signal?: AbortSignal; resolvedModelId?: string }): AsyncIterable<AIStreamEvent> {
+    const modelId = options?.resolvedModelId || 'gpt-4o-mini';
+    const payload = {
+      model: modelId,
+      messages: request.messages.map(m => ({ role: m.role, content: m.content })),
+      tools: request.tools,
+      stream: true,
+      temperature: 0.2
+    };
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.apiKey}`
+      },
+      body: JSON.stringify(payload),
+      signal: options?.signal
+    });
+    if (!response.ok) {
+      const errBody = await response.text();
+      throw new Error(`OpenAI API error: ${response.status} - ${errBody}`);
+    }
+    if (!response.body) throw new Error('Empty response body');
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        const cleaned = line.trim();
+        if (!cleaned || cleaned === 'data: [DONE]') continue;
+        if (cleaned.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(cleaned.slice(6));
+            const delta = data?.choices?.[0]?.delta;
+            if (delta?.content) {
+              yield { type: 'delta', content: delta.content };
+            }
+          } catch {}
+        }
+      }
+    }
+    yield { type: 'done' };
+  }
+}
+
+export class AnthropicAdapter implements ProviderAdapter {
+  readonly id = 'anthropic';
+  constructor(private apiKey: string) {}
+
+  private mapMessages(messages: any[]): { system?: string; messages: any[] } {
+    let system: string | undefined = undefined;
+    const mapped: any[] = [];
+    for (const m of messages) {
+      if (m.role === 'system') {
+        system = m.content;
+      } else {
+        mapped.push({
+          role: m.role === 'assistant' ? 'assistant' : 'user',
+          content: m.content
+        });
+      }
+    }
+    return { system, messages: mapped };
+  }
+
+  async generate(request: AIRequest, options?: { signal?: AbortSignal; resolvedModelId?: string }): Promise<AIResponse> {
+    const modelId = options?.resolvedModelId || 'claude-3-5-sonnet-20241022';
+    const { system, messages } = this.mapMessages(request.messages);
+    const payload = {
+      model: modelId,
+      messages,
+      system,
+      max_tokens: 4096,
+      temperature: 0.2
+    };
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': this.apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify(payload),
+      signal: options?.signal
+    });
+    if (!response.ok) {
+      const errBody = await response.text();
+      throw new Error(`Anthropic API error: ${response.status} - ${errBody}`);
+    }
+    const data = await response.json();
+    const contentText = data?.content?.[0]?.text || '';
+    return { content: contentText };
+  }
+
+  async *stream(request: AIRequest, options?: { signal?: AbortSignal; resolvedModelId?: string }): AsyncIterable<AIStreamEvent> {
+    const modelId = options?.resolvedModelId || 'claude-3-5-sonnet-20241022';
+    const { system, messages } = this.mapMessages(request.messages);
+    const payload = {
+      model: modelId,
+      messages,
+      system,
+      max_tokens: 4096,
+      stream: true,
+      temperature: 0.2
+    };
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': this.apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify(payload),
+      signal: options?.signal
+    });
+    if (!response.ok) {
+      const errBody = await response.text();
+      throw new Error(`Anthropic API error: ${response.status} - ${errBody}`);
+    }
+    if (!response.body) throw new Error('Empty response body');
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        const cleaned = line.trim();
+        if (!cleaned) continue;
+        if (cleaned.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(cleaned.slice(6));
+            if (data.type === 'content_block_delta' && data.delta?.text) {
+              yield { type: 'delta', content: data.delta.text };
+            }
+          } catch {}
+        }
+      }
+    }
+    yield { type: 'done' };
+  }
+}
+
 import { AuthenticationRouter } from './auth-router';
 import { ServerModelRouter } from './server-router';
 import { ServerUsageStore } from './usage-store';
@@ -60,9 +249,27 @@ export class BackendAIGateway {
   readonly usageStore = new ServerUsageStore();
   readonly budgetGuard = new ServerBudgetGuard();
   constructor() {
-    this.adapters.set('openai', new MockOpenAIAdapter());
-    this.adapters.set('google', new GoogleGeminiAdapter(process.env.GOOGLE_API_KEY));
-    this.adapters.set('anthropic', new MockOpenAIAdapter());
+    const googleKey = process.env.GOOGLE_API_KEY;
+    const openaiKey = process.env.OPENAI_API_KEY;
+    const anthropicKey = process.env.ANTHROPIC_API_KEY;
+
+    this.adapters.set('google', new GoogleGeminiAdapter(googleKey));
+
+    if (openaiKey) {
+      this.adapters.set('openai', new OpenAIAdapter(openaiKey));
+    } else if (googleKey) {
+      this.adapters.set('openai', new GoogleGeminiAdapter(googleKey));
+    } else {
+      this.adapters.set('openai', new MockOpenAIAdapter());
+    }
+
+    if (anthropicKey) {
+      this.adapters.set('anthropic', new AnthropicAdapter(anthropicKey));
+    } else if (googleKey) {
+      this.adapters.set('anthropic', new GoogleGeminiAdapter(googleKey));
+    } else {
+      this.adapters.set('anthropic', new MockOpenAIAdapter());
+    }
   }
 
   async handleRequest(
@@ -73,20 +280,27 @@ export class BackendAIGateway {
     options?: { signal?: AbortSignal }
   ): Promise<{ status: number; headers: Record<string, string>; body: any }> {
     const requestId = headers['x-request-id'] || randomUUID();
+    const serverStart = Date.now();
+    const clientStartHeader = headers['x-synkro-client-start'] || headers['X-Synkro-Client-Start'];
+    const transitTime = clientStartHeader ? (serverStart - parseInt(clientStartHeader, 10)) : -1;
+    console.log(`[REQ ${requestId}] BackendAIGateway.handleRequest entered`);
     const responseHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
       'x-request-id': requestId
     };
 
     // Kill switch check
-    const { db } = require('./db');
-    try {
-      const ksRes = await db.query("SELECT value FROM system_config WHERE key = 'global_kill_switch'");
-      if (ksRes.rows.length > 0 && ksRes.rows[0].value.is_active) {
-        return { status: 503, headers: responseHeaders, body: { code: 'SERVICE_UNAVAILABLE', message: 'System is currently disabled by global kill switch.' } };
+    const isDevBypass = process.env.NODE_ENV !== 'production' && process.env.SYNKRO_DEV_AUTH_BYPASS === 'true';
+    if (!isDevBypass) {
+      const { db } = require('./db');
+      try {
+        const ksRes = await db.query("SELECT value FROM system_config WHERE key = 'global_kill_switch'");
+        if (ksRes.rows.length > 0 && ksRes.rows[0].value.is_active) {
+          return { status: 503, headers: responseHeaders, body: { code: 'SERVICE_UNAVAILABLE', message: 'System is currently disabled by global kill switch.' } };
+        }
+      } catch (e) {
+        console.error('[KillSwitch] Error checking kill switch:', e);
       }
-    } catch (e) {
-      console.error('[KillSwitch] Error checking kill switch:', e);
     }
 
     // --- Unauthenticated Auth Routes ---
@@ -127,16 +341,19 @@ export class BackendAIGateway {
       };
     }
     const token = authHeader.substring(7);
+    const authStart = Date.now();
     let session: any;
     try {
-      session = await this.authService.validateSession(token);
+      session = await this.authService.validateSession(token, requestId);
     } catch (err: any) {
+      console.error('[BackendAIGateway] validateSession error:', err);
       return {
         status: 401,
         headers: responseHeaders,
         body: { code: 'UNAUTHORIZED', message: err.message || 'Invalid authentication session token.' }
       };
     }
+    const authDuration = Date.now() - authStart;
 
     // --- Authenticated Account Routes ---
     if (path === '/v1/auth/logout') {
@@ -172,63 +389,81 @@ export class BackendAIGateway {
 
       const estimatedCost = requestData.tier === 'premium' ? 0.01 : (requestData.tier === 'reasoning' ? 0.005 : 0.001);
       
-      await this.budgetGuard.acquireLock(session.userId);
-      try {
-        // Enforce server-side budget limits before calling provider adapter
-        await this.budgetGuard.checkBudget(session.userId, 'pro', estimatedCost);
-      } catch (err: any) {
-        this.budgetGuard.releaseLock(session.userId);
-        return { status: 403, headers: responseHeaders, body: err };
+      const isDevBypass = process.env.NODE_ENV !== 'production' && process.env.SYNKRO_DEV_AUTH_BYPASS === 'true';
+
+      if (!isDevBypass) {
+        await this.budgetGuard.acquireLock(session.userId);
+        try {
+          // Enforce server-side budget limits before calling provider adapter
+          await this.budgetGuard.checkBudget(session.userId, 'pro', estimatedCost);
+        } catch (err: any) {
+          this.budgetGuard.releaseLock(session.userId);
+          return { status: 403, headers: responseHeaders, body: err };
+        }
       }
 
       let config: any;
       try {
+        const routingStart = Date.now();
         config = this.router.route(requestData.tier);
+        const routingDuration = Date.now() - routingStart;
+
         let adapter = this.adapters.get(config.providerId) || this.adapters.get('openai')!;
         this.logRequest(requestId, 'generate', requestData);
         let result: AIResponse;
         
+        const latencyOut: any = { listModelsDuration: 0, geminiCallDuration: 0 };
+        const adapterStart = Date.now();
         try {
-          result = await adapter.generate(requestData, { ...options, resolvedModelId: config.modelId });
+          result = await adapter.generate(requestData, { ...options, resolvedModelId: config.modelId, latencyOut });
         } catch (e: any) {
           if (this.isRetryable(e) && config.fallback) {
             console.log(`[BackendAIGateway] [${requestId}] Primary provider failed, failing over to fallback: ${config.fallback.providerId}`);
             adapter = this.adapters.get(config.fallback.providerId) || this.adapters.get('openai')!;
-            result = await adapter.generate(requestData, { ...options, resolvedModelId: config.fallback.modelId });
+            result = await adapter.generate(requestData, { ...options, resolvedModelId: config.fallback.modelId, latencyOut });
             responseHeaders['x-provider-fallback'] = config.fallback.providerId;
           } else {
             throw e;
           }
         }
+        const adapterDuration = Date.now() - adapterStart;
+        const serverDuration = Date.now() - serverStart;
 
-        await this.usageStore.recordUsage({
-          userId: session.userId,
-          requestId,
-          modelTier: requestData.tier,
-          resolvedModel: config.modelId,
-          inputTokens: result.usage?.inputTokens || 0,
-          outputTokens: result.usage?.outputTokens || 0,
-          totalTokens: result.usage?.totalTokens || 0,
-          estimatedCost: result.cost?.cost || 0,
-          status: 'success'
-        });
+        // Build the Latency Header
+        responseHeaders['x-synkro-latency'] = `Transit: ${transitTime}ms | Auth: ${authDuration}ms | Route: ${routingDuration}ms | Resolve: ${latencyOut.listModelsDuration}ms | GeminiAPI: ${latencyOut.geminiCallDuration}ms | AdapterTotal: ${adapterDuration}ms | BackendTotal: ${serverDuration}ms`;
+
+        if (!isDevBypass) {
+          await this.usageStore.recordUsage({
+            userId: session.userId,
+            requestId,
+            modelTier: requestData.tier,
+            resolvedModel: config.modelId,
+            inputTokens: result.usage?.inputTokens || 0,
+            outputTokens: result.usage?.outputTokens || 0,
+            totalTokens: result.usage?.totalTokens || 0,
+            estimatedCost: result.cost?.cost || 0,
+            status: 'success'
+          });
+        }
 
         return { status: 200, headers: responseHeaders, body: result };
       } catch (e: any) {
-        this.usageStore.recordUsage({
-          userId: session.userId,
-          requestId,
-          modelTier: requestData.tier,
-          resolvedModel: config?.modelId || 'unknown',
-          inputTokens: 0,
-          outputTokens: 0,
-          totalTokens: 0,
-          estimatedCost: 0,
-          status: options?.signal?.aborted ? 'cancelled' : 'failed'
-        });
+        if (!isDevBypass) {
+          this.usageStore.recordUsage({
+            userId: session.userId,
+            requestId,
+            modelTier: requestData.tier,
+            resolvedModel: config?.modelId || 'unknown',
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            estimatedCost: 0,
+            status: options?.signal?.aborted ? 'cancelled' : 'failed'
+          });
+        }
         return { status: 502, headers: responseHeaders, body: this.mapError(e) };
       } finally {
-        this.budgetGuard.releaseLock(session.userId);
+        if (!isDevBypass) this.budgetGuard.releaseLock(session.userId);
       }
     }
 
@@ -241,30 +476,37 @@ export class BackendAIGateway {
 
       const estimatedCost = requestData.tier === 'premium' ? 0.01 : (requestData.tier === 'reasoning' ? 0.005 : 0.001);
       
-      await this.budgetGuard.acquireLock(session.userId);
-      try {
-        await this.budgetGuard.checkBudget(session.userId, 'pro', estimatedCost);
-      } catch (err: any) {
-        this.budgetGuard.releaseLock(session.userId);
-        return { status: 403, headers: responseHeaders, body: err };
+      const isDevBypass = process.env.NODE_ENV !== 'production' && process.env.SYNKRO_DEV_AUTH_BYPASS === 'true';
+
+      if (!isDevBypass) {
+        await this.budgetGuard.acquireLock(session.userId);
+        try {
+          await this.budgetGuard.checkBudget(session.userId, 'pro', estimatedCost);
+        } catch (err: any) {
+          this.budgetGuard.releaseLock(session.userId);
+          return { status: 403, headers: responseHeaders, body: err };
+        }
       }
 
       let config: any;
       try {
+        const routingStart = Date.now();
         config = this.router.route(requestData.tier);
+        const routingDuration = Date.now() - routingStart;
+
         let adapter = this.adapters.get(config.providerId) || this.adapters.get('openai')!;
         this.logRequest(requestId, 'stream', requestData);
         let stream: any;
 
+        const latencyOut: any = { listModelsDuration: 0, geminiCallDuration: 0 };
+        const adapterStart = Date.now();
         try {
-          stream = adapter.stream(requestData, { ...options, resolvedModelId: config.modelId });
-          // Force materialization if we need to check stream startup error for failover
-          // For simplicity, mock adapter stream calls are synchronous generators.
+          stream = adapter.stream(requestData, { ...options, resolvedModelId: config.modelId, latencyOut });
         } catch (e: any) {
           if (this.isRetryable(e) && config.fallback) {
             console.log(`[BackendAIGateway] [${requestId}] Primary streaming failed, failing over to: ${config.fallback.providerId}`);
             adapter = this.adapters.get(config.fallback.providerId) || this.adapters.get('openai')!;
-            stream = adapter.stream(requestData, { ...options, resolvedModelId: config.fallback.modelId });
+            stream = adapter.stream(requestData, { ...options, resolvedModelId: config.fallback.modelId, latencyOut });
             responseHeaders['x-provider-fallback'] = config.fallback.providerId;
             // Materialize fallback stream start
             const testFallback = await stream[Symbol.asyncIterator]().next();
@@ -277,36 +519,46 @@ export class BackendAIGateway {
             throw e;
           }
         }
+        const adapterDuration = Date.now() - adapterStart;
+        const serverDuration = Date.now() - serverStart;
+
+        // Build the Latency Header
+        responseHeaders['x-synkro-latency'] = `Transit: ${transitTime}ms | Auth: ${authDuration}ms | Route: ${routingDuration}ms | Resolve: ${latencyOut.listModelsDuration}ms | GeminiAPI: ${latencyOut.geminiCallDuration}ms | AdapterTotal: ${adapterDuration}ms | BackendTotal: ${serverDuration}ms`;
 
         // Record a success placeholder for streaming usage
-        await this.usageStore.recordUsage({
-          userId: session.userId,
-          requestId,
-          modelTier: requestData.tier,
-          resolvedModel: config.modelId,
-          inputTokens: 10,
-          outputTokens: 20,
-          totalTokens: 30,
-          estimatedCost: 0.001,
-          status: 'success'
-        });
+        if (!isDevBypass) {
+          await this.usageStore.recordUsage({
+            userId: session.userId,
+            requestId,
+            modelTier: requestData.tier,
+            resolvedModel: config.modelId,
+            inputTokens: 10,
+            outputTokens: 20,
+            totalTokens: 30,
+            estimatedCost: 0.001,
+            status: 'success'
+          });
+        }
 
         return { status: 200, headers: responseHeaders, body: stream };
       } catch (e: any) {
-        await this.usageStore.recordUsage({
-          userId: session.userId,
-          requestId,
-          modelTier: requestData.tier,
-          resolvedModel: config?.modelId || 'unknown',
-          inputTokens: 0,
-          outputTokens: 0,
-          totalTokens: 0,
-          estimatedCost: 0,
-          status: options?.signal?.aborted ? 'cancelled' : 'failed'
-        });
+        console.error(`[BackendAIGateway] [${requestId}] Request failed with error:`, e);
+        if (!isDevBypass) {
+          this.usageStore.recordUsage({
+            userId: session.userId,
+            requestId,
+            modelTier: requestData.tier,
+            resolvedModel: config?.modelId || 'unknown',
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            estimatedCost: 0,
+            status: options?.signal?.aborted ? 'cancelled' : 'failed'
+          });
+        }
         return { status: 502, headers: responseHeaders, body: this.mapError(e) };
       } finally {
-        this.budgetGuard.releaseLock(session.userId);
+        if (!isDevBypass) this.budgetGuard.releaseLock(session.userId);
       }
     }
 

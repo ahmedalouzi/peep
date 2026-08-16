@@ -126,7 +126,14 @@ function InlineRenameInput({ depth, entry }: { depth: number; entry: FileEntry }
 }
 
 function FolderItem({ entry, rootPath, depth, onContextMenuShow }: { entry: FileEntry, rootPath: string, depth: number, onContextMenuShow?: (e: React.MouseEvent, entry: FileEntry) => void }) {
-  const [isOpen, setIsOpen] = useState(depth < 1);
+  const expandedFolders = useWorkspaceStore((s) => s.expandedFolders);
+  const toggleFolder = useWorkspaceStore((s) => s.toggleFolder);
+  const updateDirectoryChildren = useWorkspaceStore((s) => s.updateDirectoryChildren);
+
+  const isOpen = expandedFolders[entry.path] !== undefined 
+    ? expandedFolders[entry.path] 
+    : (depth < 1);
+
   const creatingItem = useWorkspaceStore((s) => s.creatingItem);
   const renamingItem = useWorkspaceStore((s) => s.renamingItem);
   const setSelectedExplorerPath = useWorkspaceStore((s) => s.setSelectedExplorerPath);
@@ -138,20 +145,44 @@ function FolderItem({ entry, rootPath, depth, onContextMenuShow }: { entry: File
 
   useEffect(() => {
     if (creatingItem?.baseDir === entry.path || creatingItem?.baseDir.startsWith(entry.path + '/')) {
-      setIsOpen(true);
+      if (!isOpen) {
+        toggleFolder(entry.path);
+      }
     }
   }, [creatingItem?.baseDir, entry.path]);
 
   const isSelected = selectedExplorerPath?.path === entry.path;
 
+  const handleFolderClick = async () => {
+    const nextOpen = !isOpen;
+    toggleFolder(entry.path);
+    setSelectedExplorerPath({ path: entry.path, type: 'directory' });
+
+    if (nextOpen) {
+      try {
+        const children = await window.peep.listDir(entry.path, 0);
+        updateDirectoryChildren(entry.path, children);
+      } catch (err) {
+        console.error('Failed to load children for directory:', entry.path, err);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen && (!entry.children || entry.children.length === 0)) {
+      window.peep.listDir(entry.path, 0).then((children) => {
+        updateDirectoryChildren(entry.path, children);
+      }).catch((err) => {
+        console.error('Initial directory load failed:', entry.path, err);
+      });
+    }
+  }, [isOpen, entry.path, entry.children?.length]);
+
   return (
     <>
       <div 
         className={`tree-item tree-indent-${Math.min(depth + 1, 3)} ${isSelected ? 'active' : ''}`}
-        onClick={() => {
-          setIsOpen(!isOpen);
-          setSelectedExplorerPath({ path: entry.path, type: 'directory' });
-        }}
+        onClick={handleFolderClick}
         onContextMenu={(e) => {
           e.preventDefault();
           e.stopPropagation();

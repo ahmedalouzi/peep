@@ -4,6 +4,7 @@ import { createTwoFilesPatch } from 'diff';
 import { useChatStore } from '../stores/chat-store';
 import { useWorkspaceStore } from '../stores/workspace-store';
 import { useDiagnosticsStore, usePreviewStore } from '../stores/preview-store';
+import { AgentTimeline } from './AgentTimeline';
 
 interface ChatPaneProps {
   onOpenSettings: () => void;
@@ -387,13 +388,9 @@ export function ChatPane({ onOpenSettings: _onOpenSettings }: ChatPaneProps) {
         </div>
       )}
 
-      <div className="chat-pane__input-wrapper">
-        {isStreaming && streamStatus && (
-          <div className="agent-streaming-status-bar">
-            <span className="spinner">◌</span> {streamStatus}
-          </div>
-        )}
+      {isStreaming && <AgentTimeline />}
 
+      <div className="chat-pane__input-wrapper">
         <div className="chat-pane__input">
           <div className="chat-pane__input-toolbar">
             <button type="button" className="icon-btn" title="Attach context">

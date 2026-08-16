@@ -8,8 +8,8 @@ export default async function runTests() {
   // Test 1: Successful Generation
   gateway.setScenario('success');
   const res = await gateway.generate({ tier: 'fast', prompt: 'test' });
-  if (!res.content.includes('Response for request')) {
-    throw new Error('generate failed to return correct content');
+  if (!res.content.includes('understand your message') && !res.content.includes('Response for request')) {
+    throw new Error('generate failed to return correct content: ' + res.content);
   }
 
   // Test 2: Cost Estimation

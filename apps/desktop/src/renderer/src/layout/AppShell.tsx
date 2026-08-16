@@ -11,7 +11,6 @@ import { NoProjectEmptyState } from '../features/shared/EmptyState';
 import { useWorkspaceStore } from '../stores/workspace-store';
 import { useWorkspace } from '../hooks/useWorkspace';
 import { useComposerStore } from '../stores/composer-store';
-import { PoCPreview } from '../features/preview/PoC';
 import './AppShell.css';
 
 const ComposerOverlay = lazy(() => import('../features/composer/ComposerOverlay').then(m => ({ default: m.ComposerOverlay })));

@@ -25,6 +25,18 @@ export class ReactNativeManagedProvider extends FrameworkProvider {
     super();
   }
 
+  async detectPackageManager(projectPath: string): Promise<'pnpm' | 'yarn' | 'npm'> {
+    try {
+      await access(join(projectPath, 'pnpm-lock.yaml'));
+      return 'pnpm';
+    } catch {}
+    try {
+      await access(join(projectPath, 'yarn.lock'));
+      return 'yarn';
+    } catch {}
+    return 'npm';
+  }
+
   async detect(projectPath: string): Promise<boolean> {
     try {
       const packageJsonPath = join(projectPath, 'package.json');
@@ -49,10 +61,7 @@ export class ReactNativeManagedProvider extends FrameworkProvider {
     
     await mkdir(projectPath, { recursive: true });
 
-    // In managed mode, we can create the project via `npx create-expo-app` or use a template.
-    const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-    const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-    
+    // In managed mode, we can create the project via `create-expo-app` or use a template.
     if (templateId) {
       const template = getTemplate(templateId);
       if (template && template.files.length > 0) {
@@ -64,17 +73,20 @@ export class ReactNativeManagedProvider extends FrameworkProvider {
       }
       
       // Install dependencies
+      const pm = await this.detectPackageManager(projectPath);
+      const installCmd = process.platform === 'win32' ? `${pm}.cmd` : pm;
       await new Promise<void>((resolve, reject) => {
-        const info = this.processManager.spawn(npm, ['install'], projectPath);
+        const info = this.processManager.spawn(installCmd, ['install'], projectPath, undefined, { shell: false });
         info.process.on('exit', (code) => {
           if (code === 0) resolve();
-          else reject(new Error('npm install failed'));
+          else reject(new Error(`${pm} install failed`));
         });
       });
     } else {
       // Default to npx create-expo-app
+      const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
       await new Promise<void>((resolve, reject) => {
-        const info = this.processManager.spawn(npx, ['create-expo-app', name, '--template', 'blank'], parentPath);
+        const info = this.processManager.spawn(npx, ['create-expo-app', name, '--template', 'blank'], parentPath, undefined, { shell: false });
         info.process.on('exit', (code) => {
           if (code === 0) resolve();
           else reject(new Error('create-expo-app failed'));
@@ -86,20 +98,22 @@ export class ReactNativeManagedProvider extends FrameworkProvider {
   }
 
   async startPreview(projectPath: string, port: number, onLog?: (line: string) => void): Promise<ProviderPreviewSession> {
-    const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+    const pm = await this.detectPackageManager(projectPath);
+    const execCmd = process.platform === 'win32' ? (pm === 'npm' ? 'npx.cmd' : `${pm}.cmd`) : (pm === 'npm' ? 'npx' : pm);
+    const cmdArgs = pm === 'npm' ? ['expo', 'start', '--web', '--port', port.toString()] : ['exec', 'expo', 'start', '--web', '--port', port.toString()];
+    
     console.log('[DEBUG_RUNTIME] react-native-managed startPreview received path:', projectPath);
     
     return new Promise((resolve, reject) => {
       let resolved = false;
       let logs: string[] = [];
-      const cmdArgs = ['expo', 'start', '--web', '--port', port.toString()];
-      console.log(`[DEBUG_RUNTIME] ProcessManager.spawn command: ${npx} ${cmdArgs.join(' ')}`);
+      console.log(`[DEBUG_RUNTIME] ProcessManager.spawn command: ${execCmd} ${cmdArgs.join(' ')}`);
       console.log(`[DEBUG_RUNTIME] ProcessManager.spawn cwd: ${projectPath}`);
 
-      const info = this.processManager.spawn(npx, cmdArgs, projectPath, {
+      const info = this.processManager.spawn(execCmd, cmdArgs, projectPath, {
         EXPO_NO_TELEMETRY: 'true',
         CI: 'true',
-      });
+      }, { shell: false });
 
       const timeout = setTimeout(() => {
         if (!resolved) {
@@ -160,9 +174,12 @@ export class ReactNativeManagedProvider extends FrameworkProvider {
   }
 
   async buildWeb(projectPath: string): Promise<string> {
-    const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+    const pm = await this.detectPackageManager(projectPath);
+    const execCmd = process.platform === 'win32' ? (pm === 'npm' ? 'npx.cmd' : `${pm}.cmd`) : (pm === 'npm' ? 'npx' : pm);
+    const cmdArgs = pm === 'npm' ? ['expo', 'export', '--platform', 'web'] : ['exec', 'expo', 'export', '--platform', 'web'];
+    
     return new Promise((resolve, reject) => {
-      const info = this.processManager.spawn(npx, ['expo', 'export', '--platform', 'web'], projectPath);
+      const info = this.processManager.spawn(execCmd, cmdArgs, projectPath, undefined, { shell: false });
       info.process.on('exit', (code) => {
         if (code === 0) resolve(join(projectPath, 'dist'));
         else reject(new Error('Web build failed'));
@@ -181,7 +198,10 @@ export class ReactNativeManagedProvider extends FrameworkProvider {
   }
 
   async validateProject(projectPath: string): Promise<ValidationResult> {
-    const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+    const pm = await this.detectPackageManager(projectPath);
+    const execCmd = process.platform === 'win32' ? (pm === 'npm' ? 'npx.cmd' : `${pm}.cmd`) : (pm === 'npm' ? 'npx' : pm);
+    const cmdArgs = pm === 'npm' ? ['tsc', '--noEmit'] : ['exec', 'tsc', '--noEmit'];
+
     const checks = [];
     let stdout = '';
     let stderr = '';
@@ -193,7 +213,7 @@ export class ReactNativeManagedProvider extends FrameworkProvider {
       await access(tsconfigPath);
       
       await new Promise<void>((resolve) => {
-        const info = this.processManager.spawn(npx, ['tsc', '--noEmit'], projectPath);
+        const info = this.processManager.spawn(execCmd, cmdArgs, projectPath, undefined, { shell: false });
         info.process.stdout?.on('data', (d) => stdout += d.toString());
         info.process.stderr?.on('data', (d) => stderr += d.toString());
         info.process.on('exit', (code) => {
@@ -232,9 +252,37 @@ export class ReactNativeManagedProvider extends FrameworkProvider {
         }
       }
     }
+    while ((match = missingRegex.exec(stderr)) !== null) {
+      if (match[1] && !match[1].startsWith('.') && !missingPackages.includes(match[1])) {
+        const pkg = match[1].split('/')[0];
+        if (pkg && !missingPackages.includes(pkg)) {
+          missingPackages.push(pkg);
+        }
+      }
+    }
+
+    let isMissingDeps = missingPackages.length > 0;
+    
+    // Auto-repair missing or broken dependencies
+    if (isMissingDeps || stdout.includes('Cannot find module') || stderr.includes('Cannot find module') || stdout.includes('Command failed') || stderr.includes('Command failed')) {
+      console.log(`[DEBUG_RUNTIME] Missing dependencies detected, attempting repair with ${pm} install...`);
+      const installCmd = process.platform === 'win32' ? `${pm}.cmd` : pm;
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const info = this.processManager.spawn(installCmd, ['install'], projectPath, undefined, { shell: false });
+          info.process.on('exit', (code) => {
+            if (code === 0) resolve();
+            else reject(new Error(`${pm} install failed`));
+          });
+        });
+        console.log(`[DEBUG_RUNTIME] Repair successful.`);
+        isMissingDeps = false; // Repaired
+      } catch (err) {
+        console.error(`[DEBUG_RUNTIME] Repair failed:`, err);
+      }
+    }
 
     const blockingErrors = checks.filter(c => !c.success).length;
-    const isMissingDeps = missingPackages.length > 0;
 
     return {
       success: blockingErrors === 0 && !isMissingDeps,
@@ -476,7 +524,6 @@ export class ReactNativeManagedProvider extends FrameworkProvider {
 
   async bootstrapProject(projectPath: string, _options?: { template?: string }): Promise<{ success: boolean; message: string }> {
     try {
-      const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
       
       // 1. Create package.json
       const packageJson = {
@@ -574,12 +621,14 @@ const styles = StyleSheet.create({
       // Create assets/ folder
       await mkdir(join(projectPath, 'assets'), { recursive: true });
 
-      // 5. Run npm install
+      // 5. Run install
+      const pm = await this.detectPackageManager(projectPath);
+      const installCmd = process.platform === 'win32' ? `${pm}.cmd` : pm;
       await new Promise<void>((resolve, reject) => {
-        const info = this.processManager.spawn(npm, ['install'], projectPath);
+        const info = this.processManager.spawn(installCmd, ['install'], projectPath, undefined, { shell: false });
         info.process.on('exit', (code) => {
           if (code === 0) resolve();
-          else reject(new Error(`npm install failed with exit code ${code}`));
+          else reject(new Error(`${pm} install failed with exit code ${code}`));
         });
       });
 
@@ -597,20 +646,23 @@ const styles = StyleSheet.create({
   }
 
   async installDependencies(projectPath: string, packages: string[]): Promise<{ success: boolean; exitCode: number | null; stdout: string; stderr: string; message?: string }> {
-    const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    const pm = await this.detectPackageManager(projectPath);
+    const installCmd = process.platform === 'win32' ? `${pm}.cmd` : pm;
+    const args = pm === 'npm' ? ['install', '--save', ...packages] : ['add', ...packages];
+    
     let stdout = '';
     let stderr = '';
     let exitCode = 0;
 
     try {
       await new Promise<void>((resolve, reject) => {
-        const info = this.processManager.spawn(npm, ['install', '--save', ...packages], projectPath);
+        const info = this.processManager.spawn(installCmd, args, projectPath, undefined, { shell: false });
         info.process.stdout?.on('data', (d) => stdout += d.toString());
         info.process.stderr?.on('data', (d) => stderr += d.toString());
         info.process.on('exit', (code) => {
           exitCode = code ?? 1;
           if (code === 0) resolve();
-          else reject(new Error(`npm install failed with exit code ${code}`));
+          else reject(new Error(`${pm} install failed with exit code ${code}`));
         });
       });
 

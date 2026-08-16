@@ -33,10 +33,12 @@ async function run() {
 
   // Start Dev Proxy
   console.log('[SYSTEM] Starting local test gateway server on port 3000...');
-  const proxyProcess = spawn('npx', ['tsx', 'scripts/test-gateway-server.ts'], {
+  const tsxCli = path.resolve(__dirname, '..', 'packages', 'agent', 'node_modules', 'tsx', 'dist', 'cli.mjs');
+  const proxyProcess = spawn('node', [tsxCli, 'scripts/test-gateway-server.ts'], {
     stdio: 'inherit',
     env: { ...process.env, DEV_ONLY_AUTH: 'true' },
-    shell: true
+    shell: true,
+    cwd: path.resolve(__dirname, '..')
   });
 
   // Wait a moment for proxy to start
@@ -44,7 +46,7 @@ async function run() {
 
   const db = new DatabaseService();
   await db.init();
-  await db.setSettings({ sessionToken: 'dev-mode-token', apiProvider: 'google', gatewayUrl: 'http://localhost:3000' });
+  await db.setSettings({ sessionToken: 'dev-mode-token', apiProvider: 'google', gatewayUrl: 'http://127.0.0.1:3000' });
   const workspace = new WorkspaceManager(db);
   (workspace as any).project = { path: wsPath };
   const registry = new PlatformRegistry();

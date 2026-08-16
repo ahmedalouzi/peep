@@ -1,25 +1,27 @@
+import * as path from 'node:path';
+import { config } from 'dotenv';
+
+// Load env from root workspace
+config({ path: path.resolve(process.cwd(), '.env') });
+// Fallbacks for direct runner execution
+config({ path: path.join(__dirname, '../../.env') });
+config({ path: path.join(__dirname, '../../../.env') });
+
 import express from 'express';
 import { BackendAIGateway } from '@peep/agent/src/models/backend-gateway';
 import { fetchProductionSecrets } from './secrets';
-import * as Sentry from '@sentry/node';
-import { nodeProfilingIntegration } from '@sentry/profiling-node';
+import { execSync } from 'node:child_process';
 
 async function bootstrap() {
-  Sentry.init({
-    dsn: process.env.SENTRY_DSN || '',
-    integrations: [
-      nodeProfilingIntegration(),
-    ],
-    tracesSampleRate: 1.0,
-    profilesSampleRate: 1.0,
-    beforeSend(event) {
-      // Redaction rules: remove prompts, files, and chain-of-thought
-      if (event.request && event.request.data) {
-        delete event.request.data;
-      }
-      return event;
-    }
-  });
+  let commitHash = '168e73a';
+  try {
+    commitHash = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
+  } catch (e) {
+    // fallback
+  }
+  const startedAt = new Date().toISOString();
+  console.log(`[SERVER_BUILD] commit=${commitHash}`);
+  console.log(`[SERVER_BUILD] started at ${startedAt}`);
 
   const secrets = await fetchProductionSecrets();
   
@@ -32,7 +34,12 @@ async function bootstrap() {
   const gateway = new BackendAIGateway();
 
   const app = express();
-  app.use(express.json());
+  app.use((req, _res, next) => {
+    console.log("[REQUEST ARRIVED]", req.method, req.url);
+    _res.setHeader('X-Synkro-Server-Version', commitHash);
+    next();
+  });
+  app.use(express.json({ limit: '50mb' }));
 
   // Healthcheck endpoint for AWS ECS Load Balancer
   app.get('/health', (_req, res) => {
@@ -41,9 +48,16 @@ async function bootstrap() {
 
   // AI Generate Endpoint
   app.post('/v1/ai/generate', async (req, res) => {
+    const requestId = Math.random().toString(36).slice(2, 10);
+    console.log(`\n[BACKEND_RECEIVED] [${requestId}] POST /v1/ai/generate`);
+    console.log(`[BACKEND_RECEIVED] [${requestId}] Authorization: Bearer ***  Session: ${req.headers['session'] ?? '(none)'}`);
+    console.log(`[BACKEND_RECEIVED] [${requestId}] Tier: ${req.body?.capabilityTier ?? 'unset'}  Messages: ${req.body?.messages?.length ?? 0}`);
     try {
       const headers = req.headers as Record<string, string>;
+      headers['x-request-id'] = requestId;
+      console.log(`[BACKEND_PROCESSING] [${requestId}] Dispatching to BackendAIGateway...`);
       const response = await gateway.handleRequest('POST', '/v1/ai/generate', headers, req.body);
+      console.log(`[BACKEND_RESPONDING] [${requestId}] Status: ${response.status}  HasToolCalls: ${!!response.body?.toolCalls?.length}`);
       res.status(response.status).json(response.body);
     } catch (error: any) {
       console.error('[Generate Error]', error);
@@ -53,8 +67,13 @@ async function bootstrap() {
 
   // AI Stream Endpoint
   app.post('/v1/ai/stream', async (req, res) => {
+    const requestId = Math.random().toString(36).slice(2, 10);
+    console.log(`\n[BACKEND_RECEIVED] [${requestId}] POST /v1/ai/stream`);
+    console.log(`[BACKEND_RECEIVED] [${requestId}] Authorization: Bearer ***  Session: ${req.headers['session'] ?? '(none)'}`);
     try {
       const headers = req.headers as Record<string, string>;
+      headers['x-request-id'] = requestId;
+      console.log(`[BACKEND_PROCESSING] [${requestId}] Dispatching to BackendAIGateway (stream)...`);
       const response = await gateway.handleRequest('POST', '/v1/ai/stream', headers, req.body);
       
       res.status(response.status);
@@ -67,9 +86,15 @@ async function bootstrap() {
       // For streams, handleRequest returns an AsyncIterable in the body if status is 200
       if (response.status === 200 && response.body && typeof response.body[Symbol.asyncIterator] === 'function') {
         const stream = response.body as AsyncIterable<any>;
+        let chunkIndex = 0;
         for await (const chunk of stream) {
+          if (chunkIndex === 0) {
+            console.log(`[BACKEND_STREAMING] [${requestId}] First SSE chunk emitted: ${JSON.stringify(chunk).slice(0, 120)}`);
+          }
+          chunkIndex++;
           res.write(`data: ${JSON.stringify(chunk)}\n\n`);
         }
+        console.log(`[BACKEND_STREAMING] [${requestId}] Stream complete. Total chunks: ${chunkIndex}`);
         res.end();
       } else {
         res.json(response.body);

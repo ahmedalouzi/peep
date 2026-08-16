@@ -22,8 +22,8 @@ export class ProcessManager {
     this.flutterSdkPath = path;
   }
 
-  spawn(command: string, args: string[], cwd: string, envOverrides?: Record<string, string>): ProcessInfo {
-    const shell = platform() === 'win32';
+  spawn(command: string, args: string[], cwd: string, envOverrides?: Record<string, string>, spawnOpts?: { shell?: boolean }): ProcessInfo {
+    const shell = spawnOpts?.shell !== undefined ? spawnOpts.shell : platform() === 'win32';
     const customEnv = { ...process.env, ...envOverrides };
     if (this.flutterSdkPath) {
       const binPath = join(this.flutterSdkPath, 'bin');

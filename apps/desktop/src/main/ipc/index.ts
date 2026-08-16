@@ -91,12 +91,23 @@ async function onProjectOpened(
   const { provider, projectRoot } = await registry.detect(projectPath, { requireProject: true, timeoutMs: 2000 });
   if (!provider) return;
 
-  fileWatcher.watch(projectPath, mainWindow, (event, path) => {
-    const session = previewManager.getSession();
-    if (session && session.processId && session.status === 'running') {
-      provider.reloadPreview(session.processId);
+  fileWatcher.watch(projectPath, mainWindow, (events) => {
+    setTimeout(() => {
+      const session = previewManager.getSession();
+      if (session && session.processId && session.status === 'running') {
+        provider.reloadPreview(session.processId);
+      }
+    }, 500);
+    
+    // We can emit individual events to agentSvc if it expects them, or update agentSvc to handle batches.
+    // For now, loop through and send to agentSvc
+    for (const ev of events) {
+      if (ev.type === 'add' || ev.type === 'change' || ev.type === 'unlink') {
+        agentSvc.onFileChanged(projectPath, ev.type, ev.path);
+      }
     }
-    agentSvc.onFileChanged(projectPath, event, path);
+    
+    mainWindow?.webContents.send('workspace:changed:batch', { events });
   });
 
   previewManager.start(projectRoot, provider).catch((error) => {
@@ -296,8 +307,8 @@ export async function registerIpcHandlers(): Promise<{
     return workspace.getProject();
   });
 
-  ipcMain.handle(IPC_CHANNELS.WORKSPACE_LIST_DIR, async (_event, dirPath: string) => {
-    return workspace.listDir(dirPath);
+  ipcMain.handle(IPC_CHANNELS.WORKSPACE_LIST_DIR, async (_event, dirPath: string, maxDepth?: number) => {
+    return workspace.listDir(dirPath, 0, maxDepth !== undefined ? maxDepth : 3);
   });
 
   ipcMain.handle(IPC_CHANNELS.WORKSPACE_SEARCH_CONTENT, async (_event, options: { projectPath: string; query: string; caseSensitive?: boolean; isRegex?: boolean }) => {
@@ -477,6 +488,12 @@ export async function registerIpcHandlers(): Promise<{
 
   ipcMain.handle(IPC_CHANNELS.AGENT_CANCEL, () => {
     agentService!.cancel();
+  });
+
+    // @ts-ignore
+  ipcMain.handle(IPC_CHANNELS.AGENT_APPROVE_PLAN, async (_event, projectPath?: string) => {
+    // @ts-ignore
+    await agentService!.approvePlan(projectPath);
   });
 
   ipcMain.handle(IPC_CHANNELS.AGENT_APPLY_EDITS, async (_event, editIds: string[]) => {

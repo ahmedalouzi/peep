@@ -71,6 +71,7 @@ const api: IpcApi = {
   isPreviewDetached: () => ipcRenderer.invoke(IPC_CHANNELS.PREVIEW_IS_DETACHED) as Promise<boolean>,
   sendAgentMessage: (options: AgentSendOptions) => ipcRenderer.invoke(IPC_CHANNELS.AGENT_SEND, options),
   cancelAgent: () => ipcRenderer.invoke(IPC_CHANNELS.AGENT_CANCEL),
+  approvePlan: (projectPath?: string) => ipcRenderer.invoke(IPC_CHANNELS.AGENT_APPROVE_PLAN, projectPath),
   applyAgentEdits: (editIds: string[]) => ipcRenderer.invoke(IPC_CHANNELS.AGENT_APPLY_EDITS, editIds),
   rejectAgentEdits: (editIds?: string[]) => ipcRenderer.invoke(IPC_CHANNELS.AGENT_REJECT_EDITS, editIds),
   getPendingEdits: () => ipcRenderer.invoke(IPC_CHANNELS.AGENT_GET_PENDING_EDITS) as Promise<ProposedEdit[]>,
@@ -121,11 +122,14 @@ const api: IpcApi = {
   onAgentStream: (callback) => subscribe<AgentStreamEvent>(IPC_EVENTS.AGENT_STREAM, callback),
   // @ts-ignore - TS cache issue with IpcApi missing onAgentActivity
   onAgentActivity: (callback: any) => subscribe<any>('agent:activity', callback),
+  // @ts-ignore
+  onAgentTimeline: (callback: any) => subscribe<any>(IPC_EVENTS.AGENT_TIMELINE, callback),
   onProposedEdits: (callback) => subscribe<ProposedEdit[]>(IPC_EVENTS.AGENT_PROPOSED_EDITS, callback),
   onTerminalOutput: (callback) =>
     subscribe<{ id: string; data: string }>(IPC_EVENTS.TERMINAL_OUTPUT, callback),
   onTerminalExit: (callback) => subscribe<{ id: string; code: number }>(IPC_EVENTS.TERMINAL_EXIT, callback),
   onGitChanged: (callback) => subscribe<void>(IPC_EVENTS.GIT_CHANGED, callback),
+  onWorkspaceChangedBatch: (callback) => subscribe<any>('workspace:changed:batch', callback),
   onUpdateStatus: (callback) => subscribe<UpdateInfo>(IPC_EVENTS.APP_UPDATE_STATUS, callback),
   // Extensions
   searchExtensions: (query, offset, size) => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_SEARCH, query, offset, size) as Promise<import('@peep/shared').ExtensionSearchResult>,

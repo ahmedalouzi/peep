@@ -11,7 +11,8 @@ class MockDB extends DatabaseService {
     theme: 'dark',
     autoSave: true,
     sessionToken: 'dev_test_session', // Bootstrapped session
-    developerMode: true
+    developerMode: true,
+    capabilityTier: 'reasoning'
   };
   
   constructor() {
@@ -31,7 +32,7 @@ async function run() {
   console.log("=== STARTING RUNTIME AUTH VERIFICATION ===");
   
   process.env.SYNKRO_DEV_AUTH_BYPASS = 'true';
-  process.env.SYNKRO_GATEWAY_URL = 'http://localhost:3000';
+  process.env.SYNKRO_GATEWAY_URL = 'http://localhost:8080';
   
   const db = new MockDB();
   const workspace = {
@@ -51,7 +52,7 @@ async function run() {
 
   await agentService.send({
     projectPath: path.resolve('./'),
-    message: 'Test message',
+    message: 'Improve this project',
     isContinuation: false,
   });
   

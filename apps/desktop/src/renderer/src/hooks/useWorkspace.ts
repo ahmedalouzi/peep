@@ -9,7 +9,7 @@ export function useWorkspace() {
     async (project: ProjectInfo) => {
       store.setProject(project);
       const [tree, recent] = await Promise.all([
-        window.peep.listDir(project.path),
+        window.peep.listDir(project.path, 1),
         window.peep.getRecentProjects(),
       ]);
       store.setFileTree(tree);

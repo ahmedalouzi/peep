@@ -6,6 +6,7 @@ export interface OpenFile {
   name: string;
   content: string;
   dirty: boolean;
+  externallyModified?: boolean;
 }
 
 interface WorkspaceState {
@@ -32,6 +33,7 @@ interface WorkspaceState {
   openFile: (file: OpenFile) => void;
   updateFileContent: (path: string, content: string) => void;
   setActiveFile: (path: string | null) => void;
+  setFileExternallyModified: (path: string, modified: boolean) => void;
   closeFile: (path: string) => void;
   toggleBottomPanel: () => void;
   toggleSidebar: () => void;
@@ -43,6 +45,10 @@ interface WorkspaceState {
   setCreatingItem: (item: { type: 'file' | 'folder', baseDir: string } | null) => void;
   setRenamingItem: (item: FileEntry | null) => void;
   setSelectedExplorerPath: (item: { path: string, type: 'file' | 'directory' } | null) => void;
+  expandedFolders: Record<string, boolean>;
+  toggleFolder: (path: string) => void;
+  updateDirectoryChildren: (path: string, children: FileEntry[]) => void;
+  mergeRootChildren: (children: FileEntry[]) => void;
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
@@ -89,6 +95,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   setActiveFile: (activeFilePath) => set({ activeFilePath }),
 
+  setFileExternallyModified: (path, modified) => {
+    set({
+      openFiles: get().openFiles.map((f) =>
+        f.path === path ? { ...f, externallyModified: modified } : f,
+      ),
+    });
+  },
+
   closeFile: (path) => {
     const { openFiles, activeFilePath } = get();
     const next = openFiles.filter((f) => f.path !== path);
@@ -109,4 +123,39 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   setCreatingItem: (item) => set({ creatingItem: item }),
   setRenamingItem: (item) => set({ renamingItem: item }),
   setSelectedExplorerPath: (item) => set({ selectedExplorerPath: item }),
+  expandedFolders: {},
+  toggleFolder: (path) => {
+    const current = get().expandedFolders;
+    set({
+      expandedFolders: {
+        ...current,
+        [path]: !current[path],
+      },
+    });
+  },
+  updateDirectoryChildren: (path, children) => {
+    const updateNode = (nodes: FileEntry[]): FileEntry[] => {
+      return nodes.map((node) => {
+        if (node.path === path) {
+          return { ...node, children };
+        }
+        if (node.children) {
+          return { ...node, children: updateNode(node.children) };
+        }
+        return node;
+      });
+    };
+    set({ fileTree: updateNode(get().fileTree) });
+  },
+  mergeRootChildren: (newChildren) => {
+    const currentTree = get().fileTree;
+    const nextTree = newChildren.map(newChild => {
+      const existing = currentTree.find(n => n.path === newChild.path);
+      if (existing && existing.type === 'directory') {
+        return { ...newChild, children: existing.children };
+      }
+      return newChild;
+    });
+    set({ fileTree: nextTree });
+  },
 }));

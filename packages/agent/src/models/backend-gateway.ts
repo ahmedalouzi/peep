@@ -7,11 +7,9 @@ import type {
 } from '@peep/shared';
 import { randomUUID } from 'node:crypto';
 
-export interface ProviderAdapter {
-  id: string;
-  generate(request: AIRequest, options?: { signal?: AbortSignal; resolvedModelId?: string; latencyOut?: any }): Promise<AIResponse>;
-  stream(request: AIRequest, options?: { signal?: AbortSignal; resolvedModelId?: string; latencyOut?: any }): AsyncIterable<AIStreamEvent>;
-}
+import { type ProviderAdapter } from './types';
+export { type ProviderAdapter };
+
 
 export class MockOpenAIAdapter implements ProviderAdapter {
   readonly id = 'openai';

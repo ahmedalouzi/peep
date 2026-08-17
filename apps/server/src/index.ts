@@ -8,8 +8,10 @@ config({ path: path.join(__dirname, '../../.env') });
 config({ path: path.join(__dirname, '../../../.env') });
 
 import express from 'express';
-import { BackendAIGateway } from '@peep/agent';
+import { BackendAIGateway } from '@peep/agent/server';
 import { fetchProductionSecrets } from './secrets';
+
+
 import { execSync } from 'node:child_process';
 
 async function bootstrap() {

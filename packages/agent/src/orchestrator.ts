@@ -26,38 +26,67 @@ async function callOpenAI(
   config: AgentConfig,
   messages: ChatMessage[],
   signal: AbortSignal,
+  onDelta?: (text: string) => void,
 ): Promise<ChatMessage> {
   if (!config.gateway) {
     throw new Error('AIGateway is required to make calls');
   }
 
-  const response = await config.gateway.generate({
-    tier: config.capabilityTier,
-    messages: messages.map((m) => {
-      if (m.role === 'tool') {
-        return { role: 'tool', content: m.content, tool_call_id: m.tool_call_id, name: m.name || 'tool_name' };
-      }
-      if (m.role === 'assistant' && m.tool_calls) {
-        return { role: 'assistant', content: m.content || null, tool_calls: m.tool_calls };
-      }
-      return { role: m.role, content: m.content };
-    }),
-    tools: OPENAI_TOOLS,
-  }, { signal });
+  const stream = config.gateway.stream(
+    {
+      tier: config.capabilityTier,
+      messages: messages.map((m) => {
+        if (m.role === 'tool') {
+          return { role: 'tool', content: m.content, tool_call_id: m.tool_call_id, name: m.name || 'tool_name' };
+        }
+        if (m.role === 'assistant' && m.tool_calls) {
+          return { role: 'assistant', content: m.content || null, tool_calls: m.tool_calls };
+        }
+        return { role: m.role, content: m.content };
+      }),
+      tools: OPENAI_TOOLS,
+    },
+    { signal }
+  );
 
-  if (response.toolCalls && response.toolCalls.length > 0) {
+  let fullContent = '';
+  const toolCalls: Array<{ id: string; name: string; arguments: string | Record<string, unknown> }> = [];
+
+  for await (const event of stream) {
+    if (signal.aborted) {
+      throw new Error('Cancelled');
+    }
+
+    if (event.type === 'delta' && event.content) {
+      fullContent += event.content;
+      onDelta?.(event.content);
+    } else if (event.type === 'tool_call' && event.toolCall) {
+      toolCalls.push({
+        id: event.toolCall.id,
+        name: event.toolCall.name,
+        arguments: event.toolCall.arguments,
+      });
+    } else if (event.type === 'error' && event.error) {
+      throw new Error(event.error.message || 'Stream error');
+    }
+  }
+
+  if (toolCalls.length > 0) {
     return {
       role: 'assistant',
-      content: response.content || '',
-      tool_calls: response.toolCalls.map(t => ({
+      content: fullContent,
+      tool_calls: toolCalls.map((t) => ({
         id: t.id,
         type: 'function',
-        function: { name: t.name, arguments: typeof t.arguments === 'string' ? t.arguments : JSON.stringify(t.arguments) }
-      }))
+        function: {
+          name: t.name,
+          arguments: typeof t.arguments === 'string' ? t.arguments : JSON.stringify(t.arguments),
+        },
+      })),
     };
   }
 
-  return { role: 'assistant', content: response.content || 'No response.' };
+  return { role: 'assistant', content: fullContent || 'No response.' };
 }
 
 async function executeToolCalls(
@@ -143,6 +172,23 @@ export async function runAgentLoop(
 
   const startTime = Date.now();
   let toolLogs = '';
+  let logsEmitted = false;
+
+  const emitLogsBlockIfNeeded = () => {
+    if (toolLogs && !logsEmitted) {
+      logsEmitted = true;
+      const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+      const logsBlock = `<details class="agent-activity-dropdown" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; outline: none; display: block; width: 100%;">
+<summary style="cursor: pointer; font-weight: 600; font-size: 12.5px; color: var(--gold); user-select: none; outline: none; list-style: none; display: flex; align-items: center; gap: 6px;">
+  <span>▶</span> Worked for ${duration}s
+</summary>
+<div style="margin-top: 8px; font-size: 11.5px; line-height: 1.6; color: #8b949e; border-left: 2px solid var(--border); padding-left: 8px;">
+  ${toolLogs}
+</div>
+</details>\n\n`;
+      callbacks.onDelta(logsBlock);
+    }
+  };
 
   // Inject Planner directive for complex requests
   let activeContext = systemContext;
@@ -155,15 +201,22 @@ export async function runAgentLoop(
     ...initialMessages,
   ];
 
+  let accumulatedResponseText = '';
+
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     if (signal.aborted) throw new Error('Cancelled');
 
     callbacks.onStatus(i === 0 ? 'Thinking…' : 'Continuing…');
-    const assistantMessage = await callOpenAI(config, messages, signal);
 
-    if (assistantMessage.content) {
-      callbacks.onStatus(assistantMessage.content.trim());
-    }
+    const assistantMessage = await callOpenAI(
+      config,
+      messages,
+      signal,
+      (delta) => {
+        emitLogsBlockIfNeeded();
+        callbacks.onDelta(delta);
+      }
+    );
 
     if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
       // Accumulate action log statements
@@ -247,46 +300,20 @@ export async function runAgentLoop(
 
     const text = assistantMessage.content?.trim();
     if (text) {
-      if (toolLogs) {
-        const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-        const logsBlock = `<details class="agent-activity-dropdown" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; outline: none; display: block; width: 100%;">
-<summary style="cursor: pointer; font-weight: 600; font-size: 12.5px; color: var(--gold); user-select: none; outline: none; list-style: none; display: flex; align-items: center; gap: 6px;">
-  <span>▶</span> Worked for ${duration}s
-</summary>
-<div style="margin-top: 8px; font-size: 11.5px; line-height: 1.6; color: #8b949e; border-left: 2px solid var(--border); padding-left: 8px;">
-  ${toolLogs}
-</div>
-</details>\n\n`;
-        callbacks.onDelta(logsBlock + text);
-        callbacks.onDone();
-        return logsBlock + text;
-      } else {
-        callbacks.onDelta(text);
-        callbacks.onDone();
-        return text;
-      }
+      accumulatedResponseText += text;
+      callbacks.onDone();
+      return accumulatedResponseText;
     }
 
     break;
   }
 
   // Pre-stream the collapsible logs block if tools were run
-  let prefix = '';
-  if (toolLogs) {
-    const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-    prefix = `<details class="agent-activity-dropdown" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; outline: none; display: block; width: 100%;">
-<summary style="cursor: pointer; font-weight: 600; font-size: 12.5px; color: var(--gold); user-select: none; outline: none; list-style: none; display: flex; align-items: center; gap: 6px;">
-  <span>▶</span> Worked for ${duration}s
-</summary>
-<div style="margin-top: 8px; font-size: 11.5px; line-height: 1.6; color: #8b949e; border-left: 2px solid var(--border); padding-left: 8px;">
-  ${toolLogs}
-</div>
-</details>\n\n`;
-    callbacks.onDelta(prefix);
-  }
+  emitLogsBlockIfNeeded();
 
   callbacks.onStatus('Summarizing changes…');
-  const summary = await callOpenAI(
+  let summaryContent = '';
+  await callOpenAI(
     config,
     [
       ...messages,
@@ -296,9 +323,13 @@ export async function runAgentLoop(
       },
     ],
     signal,
+    (delta) => {
+      summaryContent += delta;
+      callbacks.onDelta(delta);
+    }
   );
 
-  callbacks.onDelta(summary.content || '');
   callbacks.onDone();
-  return prefix + (summary.content || '');
+  return summaryContent;
 }
+

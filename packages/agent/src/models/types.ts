@@ -56,3 +56,10 @@ export interface ModelRouteDecision {
   reason: string;
   estimatedCostMultiplier: number; // rough scale vs gpt-4o-mini
 }
+
+export interface ProviderAdapter {
+  id: string;
+  generate(request: import('@peep/shared').AIRequest, options?: { signal?: AbortSignal; resolvedModelId?: string; latencyOut?: any }): Promise<import('@peep/shared').AIResponse>;
+  stream(request: import('@peep/shared').AIRequest, options?: { signal?: AbortSignal; resolvedModelId?: string; latencyOut?: any }): AsyncIterable<import('@peep/shared').AIStreamEvent>;
+}
+

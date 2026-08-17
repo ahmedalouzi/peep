@@ -116,7 +116,7 @@ export class MockAIGateway implements AIGateway {
     };
   }
 
-  async *stream(_request: AIRequest, options?: { signal?: AbortSignal }): AsyncIterable<AIStreamEvent> {
+  async *stream(request: AIRequest, options?: { signal?: AbortSignal }): AsyncIterable<AIStreamEvent> {
     if (options?.signal?.aborted) {
       throw new Error('Request aborted');
     }
@@ -133,10 +133,20 @@ export class MockAIGateway implements AIGateway {
           arguments: { command: 'echo "hello"' }
         }
       });
-    } else {
+    } else if (this.scenario === 'streaming') {
       const chunks = ['Hello ', 'from ', 'mock ', 'gateway.'];
       for (const chunk of chunks) {
         events.push({ type: 'delta', content: chunk });
+      }
+    } else {
+      const generated = await this.generate(request, options);
+      const text = generated.content || 'Hello from mock gateway.';
+      const words = text.split(/(\s+)/);
+      for (let i = 0; i < words.length; i += 4) {
+        const chunk = words.slice(i, i + 4).join('');
+        if (chunk) {
+          events.push({ type: 'delta', content: chunk });
+        }
       }
     }
 
@@ -151,10 +161,11 @@ export class MockAIGateway implements AIGateway {
         throw new Error('Request aborted');
       }
       yield event;
-      // Sleep slightly to simulate network latency
+      // Small tick for realistic streaming
       await new Promise(resolve => setTimeout(resolve, 5));
     }
   }
+
 
   async estimateCost(request: AIRequest): Promise<CostEstimate> {
     const isPremium = request.tier === 'premium';

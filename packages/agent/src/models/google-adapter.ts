@@ -3,7 +3,7 @@ import type {
   AIResponse,
   AIStreamEvent,
 } from '@peep/shared';
-import type { ProviderAdapter } from './backend-gateway';
+import type { ProviderAdapter } from './types';
 
 export class GoogleGeminiAdapter implements ProviderAdapter {
   readonly id = 'google';

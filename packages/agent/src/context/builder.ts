@@ -38,6 +38,16 @@ export function buildAgentContext(input: AgentContextInput): string {
     );
   }
 
+  if (input.selectedCode && input.selectedCode.filePath) {
+    parts.push(
+      '',
+      `Selected Code (File: ${input.selectedCode.filePath}, Lines: ${input.selectedCode.startLine}-${input.selectedCode.endLine}):`,
+      '```',
+      truncate(input.selectedCode.text, 2000),
+      '```',
+    );
+  }
+
   if (input.diagnostics && input.diagnostics.length > 0) {
     parts.push('', 'Recent diagnostics:');
     for (const d of input.diagnostics.slice(0, 12)) {

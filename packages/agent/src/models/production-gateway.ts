@@ -4,7 +4,8 @@ import type {
   AIResponse,
   AIStreamEvent,
   CostEstimate,
-  AIError
+  AIError,
+  CapabilityTier
 } from '@peep/shared';
 
 export interface ProductionAIGatewayOptions {
@@ -71,6 +72,19 @@ export class ProductionAIGateway implements AIGateway {
   async estimateCost(request: AIRequest): Promise<CostEstimate> {
     const response = await this.makeRequest('/v1/ai/estimate-cost', request);
     return response.json();
+  }
+
+  getContextLimit(tier: CapabilityTier): number {
+    // Conservative centralized configuration for token limits
+    switch (tier) {
+      case 'premium':
+        return 128000;
+      case 'reasoning':
+        return 128000;
+      case 'fast':
+      default:
+        return 128000;
+    }
   }
 
   private async makeRequest(path: string, requestData: any, signal?: AbortSignal, isRetry = false): Promise<Response> {

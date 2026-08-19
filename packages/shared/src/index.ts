@@ -60,6 +60,7 @@ export interface ValidationCheck {
   stdout: string;
   stderr: string;
   errors?: any[];
+  _testGateway?: any;
 }
 
 export interface ValidationResult {
@@ -103,6 +104,12 @@ export interface AgentActivityEvent {
   inputTokens: number;
   outputTokens: number;
   estimatedCost: number;
+}
+
+export interface PersistedChatState {
+  messages: AgentMessage[];
+  timelineActivities: AgentTimelineActivity[];
+  updatedAt: string;
 }
 
 export type AgentTimelineActivityType =
@@ -336,6 +343,13 @@ export interface AgentSendOptions {
   projectPath?: string;
   openFilePath?: string;
   openFileContent?: string;
+  _testGateway?: AIGateway;
+  selectedCode?: {
+    text: string;
+    startLine: number;
+    endLine: number;
+    filePath: string;
+  };
   diagnostics?: Diagnostic[];
   autoApplyEdits?: boolean;
   scaffoldMode?: boolean;
@@ -450,6 +464,8 @@ export const IPC_CHANNELS = {
   WORKSPACE_GET_PROJECT: 'workspace:getProject',
   WORKSPACE_SEARCH_FILES: 'workspace:searchFiles',
   WORKSPACE_SEARCH_CONTENT: 'workspace:searchContent',
+  CHAT_LOAD_HISTORY: 'chat:loadHistory',
+  CHAT_SAVE_HISTORY: 'chat:saveHistory',
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
   APP_GET_VERSION: 'app:getVersion',
@@ -662,6 +678,8 @@ export interface IpcApi {
   getProject: () => Promise<ProjectInfo | null>;
   searchFiles: (rootPath: string, query: string) => Promise<FileEntry[]>;
   searchContent: (opts: { projectPath: string; query: string; caseSensitive?: boolean; isRegex?: boolean; maxResults?: number }) => Promise<any[]>;
+  loadChatHistory: (projectPath: string) => Promise<any>;
+  saveChatHistory: (projectPath: string, state: any) => Promise<void>;
   getSettings: () => Promise<Settings>;
   setSettings: (settings: Partial<Settings>) => Promise<Settings>;
   getVersion: () => Promise<string>;
@@ -819,5 +837,6 @@ export interface AIGateway {
   generate(request: AIRequest, options?: { signal?: AbortSignal }): Promise<AIResponse>;
   stream(request: AIRequest, options?: { signal?: AbortSignal }): AsyncIterable<AIStreamEvent>;
   estimateCost(request: AIRequest): Promise<CostEstimate>;
+  getContextLimit(tier: CapabilityTier): number;
 }
 

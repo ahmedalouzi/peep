@@ -75,6 +75,22 @@ export const OPENAI_TOOLS = [
   {
     type: 'function' as const,
     function: {
+      name: 'patch_file',
+      description: 'Patch an existing file by replacing a specific block of text. This avoids overwriting the whole file. Fails if oldText is not found or occurs multiple times.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'File path relative to project root' },
+          oldText: { type: 'string', description: 'The exact block of text to be replaced. Must match exactly including whitespace and line endings.' },
+          newText: { type: 'string', description: 'The new block of text to replace oldText.' },
+        },
+        required: ['path', 'oldText', 'newText'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
       name: 'run_command',
       description: 'Run a shell/terminal command in the project root directory. Safe dev commands (flutter pub get, flutter analyze, npm install, etc.) run automatically. Destructive commands (rm -rf, git push --force, etc.) will require user confirmation. Returns stdout and stderr.',
       parameters: {

@@ -12,6 +12,14 @@ export class GoogleGeminiAdapter implements ProviderAdapter {
 
   private availableModelsPromise: Promise<string[]> | null = null;
 
+  async estimateCost(_request: import('@peep/shared').AIRequest): Promise<import('@peep/shared').CostEstimate> {
+    return { cost: 0, currency: 'USD' };
+  }
+
+  getContextLimit(_tier: import('@peep/shared').CapabilityTier): number {
+    return 1000000; // Gemini Flash limit
+  }
+
   private getAvailableModels(): Promise<string[]> {
     if (!this.availableModelsPromise) {
       this.availableModelsPromise = (async () => {

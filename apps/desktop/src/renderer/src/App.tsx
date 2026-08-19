@@ -6,6 +6,7 @@ import { DetachedPreview } from './features/preview/DetachedPreview';
 import { useComposerStore } from './stores/composer-store';
 import { useAuthStore } from './stores/auth-store';
 import { useWorkspaceStore } from './stores/workspace-store';
+import { useChatStore } from './stores/chat-store';
 import { LoginScreen } from './features/auth/LoginScreen';
 import { HomeScreen } from './features/home/HomeScreen';
 
@@ -45,6 +46,13 @@ export default function App() {
       setAuthState('AUTHENTICATED_HOME');
     }
   }, [project, authState, setAuthState]);
+
+  const loadHistory = useChatStore((s) => s.loadHistory);
+  useEffect(() => {
+    if (project?.path) {
+      void loadHistory(project.path);
+    }
+  }, [project?.path, loadHistory]);
 
   useEffect(() => {
     void window.peep.getSettings().then((settings) => {

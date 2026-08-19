@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process';
 import type { BrowserWindow } from 'electron';
 import { IPC_EVENTS } from '@peep/shared';
 import type { ProposedEdit, AgentStreamEvent, AgentSendOptions } from '@peep/shared';
-import { buildAgentContext, runAgentLoop, SCAFFOLD_SYSTEM_ADDENDUM, type ChatMessage, classifyCommand, loadDesignManifest, saveDesignManifest, serializeDesignManifest, ProductionAIGateway, MockAIGateway, GoogleGeminiAdapter } from '@peep/agent';
+import { buildAgentContext, runAgentLoop, SCAFFOLD_SYSTEM_ADDENDUM, type ChatMessage, classifyCommand, loadDesignManifest, saveDesignManifest, serializeDesignManifest, ProductionAIGateway, MockAIGateway, GoogleGeminiAdapter, truncateConversationHistory } from '@peep/agent';
 import type { DatabaseService } from './db';
 import type { WorkspaceManager } from './workspace-manager';
 import { searchFiles } from './file-search';
@@ -79,7 +79,8 @@ export class AgentService {
   private resolvePath(projectPath: string, inputPath: string): string {
     const cleaned = inputPath.replace(/^\.\//, '');
     const resolved = isAbsolute(cleaned) ? normalize(cleaned) : normalize(join(projectPath, cleaned));
-    if (!resolved.startsWith(normalize(projectPath))) {
+    const rel = require('node:path').relative(projectPath, resolved);
+    if (rel.startsWith('..') || isAbsolute(rel)) {
       throw new Error('Path is outside project workspace');
     }
     return resolved;
@@ -273,6 +274,7 @@ export class AgentService {
         mainDart: mainDart ?? appEntry,
         openFilePath: options.openFilePath,
         openFileContent: options.openFileContent,
+        selectedCode: options.selectedCode,
         diagnostics: options.diagnostics?.map((d) => ({
           file: d.file,
           line: d.line,
@@ -301,6 +303,7 @@ export class AgentService {
 
     const executor = {
       lastOriginalContent: '',
+      lastProposedContent: '',
       execute: async (name: string, args: Record<string, unknown>): Promise<string> => {
         console.log(`[E2E_VERIFICATION] 7. Tool Execution Requested by LLM: ${name}`);
         if (!projectPath) {
@@ -445,6 +448,57 @@ export class AgentService {
             } as any;
             await saveDesignManifest(projectPath, merged);
             return `Design Manifest saved to .peep/design.json (v${merged.version}).`;
+          }
+          case 'patch_file': {
+            if (!args.path || typeof args.oldText !== 'string' || typeof args.newText !== 'string') {
+              return 'Error: path, oldText, and newText are required.';
+            }
+
+            const path = this.resolvePath(projectPath, String(args.path));
+            
+            let originalContent = '';
+            try {
+              originalContent = await this.workspace.readFile(path);
+            } catch {
+              return `Error: File not found or unreadable: ${args.path}`;
+            }
+
+            const oldText = String(args.oldText);
+            const newText = String(args.newText);
+
+            if (oldText === '') {
+              return 'Error: oldText cannot be empty.';
+            }
+
+            const occurrences = originalContent.split(oldText).length - 1;
+
+            if (occurrences === 0) {
+              return `Error: oldText not found in ${args.path}. Ensure the exact text, including whitespace and line endings, matches.`;
+            }
+
+            if (occurrences > 1) {
+              return `Error: oldText occurs ${occurrences} times in ${args.path}. Please provide a more unique block of text to replace.`;
+            }
+
+            const newContent = originalContent.replace(oldText, newText);
+
+            try {
+              await this.workspace.writeFile(path, newContent);
+              this.mainWindow?.webContents.send('workspace:open-file', {
+                path,
+                name: require('node:path').basename(path),
+                content: newContent,
+                dirty: false,
+              });
+              
+              // Set for orchestrator diff logging
+              executor.lastOriginalContent = originalContent;
+              executor.lastProposedContent = newContent;
+
+              return `PATCH SUCCESS: Successfully patched ${args.path}.`;
+            } catch (err: any) {
+              return `Error: Failed to write patched file: ${err.message}`;
+            }
           }
           case 'propose_file_edit': {
             const path = this.resolvePath(projectPath, String(args.path));
@@ -872,6 +926,8 @@ export class AgentService {
 
       if (process.env.SYNKRO_USE_MOCK_GATEWAY === 'true') {
         gateway = new MockAIGateway();
+      } else if (options._testGateway) {
+        gateway = options._testGateway;
       } else if (settings.sessionToken) {
         gateway = new ProductionAIGateway({ 
             baseUrl: GATEWAY_BASE_URL, 
@@ -911,7 +967,16 @@ export class AgentService {
 
       console.log(`[E2E_VERIFICATION] 6. Gateway Selected: ${gateway.constructor?.name || 'AIGateway'} — Initializing Orchestrator Loop`);
 
-      const executeRunLoop = async (selectedGw: any) => {
+      const executeRunLoop = async (selectedGw: import('@peep/shared').AIGateway) => {
+        // Calculate effective input budget: Context Limit - Output Reserve (4096) - Safety Margin (2000)
+        let effectiveBudget = 100000;
+        if (typeof selectedGw.getContextLimit === 'function') {
+           effectiveBudget = Math.max(10000, selectedGw.getContextLimit(settings.capabilityTier || 'fast') - 4096 - 2000);
+        }
+
+        const truncatedMessages = truncateConversationHistory(messages, { maxTokens: effectiveBudget });
+        console.log(`[E2E_VERIFICATION] Token Budgeting: Retained ${truncatedMessages.length} out of ${messages.length} messages (Budget: ${effectiveBudget} tokens)`);
+
         await runAgentLoop(
           {
             capabilityTier: settings.capabilityTier || 'fast',
@@ -919,7 +984,7 @@ export class AgentService {
             sessionToken: settings.sessionToken || 'dev_test_session',
           },
           systemContext,
-          messages.slice(1),
+          truncatedMessages.slice(1), // Remove the system message from initialMessages since runAgentLoop re-injects it
           executor,
           {
             onStatus: (message) => this.emitStream({ type: 'status', content: message }),

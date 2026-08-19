@@ -22,6 +22,12 @@ export interface AgentContextInput {
   mainDart?: string;
   openFilePath?: string;
   openFileContent?: string;
+  selectedCode?: {
+    text: string;
+    startLine: number;
+    endLine: number;
+    filePath: string;
+  };
   diagnostics?: Array<{
     file: string;
     line: number;

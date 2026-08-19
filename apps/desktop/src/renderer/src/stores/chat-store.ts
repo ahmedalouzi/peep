@@ -24,6 +24,34 @@ interface ChatState {
   clearMessages: () => void;
   upsertTimelineActivity: (activity: AgentTimelineActivity) => void;
   clearTimelineActivities: () => void;
+  loadHistory: (projectPath: string) => Promise<void>;
+}
+
+let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+let currentProjectPath: string | null = null;
+let flushPendingSave: (() => void) | null = null;
+
+function triggerSave(state: ChatState) {
+  if (!currentProjectPath) return;
+  if (saveTimeout) clearTimeout(saveTimeout);
+  
+  const payload = {
+    messages: state.messages,
+    timelineActivities: state.timelineActivities,
+    updatedAt: new Date().toISOString()
+  };
+  
+  const targetProject = currentProjectPath; // capture for closure
+  
+  flushPendingSave = () => {
+    if (saveTimeout) clearTimeout(saveTimeout);
+    saveTimeout = null;
+    flushPendingSave = null;
+    // Note: window.peep corresponds to the IpcApi exposed via preload
+    (window as any).peep?.saveChatHistory?.(targetProject, payload).catch(console.error);
+  };
+
+  saveTimeout = setTimeout(flushPendingSave, 750);
 }
 
 function stripCodeBlocks(text: string): string {
@@ -115,4 +143,64 @@ export const useChatStore = create<ChatState>((set, get) => ({
     return { timelineActivities: [...state.timelineActivities, activity] };
   }),
   clearTimelineActivities: () => set({ timelineActivities: [], currentRunId: null }),
+  loadHistory: async (projectPath: string) => {
+    if (flushPendingSave && currentProjectPath && currentProjectPath !== projectPath) {
+      flushPendingSave();
+    }
+    currentProjectPath = projectPath;
+    try {
+      const history = await (window as any).peep?.loadChatHistory?.(projectPath);
+      if (history) {
+        set({
+          messages: history.messages || [
+            {
+              id: 'welcome',
+              role: 'assistant',
+              content: 'Ask anything, @ to mention, / for actions.',
+              createdAt: new Date().toISOString(),
+            },
+          ],
+          timelineActivities: history.timelineActivities || [],
+          currentRunId: null, // explicitly drop runId from runtime state
+        });
+      } else {
+        get().clearMessages();
+        set({ 
+          messages: [{
+            id: 'welcome',
+            role: 'assistant',
+            content: 'Ask anything, @ to mention, / for actions.',
+            createdAt: new Date().toISOString(),
+          }],
+          timelineActivities: [],
+          currentRunId: null 
+        });
+      }
+    } catch (err) {
+      console.error('Failed to load chat history:', err);
+      // Fallback to empty on malformed data
+      set({ 
+        messages: [{
+          id: 'welcome',
+          role: 'assistant',
+          content: 'Ask anything, @ to mention, / for actions.',
+          createdAt: new Date().toISOString(),
+        }],
+        timelineActivities: [],
+        currentRunId: null 
+      });
+    }
+  },
 }));
+
+// Subscribe to state changes to trigger debounced saves
+useChatStore.subscribe((state, prevState) => {
+  if (!currentProjectPath) return;
+  // Only save if durable state changed
+  if (
+    state.messages !== prevState.messages ||
+    state.timelineActivities !== prevState.timelineActivities
+  ) {
+    triggerSave(state);
+  }
+});

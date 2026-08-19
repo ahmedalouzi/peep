@@ -27,10 +27,12 @@ interface TerminalSession {
   process: ChildProcess;
   cwd: string;
   buffer: string;
+  reject?: (reason?: any) => void;
 }
 
 export class TerminalService {
   private sessions = new Map<string, TerminalSession>();
+  private commandSessions = new Map<string, TerminalSession>();
   private mainWindow: BrowserWindow | null = null;
   private flutterSdkPath?: string;
 
@@ -86,6 +88,7 @@ export class TerminalService {
     this.sessions.set(id, session);
 
     const emit = (data: string) => {
+      if (!this.sessions.has(id)) return;
       this.emitOutput(id, data);
     };
 
@@ -266,6 +269,67 @@ export class TerminalService {
           this.emitOutput(id, '\r\n[peep auto-respond] y\r\n');
         }, 100);
       }
+    }
+  }
+
+  async streamCommand(id: string, command: string, cwd: string): Promise<number> {
+    if (!this.isCommandAllowed(command)) {
+      throw new Error(`Command not allowed: ${command}`);
+    }
+
+    if (!cwd || !existsSync(cwd)) {
+      console.warn(`[TerminalService] Provided cwd '${cwd}' does not exist. Falling back to homedir.`);
+      cwd = homedir();
+    }
+
+    return new Promise((resolve, reject) => {
+      const shell = platform() === 'win32';
+      const customEnv = { ...process.env };
+      if (this.flutterSdkPath) {
+        const binPath = join(this.flutterSdkPath, 'bin');
+        const pathKeyActual = Object.keys(customEnv).find(k => k.toLowerCase() === 'path') || 'PATH';
+        const existingPath = customEnv[pathKeyActual] || '';
+        customEnv[pathKeyActual] = platform() === 'win32'
+          ? `${binPath};${existingPath}`
+          : `${binPath}:${existingPath}`;
+      }
+
+      const child = spawn(command, [], { cwd, shell, env: customEnv });
+      const session: TerminalSession = { process: child, cwd, buffer: '', reject };
+      this.commandSessions.set(id, session);
+
+      const emit = (data: string) => {
+        if (!this.commandSessions.has(id)) return; // stale chunk protection
+        this.emitOutput(id, data);
+      };
+
+      child.stdout?.on('data', (chunk: Buffer) => {
+        emit(chunk.toString().replace(/\r?\n/g, '\r\n'));
+      });
+
+      child.stderr?.on('data', (chunk: Buffer) => {
+        emit(chunk.toString().replace(/\r?\n/g, '\r\n'));
+      });
+
+      child.on('error', (err) => {
+        this.commandSessions.delete(id);
+        reject(err);
+      });
+
+      child.on('close', (code) => {
+        this.commandSessions.delete(id);
+        resolve(code ?? 1);
+      });
+    });
+  }
+
+  cancelCommand(id: string): void {
+    const session = this.commandSessions.get(id);
+    if (!session) return;
+    session.process.kill();
+    this.commandSessions.delete(id);
+    if (session.reject) {
+      session.reject(new Error('Command cancelled'));
     }
   }
 }

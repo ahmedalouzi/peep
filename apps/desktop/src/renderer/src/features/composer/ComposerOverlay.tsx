@@ -27,7 +27,7 @@ export function ComposerOverlay() {
     reset,
   } = useComposerStore();
 
-  const { project, openFiles, openFile } = useWorkspaceStore();
+  const { project, openFiles, openFile, activeSelection } = useWorkspaceStore();
   const [showAddMenu, setShowAddMenu] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -76,6 +76,7 @@ export function ComposerOverlay() {
         projectPath: project?.path,
         openFilePath: activeFile?.path,
         openFileContent: activeFile?.content,
+        selectedCode: activeSelection ?? undefined,
         diagnostics: [],
       });
     } catch (err) {

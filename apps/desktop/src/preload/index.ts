@@ -102,6 +102,8 @@ const api: IpcApi = {
     ipcRenderer.invoke(IPC_CHANNELS.PROJECT_CREATE, options) as Promise<ProjectInfo>,
   createProjectFromPrompt: (options) =>
     ipcRenderer.invoke(IPC_CHANNELS.PROJECT_CREATE_FROM_PROMPT, options) as Promise<ProjectInfo>,
+  loadChatHistory: (projectPath) => ipcRenderer.invoke(IPC_CHANNELS.CHAT_LOAD_HISTORY, projectPath),
+  saveChatHistory: (projectPath, state) => ipcRenderer.invoke(IPC_CHANNELS.CHAT_SAVE_HISTORY, projectPath, state),
   selectFolder: () => ipcRenderer.invoke(IPC_CHANNELS.DIALOG_SELECT_FOLDER) as Promise<string | null>,
   getTelemetryEnabled: () => ipcRenderer.invoke(IPC_CHANNELS.TELEMETRY_GET) as Promise<boolean>,
   setTelemetryEnabled: (enabled: boolean) => ipcRenderer.invoke(IPC_CHANNELS.TELEMETRY_SET, enabled),

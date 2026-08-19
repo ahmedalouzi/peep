@@ -131,6 +131,22 @@ export class WorkspaceManager {
     return writeFile(filePath, content, 'utf-8');
   }
 
+  async atomicWriteFile(filePath: string, content: string): Promise<void> {
+    const dir = dirname(filePath);
+    await mkdir(dir, { recursive: true });
+    
+    const tempPath = `${filePath}.${randomUUID()}.tmp`;
+    try {
+      await writeFile(tempPath, content, 'utf-8');
+      await rename(tempPath, filePath);
+    } catch (err) {
+      try {
+        await rm(tempPath, { force: true });
+      } catch {}
+      throw err;
+    }
+  }
+
   async mkdir(dirPath: string, options?: { recursive?: boolean }): Promise<void> {
     await mkdir(dirPath, options);
   }

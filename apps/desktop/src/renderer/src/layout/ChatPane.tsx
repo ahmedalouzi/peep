@@ -47,6 +47,7 @@ export function ChatPane({ onOpenSettings: _onOpenSettings }: ChatPaneProps) {
   const openFiles = useWorkspaceStore((s) => s.openFiles);
   const openFile = useWorkspaceStore((s) => s.openFile);
   const activeFile = openFiles.find((f) => f.path === activeFilePath) ?? null;
+  const activeSelection = useWorkspaceStore((s) => s.activeSelection);
   const diagnostics = useDiagnosticsStore((s) => s.items);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -125,6 +126,7 @@ export function ChatPane({ onOpenSettings: _onOpenSettings }: ChatPaneProps) {
         projectPath: project?.path,
         openFilePath: activeFile?.path,
         openFileContent: activeFile?.content,
+        selectedCode: activeSelection ?? undefined,
         diagnostics,
         previewError,
       });
@@ -132,7 +134,7 @@ export function ChatPane({ onOpenSettings: _onOpenSettings }: ChatPaneProps) {
 
     window.addEventListener('peep:trigger-agent', handleTriggerAgent as EventListener);
     return () => window.removeEventListener('peep:trigger-agent', handleTriggerAgent as EventListener);
-  }, [messages, project, activeFile, diagnostics]);
+  }, [messages, project, activeFile, activeSelection, diagnostics]);
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -159,6 +161,7 @@ export function ChatPane({ onOpenSettings: _onOpenSettings }: ChatPaneProps) {
       projectPath: project?.path,
       openFilePath: activeFile?.path,
       openFileContent: activeFile?.content,
+      selectedCode: activeSelection ?? undefined,
       diagnostics,
       autoApplyEdits: true,
     });

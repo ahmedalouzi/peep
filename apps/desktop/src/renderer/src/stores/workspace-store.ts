@@ -15,6 +15,7 @@ interface WorkspaceState {
   fileTree: FileEntry[];
   openFiles: OpenFile[];
   activeFilePath: string | null;
+  activeSelection: { text: string; startLine: number; endLine: number; filePath: string } | null;
 
   bottomPanelOpen: boolean;
   sidebarOpen: boolean;
@@ -33,6 +34,7 @@ interface WorkspaceState {
   openFile: (file: OpenFile) => void;
   updateFileContent: (path: string, content: string) => void;
   setActiveFile: (path: string | null) => void;
+  setActiveSelection: (selection: { text: string; startLine: number; endLine: number; filePath: string } | null) => void;
   setFileExternallyModified: (path: string, modified: boolean) => void;
   closeFile: (path: string) => void;
   toggleBottomPanel: () => void;
@@ -57,6 +59,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   fileTree: [],
   openFiles: [],
   activeFilePath: null,
+  activeSelection: null,
   bottomPanelOpen: true,
   sidebarOpen: true,
   sidebarView: 'explorer',
@@ -112,6 +115,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
     set({ openFiles: next, activeFilePath: nextActive });
   },
+
+  setActiveSelection: (selection) => set({ activeSelection: selection }),
 
   toggleBottomPanel: () => set({ bottomPanelOpen: !get().bottomPanelOpen }),
   toggleSidebar: () => set({ sidebarOpen: !get().sidebarOpen }),

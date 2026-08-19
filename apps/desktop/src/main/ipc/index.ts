@@ -1,5 +1,5 @@
 import { ipcMain, dialog, app, BrowserWindow } from 'electron';
-import { join } from 'node:path';
+import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { IPC_CHANNELS, IPC_EVENTS } from '@peep/shared';
 import type { Settings } from '@peep/shared';
@@ -205,7 +205,7 @@ export async function registerIpcHandlers(): Promise<{
 
   ipcMain.handle(IPC_CHANNELS.DIALOG_OPEN_FOLDER, async () => {
     if (process.env.E2E_TESTING === '1') {
-      const e2ePath = require('path').join(__dirname, '..', '..', '..', '..', 'e2e-fresh-workspace', 'TestFlow');
+      const e2ePath = path.join(__dirname, '..', '..', '..', '..', 'e2e-fresh-workspace', 'TestFlow');
       const projectName = require('path').basename(e2ePath);
       const project: import('@peep/shared').ProjectInfo = {
         id: `local-${projectName}-${Date.now()}`,
@@ -317,6 +317,33 @@ export async function registerIpcHandlers(): Promise<{
 
   ipcMain.handle(IPC_CHANNELS.WORKSPACE_READ_FILE, async (_event, filePath: string) => {
     return workspace.readFile(filePath);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.CHAT_LOAD_HISTORY, async (_event, projectPath: string) => {
+    try {
+      if (!path.isAbsolute(projectPath)) throw new Error('projectPath must be absolute');
+      const registered = db!.getRecentProjects().some(p => p.path === projectPath);
+      if (!registered) throw new Error('Untrusted project path');
+      
+      const chatJsonPath = path.join(projectPath, '.peep', 'chat.json');
+      const content = await fs.promises.readFile(chatJsonPath, 'utf-8');
+      return JSON.parse(content);
+    } catch {
+      return null; // Return null (empty state) safely if missing or malformed
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.CHAT_SAVE_HISTORY, async (_event, projectPath: string, state: any) => {
+    try {
+      if (!path.isAbsolute(projectPath)) throw new Error('projectPath must be absolute');
+      const registered = db!.getRecentProjects().some(p => p.path === projectPath);
+      if (!registered) throw new Error('Untrusted project path');
+
+      const chatJsonPath = path.join(projectPath, '.peep', 'chat.json');
+      await workspace.atomicWriteFile(chatJsonPath, JSON.stringify(state, null, 2));
+    } catch (err) {
+      console.error('Failed to save chat history:', err);
+    }
   });
 
   ipcMain.handle(IPC_CHANNELS.WORKSPACE_READ_IMAGE, async (_event, filePath: string) => {
@@ -451,7 +478,7 @@ export async function registerIpcHandlers(): Promise<{
       frame: false,
       hasShadow: true,
       webPreferences: {
-        preload: join(__dirname, '../preload/index.js'),
+        preload: path.join(__dirname, '../preload/index.js'),
         sandbox: false,
         contextIsolation: true,
         nodeIntegration: false,
@@ -463,7 +490,7 @@ export async function registerIpcHandlers(): Promise<{
     if (isDev) {
       previewWindow.loadURL(`${process.env.ELECTRON_RENDERER_URL}?windowType=preview&deviceId=${currentDetachedDeviceId}`);
     } else {
-      previewWindow.loadFile(join(__dirname, '../renderer/index.html'), { query: { windowType: 'preview', deviceId: currentDetachedDeviceId } });
+      previewWindow.loadFile(path.join(__dirname, '../renderer/index.html'), { query: { windowType: 'preview', deviceId: currentDetachedDeviceId } });
     }
 
     previewWindow.on('closed', () => {

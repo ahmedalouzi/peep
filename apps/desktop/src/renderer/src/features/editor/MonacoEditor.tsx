@@ -3,6 +3,7 @@ import type { editor } from 'monaco-editor';
 import { useCallback, useEffect, useRef } from 'react';
 import './MonacoEditor.css';
 import { useDiagnosticsStore } from '../../stores/preview-store';
+import { useWorkspaceStore } from '../../stores/workspace-store';
 import { emmetHTML, emmetCSS, emmetJSX } from 'emmet-monaco-es';
 
 let emmetInitialized = false;
@@ -135,6 +136,23 @@ export function MonacoEditor({ path, value, onChange, onSave }: MonacoEditorProp
 
       monaco.editor.onDidChangeMarkers(() => syncMarkers());
       syncMarkers();
+
+      /* ── Track active selection ── */
+      editorInstance.onDidChangeCursorSelection(() => {
+        const selection = editorInstance.getSelection();
+        const model = editorInstance.getModel();
+        if (selection && model && !selection.isEmpty()) {
+          const text = model.getValueInRange(selection);
+          useWorkspaceStore.getState().setActiveSelection({
+            text,
+            startLine: selection.startLineNumber,
+            endLine: selection.endLineNumber,
+            filePath: path
+          });
+        } else {
+          useWorkspaceStore.getState().setActiveSelection(null);
+        }
+      });
     },
     [onSave],
   );

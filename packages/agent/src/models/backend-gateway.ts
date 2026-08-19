@@ -3,7 +3,8 @@ import type {
   AIResponse,
   AIStreamEvent,
   CostEstimate,
-  AIError
+  AIError,
+  CapabilityTier
 } from '@peep/shared';
 import { randomUUID } from 'node:crypto';
 
@@ -246,6 +247,13 @@ export class BackendAIGateway {
   private router = new ServerModelRouter();
   readonly usageStore = new ServerUsageStore();
   readonly budgetGuard = new ServerBudgetGuard();
+
+  getContextLimit(tier: CapabilityTier): number {
+    const config = this.router.route(tier);
+    const modelProfile = (this.router as any)['registry']?.get(config.modelId);
+    return modelProfile?.contextWindow ?? 128000;
+  }
+
   constructor() {
     const googleKey = process.env.GOOGLE_API_KEY;
     const openaiKey = process.env.OPENAI_API_KEY;

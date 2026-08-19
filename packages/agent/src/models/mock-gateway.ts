@@ -4,6 +4,7 @@ import type {
   AIResponse,
   AIStreamEvent,
   CostEstimate,
+  CapabilityTier,
   AIError
 } from '@peep/shared';
 
@@ -29,6 +30,10 @@ export class MockAIGateway implements AIGateway {
   setCustomToolCall(toolCall: any): void {
     this.customToolCall = toolCall;
     this.scenario = 'tool_call';
+  }
+
+  getContextLimit(_tier: CapabilityTier): number {
+    return 100000;
   }
 
   async generate(request: AIRequest, options?: { signal?: AbortSignal }): Promise<AIResponse> {

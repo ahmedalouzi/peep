@@ -5,7 +5,7 @@ import { unlink, rename as fsRename } from 'node:fs/promises';
 import { discoverProjectContext } from '@peep/agent';
 import { spawn } from 'node:child_process';
 import type { BrowserWindow } from 'electron';
-import { IPC_EVENTS } from '@peep/shared';
+import { IPC_EVENTS, ProviderError } from '@peep/shared';
 import type { ProposedEdit, AgentStreamEvent, AgentSendOptions } from '@peep/shared';
 import { buildAgentContext, runAgentLoop, SCAFFOLD_SYSTEM_ADDENDUM, type ChatMessage, classifyCommand, loadDesignManifest, saveDesignManifest, serializeDesignManifest, ProductionAIGateway, MockAIGateway, GoogleGeminiAdapter, truncateConversationHistory, AgentStateMachine } from '@peep/agent';
 import type { AgentPhase } from '@peep/shared';
@@ -1048,19 +1048,52 @@ export class AgentService {
       
       console.error('[AgentService] Request failed:', error);
       
-      const isAuthError = /UNAUTHORIZED|FORBIDDEN|401|403|session|expired|revoked/i.test(rawMessage);
-      if (isAuthError) {
-        void this.db.setSettings({ sessionToken: '', refreshToken: '' }).then(() => {
-          this.mainWindow?.webContents.send(IPC_EVENTS.AUTH_SESSION_EXPIRED);
-        });
-        this.emitStream({ type: 'error', content: 'AUTH_REQUIRED: Your authentication session has expired or is invalid. Please sign in again.' });
-      } else if (rawMessage.includes('fetch failed') || rawMessage.includes('NETWORK_FAILURE')) {
-        this.emitStream({ 
-          type: 'error', 
-          content: `Unable to connect to AI Gateway. Please check your network connection or configure your Gateway URL in Settings.` 
-        });
+      if (error instanceof ProviderError) {
+        switch (error.code) {
+          case 'UNAUTHORIZED':
+          case 'FORBIDDEN':
+            void this.db.setSettings({ sessionToken: '', refreshToken: '' }).then(() => {
+              this.mainWindow?.webContents.send(IPC_EVENTS.AUTH_SESSION_EXPIRED);
+            });
+            this.emitStream({ type: 'error', content: 'AUTH_REQUIRED: Your authentication session has expired or is invalid. Please sign in again.' });
+            break;
+          case 'BUDGET_EXCEEDED':
+            this.emitStream({ type: 'error', content: 'Your usage budget has been reached. Please check your plan in Settings.' });
+            break;
+          case 'RATE_LIMIT_EXCEEDED':
+            this.emitStream({ type: 'error', content: 'AI provider rate limit reached. Please wait a moment.' });
+            break;
+          case 'NETWORK_FAILURE':
+            this.emitStream({ type: 'error', content: 'Unable to connect to AI Gateway. Please check your network connection or configure your Gateway URL in Settings.' });
+            break;
+          case 'GATEWAY_UNAVAILABLE':
+            this.emitStream({ type: 'error', content: 'AI Gateway is temporarily unavailable. Please retry shortly.' });
+            break;
+          case 'PROVIDER_ERROR':
+            this.emitStream({ type: 'error', content: 'Upstream AI provider encountered an error. Please retry.' });
+            break;
+          case 'CANCELLED':
+            this.emitStream({ type: 'error', content: 'Cancelled' });
+            break;
+          default:
+            this.emitStream({ type: 'error', content: rawMessage });
+            break;
+        }
       } else {
-        this.emitStream({ type: 'error', content: rawMessage });
+        const isAuthError = /UNAUTHORIZED|FORBIDDEN|401|403|session|expired|revoked/i.test(rawMessage);
+        if (isAuthError) {
+          void this.db.setSettings({ sessionToken: '', refreshToken: '' }).then(() => {
+            this.mainWindow?.webContents.send(IPC_EVENTS.AUTH_SESSION_EXPIRED);
+          });
+          this.emitStream({ type: 'error', content: 'AUTH_REQUIRED: Your authentication session has expired or is invalid. Please sign in again.' });
+        } else if (rawMessage.includes('fetch failed') || rawMessage.includes('NETWORK_FAILURE')) {
+          this.emitStream({ 
+            type: 'error', 
+            content: `Unable to connect to AI Gateway. Please check your network connection or configure your Gateway URL in Settings.` 
+          });
+        } else {
+          this.emitStream({ type: 'error', content: rawMessage });
+        }
       }
     } finally {
       // Always reset the SM so the renderer returns to 'idle' even on error/cancel.

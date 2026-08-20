@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AgentMessage, ProposedEdit, AgentTimelineActivity } from '@peep/shared';
+import type { AgentMessage, ProposedEdit, AgentTimelineActivity, AgentPhase } from '@peep/shared';
 
 interface ChatState {
   messages: AgentMessage[];
@@ -11,6 +11,8 @@ interface ChatState {
   agentTask: any | null;
   timelineActivities: AgentTimelineActivity[];
   currentRunId: string | null;
+
+  agentPhase: AgentPhase;
 
   setInput: (input: string) => void;
   addMessage: (message: AgentMessage) => void;
@@ -24,6 +26,7 @@ interface ChatState {
   clearMessages: () => void;
   upsertTimelineActivity: (activity: AgentTimelineActivity) => void;
   clearTimelineActivities: () => void;
+  setAgentPhase: (phase: AgentPhase) => void;
   loadHistory: (projectPath: string) => Promise<void>;
 }
 
@@ -88,6 +91,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   agentTask: null,
   timelineActivities: [],
   currentRunId: null,
+  agentPhase: 'idle',
 
   setInput: (input) => set({ input }),
   setAgentTask: (task) => set({ agentTask: task }),
@@ -143,6 +147,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     return { timelineActivities: [...state.timelineActivities, activity] };
   }),
   clearTimelineActivities: () => set({ timelineActivities: [], currentRunId: null }),
+  setAgentPhase: (agentPhase) => set({ agentPhase }),
   loadHistory: async (projectPath: string) => {
     if (flushPendingSave && currentProjectPath && currentProjectPath !== projectPath) {
       flushPendingSave();

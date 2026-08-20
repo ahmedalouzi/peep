@@ -126,6 +126,8 @@ const api: IpcApi = {
   onAgentActivity: (callback: any) => subscribe<any>('agent:activity', callback),
   // @ts-ignore
   onAgentTimeline: (callback: any) => subscribe<any>(IPC_EVENTS.AGENT_TIMELINE, callback),
+  onAgentPhase: (callback: (phase: import('@peep/shared').AgentPhase) => void) =>
+    subscribe<import('@peep/shared').AgentPhase>(IPC_EVENTS.AGENT_PHASE_CHANGED, callback),
   onProposedEdits: (callback) => subscribe<ProposedEdit[]>(IPC_EVENTS.AGENT_PROPOSED_EDITS, callback),
   onTerminalOutput: (callback) =>
     subscribe<{ id: string; data: string }>(IPC_EVENTS.TERMINAL_OUTPUT, callback),

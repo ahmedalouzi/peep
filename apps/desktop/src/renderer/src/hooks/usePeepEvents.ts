@@ -14,6 +14,7 @@ export function usePeepEvents(): void {
   const setStreamStatus = useChatStore((s) => s.setStreamStatus);
   const finishStreaming = useChatStore((s) => s.finishStreaming);
   const setProposedEdits = useChatStore((s) => s.setProposedEdits);
+  const setAgentPhase = useChatStore((s) => s.setAgentPhase);
 
   useEffect(() => {
     void window.peep.getPendingEdits().then(setProposedEdits);
@@ -114,6 +115,10 @@ export function usePeepEvents(): void {
       }).catch(() => {});
     });
 
+    const unsubPhase = window.peep.onAgentPhase((phase) => {
+      setAgentPhase(phase);
+    });
+
     return () => {
       unsubPreview();
       unsubDiagnostics();
@@ -122,6 +127,7 @@ export function usePeepEvents(): void {
       unsubEdits();
       unsubOpenFile();
       unsubPlan?.();
+      unsubPhase();
     };
   }, [
     setSession,
@@ -132,5 +138,6 @@ export function usePeepEvents(): void {
     setStreamStatus,
     finishStreaming,
     setProposedEdits,
+    setAgentPhase,
   ]);
 }

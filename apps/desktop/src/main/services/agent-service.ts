@@ -7,7 +7,8 @@ import { spawn } from 'node:child_process';
 import type { BrowserWindow } from 'electron';
 import { IPC_EVENTS } from '@peep/shared';
 import type { ProposedEdit, AgentStreamEvent, AgentSendOptions } from '@peep/shared';
-import { buildAgentContext, runAgentLoop, SCAFFOLD_SYSTEM_ADDENDUM, type ChatMessage, classifyCommand, loadDesignManifest, saveDesignManifest, serializeDesignManifest, ProductionAIGateway, MockAIGateway, GoogleGeminiAdapter, truncateConversationHistory } from '@peep/agent';
+import { buildAgentContext, runAgentLoop, SCAFFOLD_SYSTEM_ADDENDUM, type ChatMessage, classifyCommand, loadDesignManifest, saveDesignManifest, serializeDesignManifest, ProductionAIGateway, MockAIGateway, GoogleGeminiAdapter, truncateConversationHistory, AgentStateMachine } from '@peep/agent';
+import type { AgentPhase } from '@peep/shared';
 import type { DatabaseService } from './db';
 import type { WorkspaceManager } from './workspace-manager';
 import { searchFiles } from './file-search';
@@ -170,6 +171,12 @@ export class AgentService {
     this.cancel();
     this.abortController = new AbortController();
     const signal = this.abortController.signal;
+
+    // ── State machine for this send() invocation ──────────────────────────
+    const sm = new AgentStateMachine((phase: AgentPhase) => {
+      this.mainWindow?.webContents.send(IPC_EVENTS.AGENT_PHASE_CHANGED, phase);
+    });
+    sm.transition('initializing');
 
     // ── Platform-aware context ──────────────────────────────────────────────
     let isReactNative = false;
@@ -999,6 +1006,7 @@ export class AgentService {
                console.log(`[E2E_VERIFICATION] 8. Final stream completed.`);
                this.emitStream({ type: 'done', content: '' })
             },
+            onPhaseChange: (phase: AgentPhase) => sm.transition(phase),
             onTimelineActivity: (activity) => {
                this.mainWindow?.webContents.send(IPC_EVENTS.AGENT_TIMELINE, activity);
             }
@@ -1055,6 +1063,8 @@ export class AgentService {
         this.emitStream({ type: 'error', content: rawMessage });
       }
     } finally {
+      // Always reset the SM so the renderer returns to 'idle' even on error/cancel.
+      sm.reset();
       this.abortController = null;
     }
   }

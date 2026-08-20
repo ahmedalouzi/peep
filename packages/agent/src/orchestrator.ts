@@ -17,6 +17,8 @@ export interface AgentCallbacks {
   onDone: () => void;
   /** Optional. Receives structured timeline events for the Agent Execution Timeline UI. */
   onTimelineActivity?: (activity: AgentTimelineActivity) => void;
+  /** Optional. Receives runtime phase transitions for Task 15 state machine visibility. */
+  onPhaseChange?: (phase: import('@peep/shared').AgentPhase) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -237,6 +239,8 @@ export async function runAgentLoop(
   }
 
   let accumulatedResponseText = '';
+  // Notify observer that LLM thinking begins.
+  callbacks.onPhaseChange?.('thinking');
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     if (signal.aborted) throw new Error('Cancelled');
@@ -257,6 +261,8 @@ export async function runAgentLoop(
     );
 
     if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+      // Notify observer: entering tool execution phase.
+      callbacks.onPhaseChange?.('tool_executing');
       // Accumulate action log statements
       for (const call of assistantMessage.tool_calls) {
         const name = call.function.name;
@@ -425,6 +431,8 @@ export async function runAgentLoop(
 
       messages.push(...toolResultMessages);
       toolLogs += 'Working.<br/><br/>';
+      // Return to thinking phase for next LLM call.
+      callbacks.onPhaseChange?.('thinking');
       continue;
     }
 
@@ -440,6 +448,7 @@ export async function runAgentLoop(
         status: 'completed',
         timestamp: new Date().toISOString(),
       });
+      callbacks.onPhaseChange?.('done');
       callbacks.onDone();
       return accumulatedResponseText;
     }
@@ -451,6 +460,8 @@ export async function runAgentLoop(
   emitLogsBlockIfNeeded();
 
   callbacks.onStatus('Summarizing changes…');
+  // Notify observer: entering summarization phase.
+  callbacks.onPhaseChange?.('summarizing');
   let summaryContent = '';
   await callOpenAI(
     config,
@@ -478,6 +489,7 @@ export async function runAgentLoop(
     timestamp: new Date().toISOString(),
   });
 
+  callbacks.onPhaseChange?.('done');
   callbacks.onDone();
   return summaryContent;
 }

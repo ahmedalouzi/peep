@@ -4,6 +4,7 @@ export { OPENAI_TOOLS } from './tools/definitions';
 export { buildAgentContext } from './context/builder';
 export { truncateConversationHistory, estimateTokens } from './context/truncate';
 export { runAgentLoop, type AgentCallbacks, type AgentConfig, type AgentToolExecutor } from './orchestrator';
+export { AgentStateMachine } from './state-machine';
 export type { ChatMessage, ToolCall } from './types';
 export { classifyCommand, type SafetyLevel, type CommandSafetyResult } from './tools/safety';
 export {

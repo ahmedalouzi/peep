@@ -112,6 +112,20 @@ export interface PersistedChatState {
   updatedAt: string;
 }
 
+/**
+ * Runtime execution phase of the agent within a single send() invocation.
+ * Distinct from the task-level AgentState in design/task-state.ts.
+ */
+export type AgentPhase =
+  | 'idle'
+  | 'initializing'
+  | 'thinking'
+  | 'tool_executing'
+  | 'summarizing'
+  | 'done'
+  | 'cancelled'
+  | 'error';
+
 export type AgentTimelineActivityType =
   | 'understanding' | 'exploring' | 'searching' | 'reading'
   | 'editing' | 'creating' | 'deleting' | 'running'
@@ -647,6 +661,7 @@ export const IPC_EVENTS = {
   PUBLISH_LOG: 'publish:log',
   AUTH_SESSION_EXPIRED: 'auth:sessionExpired',
   AGENT_TIMELINE: 'agent:timeline',
+  AGENT_PHASE_CHANGED: 'agent:phaseChanged',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
@@ -740,6 +755,7 @@ export interface IpcApi {
   onAgentStream: (callback: (event: AgentStreamEvent) => void) => () => void;
   onAgentActivity: (callback: (event: AgentActivityEvent) => void) => () => void;
   onAgentTimeline: (callback: (activity: AgentTimelineActivity) => void) => () => void;
+  onAgentPhase: (callback: (phase: AgentPhase) => void) => () => void;
   onProposedEdits: (callback: (edits: ProposedEdit[]) => void) => () => void;
   onTerminalOutput: (callback: (payload: { id: string; data: string }) => void) => () => void;
   onTerminalExit: (callback: (payload: { id: string; code: number }) => void) => () => void;

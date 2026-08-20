@@ -1,0 +1,10 @@
+{
+  "projects": [],
+  "settings": {
+    "theme": "dark",
+    "autoSave": true,
+    "sessionToken": "dev-mode-token",
+    "apiProvider": "google",
+    "gatewayUrl": "http://127.0.0.1:3000"
+  }
+}

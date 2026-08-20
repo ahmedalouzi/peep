@@ -1,4 +1,5 @@
 import { OPENAI_TOOLS } from './tools/definitions';
+import { ProviderError } from '@peep/shared';
 import type { ChatMessage } from './types';
 
 import type { AIGateway, CapabilityTier, AgentTimelineActivity, AgentTimelineActivityType } from '@peep/shared';
@@ -88,66 +89,115 @@ async function callOpenAI(
   messages: ChatMessage[],
   signal: AbortSignal,
   onDelta?: (text: string) => void,
+  onStatus?: (text: string) => void,
 ): Promise<ChatMessage> {
   if (!config.gateway) {
     throw new Error('AIGateway is required to make calls');
   }
 
-  const stream = config.gateway.stream(
-    {
-      tier: config.capabilityTier,
-      messages: messages.map((m) => {
-        if (m.role === 'tool') {
-          return { role: 'tool', content: m.content, tool_call_id: m.tool_call_id, name: m.name || 'tool_name' };
-        }
-        if (m.role === 'assistant' && m.tool_calls) {
-          return { role: 'assistant', content: m.content || null, tool_calls: m.tool_calls };
-        }
-        return { role: m.role, content: m.content };
-      }),
-      tools: OPENAI_TOOLS,
-    },
-    { signal }
-  );
+  let attempt = 0;
+  const maxAttempts = 3;
 
-  let fullContent = '';
-  const toolCalls: Array<{ id: string; name: string; arguments: string | Record<string, unknown> }> = [];
+  while (attempt < maxAttempts) {
+    attempt++;
+    let fullContent = '';
+    const toolCalls: Array<{ id: string; name: string; arguments: string | Record<string, unknown> }> = [];
 
-  for await (const event of stream) {
-    if (signal.aborted) {
-      throw new Error('Cancelled');
-    }
-
-    if (event.type === 'delta' && event.content) {
-      fullContent += event.content;
-      onDelta?.(event.content);
-    } else if (event.type === 'tool_call' && event.toolCall) {
-      toolCalls.push({
-        id: event.toolCall.id,
-        name: event.toolCall.name,
-        arguments: event.toolCall.arguments,
-      });
-    } else if (event.type === 'error' && event.error) {
-      throw new Error(event.error.message || 'Stream error');
-    }
-  }
-
-  if (toolCalls.length > 0) {
-    return {
-      role: 'assistant',
-      content: fullContent,
-      tool_calls: toolCalls.map((t) => ({
-        id: t.id,
-        type: 'function',
-        function: {
-          name: t.name,
-          arguments: typeof t.arguments === 'string' ? t.arguments : JSON.stringify(t.arguments),
+    try {
+      const stream = config.gateway.stream(
+        {
+          tier: config.capabilityTier,
+          messages: messages.map((m) => {
+            if (m.role === 'tool') {
+              return { role: 'tool', content: m.content, tool_call_id: m.tool_call_id, name: m.name || 'tool_name' };
+            }
+            if (m.role === 'assistant' && m.tool_calls) {
+              return { role: 'assistant', content: m.content || null, tool_calls: m.tool_calls };
+            }
+            return { role: m.role, content: m.content };
+          }),
+          tools: OPENAI_TOOLS,
         },
-      })),
-    };
-  }
+        { signal }
+      );
 
-  return { role: 'assistant', content: fullContent || 'No response.' };
+      for await (const event of stream) {
+        if (signal.aborted) {
+          throw new Error('Cancelled');
+        }
+
+        if (event.type === 'delta' && event.content) {
+          fullContent += event.content;
+          onDelta?.(event.content);
+        } else if (event.type === 'tool_call' && event.toolCall) {
+          toolCalls.push({
+            id: event.toolCall.id,
+            name: event.toolCall.name,
+            arguments: event.toolCall.arguments,
+          });
+        } else if (event.type === 'error' && event.error) {
+          throw event.error; // Will be caught below and mapped if needed, though usually gateway handles it
+        }
+      }
+
+      if (toolCalls.length > 0) {
+        return {
+          role: 'assistant',
+          content: fullContent,
+          tool_calls: toolCalls.map((t) => ({
+            id: t.id,
+            type: 'function',
+            function: {
+              name: t.name,
+              arguments: typeof t.arguments === 'string' ? t.arguments : JSON.stringify(t.arguments),
+            },
+          })),
+        };
+      }
+
+      return { role: 'assistant', content: fullContent || 'No response.' };
+
+    } catch (error: any) {
+      if (signal.aborted || error.message === 'Cancelled' || error.name === 'AbortError') {
+        throw error;
+      }
+
+      // If we already emitted content to the user, DO NOT retry. Just return what we have or throw.
+      // We throw to ensure the state machine hits error properly and we don't present a broken half-response as complete.
+      if (fullContent.length > 0) {
+        throw error;
+      }
+
+      if (error instanceof ProviderError && error.retryable && attempt < maxAttempts) {
+        const backoffMs = error.retryAfterMs || (attempt === 1 ? 2000 : 4000);
+        
+        if (onStatus) {
+          onStatus(`Provider error (${error.code}). Retrying in ${backoffMs / 1000}s...`);
+        }
+        
+        // Wait with abort signal check
+        let timeoutId: any;
+        await new Promise<void>((resolve, reject) => {
+          const onAbort = () => {
+            clearTimeout(timeoutId);
+            reject(new Error('Cancelled'));
+          };
+          if (signal.aborted) return onAbort();
+          signal.addEventListener('abort', onAbort);
+          timeoutId = setTimeout(() => {
+            signal.removeEventListener('abort', onAbort);
+            resolve();
+          }, backoffMs);
+        });
+        
+        continue;
+      }
+      
+      throw error;
+    }
+  }
+  
+  throw new Error('Max retries exceeded');
 }
 
 
@@ -257,7 +307,8 @@ export async function runAgentLoop(
       (delta) => {
         emitLogsBlockIfNeeded();
         callbacks.onDelta(delta);
-      }
+      },
+      callbacks.onStatus
     );
 
     if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {

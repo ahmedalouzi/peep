@@ -7,6 +7,7 @@ import type {
   AIError,
   CapabilityTier
 } from '@peep/shared';
+import { classifyProviderError } from './error-classifier';
 
 export interface ProductionAIGatewayOptions {
   baseUrl: string;
@@ -92,7 +93,7 @@ export class ProductionAIGateway implements AIGateway {
     
     if (!this.options.sessionToken) {
       const err: AIError = { code: 'UNAUTHORIZED', message: 'No authentication session token provided.' };
-      throw err;
+      throw classifyProviderError(err);
     }
 
     console.log(`\n[HTTP_TRACE] POST URL: ${url}`);
@@ -139,7 +140,7 @@ export class ProductionAIGateway implements AIGateway {
       }
       console.log(`[HTTP_TRACE] Fetch Exception: ${e.message}`);
       const err: AIError = { code: 'NETWORK_FAILURE', message: `Network request failed: ${e.message}` };
-      throw err;
+      throw classifyProviderError(err);
     }
 
     if (!response.ok && response.status === 401 && !isRetry && this.options.refreshToken && this.options.onTokensUpdated) {
@@ -195,7 +196,20 @@ export class ProductionAIGateway implements AIGateway {
         message: errDetail?.message || `HTTP error ${status}`,
         status
       };
-      throw err;
+      
+      // Pass the Retry-After header if present
+      let retryAfterMs;
+      const retryHeader = response.headers.get('retry-after');
+      if (retryHeader) {
+        const seconds = parseInt(retryHeader, 10);
+        if (!isNaN(seconds)) retryAfterMs = seconds * 1000;
+      }
+      
+      const providerErr = classifyProviderError(err, status);
+      if (retryAfterMs) {
+         Object.defineProperty(providerErr, 'retryAfterMs', { value: retryAfterMs, writable: false });
+      }
+      throw providerErr;
     }
 
     return response;

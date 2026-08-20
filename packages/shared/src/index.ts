@@ -856,3 +856,4 @@ export interface AIGateway {
   getContextLimit(tier: CapabilityTier): number;
 }
 
+export { ProviderError } from './provider-error';

@@ -4,6 +4,7 @@ import type {
   AIStreamEvent,
 } from '@peep/shared';
 import type { ProviderAdapter } from './types';
+import { classifyProviderError } from './error-classifier';
 
 export class GoogleGeminiAdapter implements ProviderAdapter {
   readonly id = 'google';
@@ -246,7 +247,7 @@ export class GoogleGeminiAdapter implements ProviderAdapter {
       const errBody = await response.text();
       console.error(`[GoogleGeminiAdapter] [generate] Gemini API returned error status: ${response.status} ${response.statusText}`);
       console.error(`[GoogleGeminiAdapter] [generate] Gemini API error response body:`, errBody);
-      throw new Error(`Gemini API error: ${response.status} ${response.statusText} - ${errBody}`);
+      throw classifyProviderError(new Error(`Gemini API error: ${response.status} ${response.statusText} - ${errBody}`), response.status);
     }
 
     const data = await response.json();
@@ -319,7 +320,7 @@ export class GoogleGeminiAdapter implements ProviderAdapter {
       const errBody = await response.text();
       console.error(`[GoogleGeminiAdapter] [stream] Gemini API returned error status: ${response.status} ${response.statusText}`);
       console.error(`[GoogleGeminiAdapter] [stream] Gemini API error response body:`, errBody);
-      throw new Error(`Gemini API error: ${response.status} ${response.statusText} - ${errBody}`);
+      throw classifyProviderError(new Error(`Gemini API error: ${response.status} ${response.statusText} - ${errBody}`), response.status);
     }
 
     if (!response.body) throw new Error('Empty response body');

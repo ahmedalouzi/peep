@@ -1,8 +1,25 @@
 import { Pool } from 'pg';
 
-// Using connection string from environment (e.g. from AWS Secrets Manager or local .env)
-export const db = new Pool({
-  connectionString: process.env.DATABASE_URL
+let poolInstance: Pool | null = null;
+
+function getPool(): Pool {
+  if (!poolInstance) {
+    poolInstance = new Pool({
+      connectionString: process.env.DATABASE_URL
+    });
+  }
+  return poolInstance;
+}
+
+export const db = new Proxy({} as Pool, {
+  get(_target, prop, _receiver) {
+    const pool = getPool();
+    const value = Reflect.get(pool, prop);
+    if (typeof value === 'function') {
+      return value.bind(pool);
+    }
+    return value;
+  }
 });
 
 export async function initDbSchema() {

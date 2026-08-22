@@ -8,10 +8,8 @@ config({ path: path.join(__dirname, '../../.env') });
 config({ path: path.join(__dirname, '../../../.env') });
 
 import express from 'express';
-import { BackendAIGateway } from '@peep/agent/server';
+import { BackendAIGateway, initDbSchema } from '@peep/agent/server';
 import { fetchProductionSecrets } from './secrets';
-
-
 import { execSync } from 'node:child_process';
 
 async function bootstrap() {
@@ -31,6 +29,15 @@ async function bootstrap() {
   if (secrets.GOOGLE_API_KEY) process.env.GOOGLE_API_KEY = secrets.GOOGLE_API_KEY;
   if (secrets.OPENAI_API_KEY) process.env.OPENAI_API_KEY = secrets.OPENAI_API_KEY;
   if (secrets.ANTHROPIC_API_KEY) process.env.ANTHROPIC_API_KEY = secrets.ANTHROPIC_API_KEY;
+
+  // Initialize the database schema (tables, indexes)
+  console.log('[DATABASE_BOOT] Initializing database schema...');
+  try {
+    await initDbSchema();
+    console.log('[DATABASE_BOOT] Database initialized successfully!');
+  } catch (dbErr: any) {
+    console.error('[DATABASE_BOOT] Database initialization failed:', dbErr.message);
+  }
 
   // Initialize the backend gateway
   const gateway = new BackendAIGateway();

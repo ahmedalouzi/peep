@@ -3,7 +3,6 @@ import { join, isAbsolute, normalize } from 'node:path';
 import { unlink, rename as fsRename } from 'node:fs/promises';
 // @ts-ignore - TS cache issue with export
 import { discoverProjectContext } from '@peep/agent';
-import { spawn } from 'node:child_process';
 import type { BrowserWindow } from 'electron';
 import { IPC_EVENTS, ProviderError } from '@peep/shared';
 import type { ProposedEdit, AgentStreamEvent, AgentSendOptions } from '@peep/shared';
@@ -11,8 +10,12 @@ import { buildAgentContext, runAgentLoop, SCAFFOLD_SYSTEM_ADDENDUM, type ChatMes
 import type { AgentPhase } from '@peep/shared';
 import type { DatabaseService } from './db';
 import type { WorkspaceManager } from './workspace-manager';
+import type { TerminalService } from './terminal-service';
 import { searchFiles } from './file-search';
 import { searchContent } from './content-search';
+
+/** Maximum bytes of run_command output forwarded to the LLM as tool result. */
+const RUN_COMMAND_LLM_OUTPUT_LIMIT = 50_000;
 
 const RN_SYSTEM_ADDENDUM = `
 This is a React Native / Expo project.
@@ -47,11 +50,14 @@ export class AgentService {
   private indexers: Map<string, ProjectIndexer> = new Map();
   private memoryManagers: Map<string, MemoryManager> = new Map();
   private activeToolProcesses = new Set<any>();
+  /** Session ID of the currently-running agent run_command, if any. */
+  private agentCommandSessionId: string | null = null;
 
   constructor(
     private db: DatabaseService,
     private workspace: WorkspaceManager,
     private registry: PlatformRegistry,
+    private terminal: TerminalService,
   ) {}
 
   async onFileChanged(projectPath: string, event: 'add' | 'change' | 'unlink', path: string): Promise<void> {
@@ -136,6 +142,12 @@ export class AgentService {
   cancel(): void {
     this.abortController?.abort();
     this.abortController = null;
+
+    // Cancel any active agent-run terminal command session (Task 6)
+    if (this.agentCommandSessionId) {
+      this.terminal.cancelCommand(this.agentCommandSessionId);
+      this.agentCommandSessionId = null;
+    }
 
     for (const child of this.activeToolProcesses) {
       const pid = child.pid;
@@ -350,20 +362,17 @@ export class AgentService {
               // Send a confirmation request to the renderer and wait for response
               const confirmId = randomUUID();
               const confirmed = await new Promise<boolean>((resolve) => {
-                // Emit confirmation request to renderer
                 this.mainWindow?.webContents.send('agent:confirm-command', {
                   id: confirmId,
                   command: commandStr,
                   reason: safety.reason,
                 });
 
-                // Register one-time listener on ipcMain for the response
                 const { ipcMain } = require('electron');
                 ipcMain.once(`agent:confirm-command-response:${confirmId}`, (_: unknown, approved: boolean) => {
                   resolve(approved);
                 });
 
-                // Auto-reject after 60s
                 setTimeout(() => resolve(false), 60000);
               });
 
@@ -372,43 +381,53 @@ export class AgentService {
               }
             }
 
-            return new Promise<string>((resolve) => {
-              const shell = process.platform === 'win32';
-              const child = spawn(commandStr, {
-                cwd: projectPath,
-                shell,
-                env: process.env,
-              });
-              this.activeToolProcesses.add(child);
+            // Task 6: Stream command output live to the Terminal UI panel via
+            // TerminalService.streamCommand(), while also accumulating a bounded
+            // copy of the output to return to the LLM as tool-result context.
+            const sessionId = `agent-cmd-${Date.now()}-${randomUUID().slice(0, 8)}`;
+            this.agentCommandSessionId = sessionId;
 
-              let stdout = '';
-              let stderr = '';
+            // Accumulated LLM output buffer
+            let llmOutputBuffer = '';
+            let llmOutputTruncated = false;
 
-              child.stdout?.on('data', (chunk) => {
-                stdout += chunk.toString();
-              });
-              child.stderr?.on('data', (chunk) => {
-                stderr += chunk.toString();
-              });
+            // Intercept TERMINAL_OUTPUT emissions by hooking the session with a
+            // custom listener before streamCommand() is called.
+            const originalEmitOutput = (this.terminal as any).emitOutput.bind(this.terminal);
+            (this.terminal as any).emitOutput = (id: string, data: string) => {
+              originalEmitOutput(id, data);
+              if (id === sessionId) {
+                llmOutputBuffer += data;
+                if (llmOutputBuffer.length > RUN_COMMAND_LLM_OUTPUT_LIMIT) {
+                  // Keep only the tail (last RUN_COMMAND_LLM_OUTPUT_LIMIT bytes)
+                  llmOutputBuffer = llmOutputBuffer.slice(-RUN_COMMAND_LLM_OUTPUT_LIMIT);
+                  llmOutputTruncated = true;
+                }
+              }
+            };
 
-              const timeout = setTimeout(() => {
-                this.activeToolProcesses.delete(child);
-                child.kill();
-                resolve(`Command timed out after 120s.\nStdout:\n${stdout}\nStderr:\n${stderr}`);
-              }, 120000);
+            let exitCode: number;
+            let commandError: string | null = null;
+            try {
+              exitCode = await this.terminal.streamCommand(sessionId, commandStr, projectPath);
+            } catch (err: any) {
+              exitCode = 1;
+              commandError = err.message || String(err);
+            } finally {
+              // Restore original emitOutput
+              (this.terminal as any).emitOutput = originalEmitOutput;
+              this.agentCommandSessionId = null;
+            }
 
-              child.on('close', (code) => {
-                this.activeToolProcesses.delete(child);
-                clearTimeout(timeout);
-                resolve(`Command exited with code ${code}.\nStdout:\n${stdout}\nStderr:\n${stderr}`);
-              });
+            const truncationNotice = llmOutputTruncated
+              ? `...[output truncated; full output is available in the Terminal panel]...\n`
+              : '';
 
-              child.on('error', (err) => {
-                this.activeToolProcesses.delete(child);
-                clearTimeout(timeout);
-                resolve(`Command execution error: ${err.message}\nStdout:\n${stdout}\nStderr:\n${stderr}`);
-              });
-            });
+            if (commandError) {
+              return `Command error: ${commandError}\nPartial output:\n${truncationNotice}${llmOutputBuffer}`;
+            }
+
+            return `Command exited with code ${exitCode}.\nOutput:\n${truncationNotice}${llmOutputBuffer}`;
           }
           case 'delete_file': {
             const path = this.resolvePath(projectPath, String(args.path));

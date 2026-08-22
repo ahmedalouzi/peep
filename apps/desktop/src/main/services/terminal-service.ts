@@ -318,8 +318,15 @@ export class TerminalService {
 
       child.on('close', (code) => {
         this.commandSessions.delete(id);
+        clearTimeout(timeoutHandle);
         resolve(code ?? 1);
       });
+
+      const timeoutHandle = setTimeout(() => {
+        this.commandSessions.delete(id);
+        child.kill();
+        reject(new Error(`Command timed out after 120s: ${command}`));
+      }, 120000);
     });
   }
 

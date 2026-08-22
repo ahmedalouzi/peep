@@ -150,7 +150,7 @@ export async function registerIpcHandlers(): Promise<{
   platformRegistry.register(new ReactNativeManagedProvider(processManager));
 
   publishService = new PublishService(processManager, platformRegistry);
-  agentService = new AgentService(db, workspace, platformRegistry);
+  agentService = new AgentService(db, workspace, platformRegistry, terminalService);
   agentService.setMainWindow(mainWindow);
   const projectService = new ProjectService(platformRegistry, workspace);
   const deviceService = new DeviceService();

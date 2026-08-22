@@ -55,6 +55,66 @@ async function bootstrap() {
     res.status(200).json({ status: 'ok' });
   });
 
+  // Signup Endpoint
+  app.post('/v1/auth/signup', async (req, res) => {
+    try {
+      const headers = req.headers as Record<string, string>;
+      const response = await gateway.handleRequest('POST', '/v1/auth/signup', headers, req.body);
+      res.status(response.status).json(response.body);
+    } catch (err: any) {
+      console.error('[Signup Route Error]', err);
+      res.status(500).json({ error: 'Internal Server Error' });
+    }
+  });
+
+  // Signin Endpoint
+  app.post('/v1/auth/signin', async (req, res) => {
+    try {
+      const headers = req.headers as Record<string, string>;
+      const response = await gateway.handleRequest('POST', '/v1/auth/signin', headers, req.body);
+      res.status(response.status).json(response.body);
+    } catch (err: any) {
+      console.error('[Signin Route Error]', err);
+      res.status(500).json({ error: 'Internal Server Error' });
+    }
+  });
+
+  // Refresh Token Endpoint
+  app.post('/v1/auth/refresh', async (req, res) => {
+    try {
+      const headers = req.headers as Record<string, string>;
+      const response = await gateway.handleRequest('POST', '/v1/auth/refresh', headers, req.body);
+      res.status(response.status).json(response.body);
+    } catch (err: any) {
+      console.error('[Refresh Route Error]', err);
+      res.status(500).json({ error: 'Internal Server Error' });
+    }
+  });
+
+  // Logout Endpoint
+  app.post('/v1/auth/logout', async (req, res) => {
+    try {
+      const headers = req.headers as Record<string, string>;
+      const response = await gateway.handleRequest('POST', '/v1/auth/logout', headers, req.body);
+      res.status(response.status).json(response.body);
+    } catch (err: any) {
+      console.error('[Logout Route Error]', err);
+      res.status(500).json({ error: 'Internal Server Error' });
+    }
+  });
+
+  // Account Status Endpoint
+  app.get('/v1/account/status', async (req, res) => {
+    try {
+      const headers = req.headers as Record<string, string>;
+      const response = await gateway.handleRequest('POST', '/v1/account/status', headers, req.body);
+      res.status(response.status).json(response.body);
+    } catch (err: any) {
+      console.error('[Account Status Route Error]', err);
+      res.status(500).json({ error: 'Internal Server Error' });
+    }
+  });
+
   // AI Generate Endpoint
   app.post('/v1/ai/generate', async (req, res) => {
     const requestId = Math.random().toString(36).slice(2, 10);

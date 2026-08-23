@@ -5,6 +5,20 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// Mock electron
+import { createRequire } from 'node:module';
+const req = createRequire(import.meta.url);
+try {
+  const electronMock = {
+    app: { getPath: () => '/tmp' },
+    ipcMain: { handle: () => {} },
+    ipcRenderer: { invoke: () => {} }
+  };
+  require('module').Module._cache[req.resolve('electron')] = { exports: electronMock };
+} catch (e) {
+  // ignore
+}
+
 async function main() {
   const files = await fs.readdir(__dirname);
   const testFiles = files.filter((f) => f.endsWith('.test.ts'));

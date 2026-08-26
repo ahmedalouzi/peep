@@ -5,8 +5,10 @@ import { unlink, rename as fsRename } from 'node:fs/promises';
 import { discoverProjectContext } from '@peep/agent';
 import type { BrowserWindow } from 'electron';
 import { IPC_EVENTS, ProviderError } from '@peep/shared';
+import * as Sentry from '@sentry/electron/main';
+import log from 'electron-log/main';
 import type { ProposedEdit, AgentStreamEvent, AgentSendOptions } from '@peep/shared';
-import { buildAgentContext, runAgentLoop, SCAFFOLD_SYSTEM_ADDENDUM, type ChatMessage, classifyCommand, loadDesignManifest, saveDesignManifest, serializeDesignManifest, ProductionAIGateway, MockAIGateway, GoogleGeminiAdapter, truncateConversationHistory, AgentStateMachine } from '@peep/agent';
+import { buildAgentContext, runAgentLoop, SCAFFOLD_SYSTEM_ADDENDUM, type ChatMessage, classifyCommand, loadDesignManifest, saveDesignManifest, serializeDesignManifest, ProductionAIGateway, MockAIGateway, GoogleGeminiAdapter, truncateConversationHistory, AgentStateMachine, type AgentLogger } from '@peep/agent';
 import type { AgentPhase } from '@peep/shared';
 import type { DatabaseService } from './db';
 import type { WorkspaceManager } from './workspace-manager';
@@ -75,12 +77,12 @@ export class AgentService {
     this.mainWindow = window;
   }
 
-  private emitStream(event: AgentStreamEvent): void {
-    this.mainWindow?.webContents.send(IPC_EVENTS.AGENT_STREAM, event);
+  private emitStream(event: AgentStreamEvent, threadId?: string): void {
+    this.mainWindow?.webContents.send(IPC_EVENTS.AGENT_STREAM, { ...event, threadId });
   }
 
-  private emitEdits(): void {
-    this.mainWindow?.webContents.send(IPC_EVENTS.AGENT_PROPOSED_EDITS, this.pendingEdits);
+  private emitEdits(threadId?: string): void {
+    this.mainWindow?.webContents.send(IPC_EVENTS.AGENT_PROPOSED_EDITS, { edits: this.pendingEdits, threadId });
   }
 
   private resolvePath(projectPath: string, inputPath: string): string {
@@ -185,10 +187,10 @@ export class AgentService {
     const signal = this.abortController.signal;
 
     // ── State machine for this send() invocation ──────────────────────────
-    const sm = new AgentStateMachine((phase: AgentPhase) => {
-      this.mainWindow?.webContents.send(IPC_EVENTS.AGENT_PHASE_CHANGED, phase);
+    const sm = new AgentStateMachine((phase: AgentPhase, phaseThreadId?: string) => {
+      this.mainWindow?.webContents.send(IPC_EVENTS.AGENT_PHASE_CHANGED, { phase, threadId: phaseThreadId });
     });
-    sm.transition('initializing');
+    sm.transition('initializing', options.threadId);
 
     // ── Platform-aware context ──────────────────────────────────────────────
     let isReactNative = false;
@@ -581,7 +583,7 @@ export class AgentService {
               this.pendingEdits.push(edit);
             }
 
-            this.emitEdits();
+            this.emitEdits(options.threadId);
 
             return `Proposed edit applied to ${path}.`;
           }
@@ -984,7 +986,7 @@ export class AgentService {
             return;
           }
         } else {
-          this.emitStream({ type: 'error', content: 'AUTH_REQUIRED: You must sign in via Settings, or configure a Local AI Provider API Key.' });
+          this.emitStream({ type: 'error', content: 'AUTH_REQUIRED: You must sign in via Settings, or configure a Local AI Provider API Key.' }, options.threadId);
           return;
         }
       }
@@ -1003,31 +1005,54 @@ export class AgentService {
         const truncatedMessages = truncateConversationHistory(messages, { maxTokens: effectiveBudget });
         console.log(`[E2E_VERIFICATION] Token Budgeting: Retained ${truncatedMessages.length} out of ${messages.length} messages (Budget: ${effectiveBudget} tokens)`);
 
+        const agentLogger: AgentLogger = {
+          info: (msg, meta) => {
+            log.info(`[Agent] ${msg}`, meta || '');
+          },
+          warn: (msg, meta) => {
+            // Per-attempt retry warnings → local file log only.
+            // Sentry breadcrumbs are reserved for exhaustion/fatal errors (logger.error).
+            log.warn(`[Agent] ${msg}`, meta || '');
+          },
+          error: (msg, meta) => {
+            // Only called on non-retryable failure or max-retries exhaustion.
+            log.error(`[Agent] ${msg}`, meta || '');
+            Sentry.addBreadcrumb({
+              category: 'agent.error',
+              message: msg,
+              level: 'error',
+              data: meta,
+            });
+          }
+        };
+
         await runAgentLoop(
           {
             capabilityTier: settings.capabilityTier || 'fast',
             gateway: selectedGw,
             sessionToken: settings.sessionToken || 'dev_test_session',
+            threadId: options.threadId,
+            logger: agentLogger,
           },
           systemContext,
           truncatedMessages.slice(1), // Remove the system message from initialMessages since runAgentLoop re-injects it
           executor,
           {
-            onStatus: (message) => this.emitStream({ type: 'status', content: message }),
-            onDelta: (text) => this.emitStream({ type: 'delta', content: text }),
+            onStatus: (message) => this.emitStream({ type: 'status', content: message }, options.threadId),
+            onDelta: (text) => this.emitStream({ type: 'delta', content: text }, options.threadId),
             onError: (message: any) => {
               const errStr = (message as any) instanceof Error 
                 ? (message as any).message 
                 : (typeof message === 'object' && message !== null ? ((message as Record<string, any>).message || (message as Record<string, any>).code || JSON.stringify(message)) : String(message));
-              this.emitStream({ type: 'error', content: errStr });
+              this.emitStream({ type: 'error', content: errStr }, options.threadId);
             },
             onDone: () => {
                console.log(`[E2E_VERIFICATION] 8. Final stream completed.`);
-               this.emitStream({ type: 'done', content: '' })
+               this.emitStream({ type: 'done', content: '' }, options.threadId)
             },
-            onPhaseChange: (phase: AgentPhase) => sm.transition(phase),
+            onPhaseChange: (phase: AgentPhase, phaseThreadId?: string) => sm.transition(phase, phaseThreadId),
             onTimelineActivity: (activity) => {
-               this.mainWindow?.webContents.send(IPC_EVENTS.AGENT_TIMELINE, activity);
+               this.mainWindow?.webContents.send(IPC_EVENTS.AGENT_TIMELINE, { ...activity, threadId: options.threadId });
             }
           },
           signal,

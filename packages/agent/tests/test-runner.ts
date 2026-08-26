@@ -15,6 +15,22 @@ try {
     ipcRenderer: { invoke: () => {} }
   };
   require('module').Module._cache[req.resolve('electron')] = { exports: electronMock };
+  
+  const sentryMock = {
+    init: () => {},
+    addBreadcrumb: () => {},
+    captureException: () => {}
+  };
+  require('module').Module._cache[req.resolve('@sentry/electron/main')] = { exports: sentryMock };
+  
+  const logMock = {
+    info: () => {},
+    warn: () => {},
+    error: () => {},
+    initialize: () => {},
+    transports: { file: {}, console: {} }
+  };
+  require('module').Module._cache[req.resolve('electron-log/main')] = { exports: logMock };
 } catch (e) {
   // ignore
 }

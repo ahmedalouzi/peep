@@ -13,12 +13,28 @@ const originalRequire = Module.prototype.require;
       BrowserWindow: class {},
     };
   }
+  if (id === '@sentry/electron/main') {
+    return {
+      init: () => {},
+      addBreadcrumb: () => {},
+      captureException: () => {}
+    };
+  }
+  if (id === 'electron-log/main') {
+    return {
+      info: () => {},
+      warn: () => {},
+      error: () => {},
+      initialize: () => {},
+      transports: { file: {}, console: {} }
+    };
+  }
   return originalRequire.apply(this, arguments as any);
 };
 
 // Now import from desktop
-import { AgentService } from '../../../apps/desktop/src/main/services/agent-service';
-import { WorkspaceManager } from '../../../apps/desktop/src/main/services/workspace-manager';
+let AgentService: any;
+let WorkspaceManager: any;
 
 // Import from agent
 import { MockAIGateway } from '../src/models/mock-gateway';
@@ -28,6 +44,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export default async function runTests() {
+  const mod = await import('../../../apps/desktop/src/main/services/agent-service');
+  AgentService = mod.AgentService;
+  const modWm = await import('../../../apps/desktop/src/main/services/workspace-manager');
+  WorkspaceManager = modWm.WorkspaceManager;
+  
   console.log('  Running Patch File Integration tests...');
 
   const root = path.resolve(__dirname, 'patch_test_workspace');

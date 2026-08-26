@@ -3,12 +3,21 @@ import { ProviderError } from '@peep/shared';
 import type { ChatMessage } from './types';
 
 import type { AIGateway, CapabilityTier, AgentTimelineActivity, AgentTimelineActivityType } from '@peep/shared';
-import { truncateConversationHistory } from './context/truncate';
+import { truncateConversationHistory, estimateTokens, estimateMessageTokens } from './context/truncate';
+
+export interface AgentLogger {
+  info(msg: string, meta?: any): void;
+  warn(msg: string, meta?: any): void;
+  error(msg: string, meta?: any): void;
+}
 
 export interface AgentConfig {
   capabilityTier: CapabilityTier;
   sessionToken: string;
   gateway?: AIGateway;
+  logger?: AgentLogger;
+  threadId?: string;
+  runId?: string;
 }
 
 export interface AgentCallbacks {
@@ -19,7 +28,7 @@ export interface AgentCallbacks {
   /** Optional. Receives structured timeline events for the Agent Execution Timeline UI. */
   onTimelineActivity?: (activity: AgentTimelineActivity) => void;
   /** Optional. Receives runtime phase transitions for Task 15 state machine visibility. */
-  onPhaseChange?: (phase: import('@peep/shared').AgentPhase) => void;
+  onPhaseChange?: (phase: import('@peep/shared').AgentPhase, threadId?: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -34,7 +43,7 @@ export interface AgentCallbacks {
  * Format: `run:<sessionToken>:<firstUserMessage digest>:<epochSecond>`
  * We truncate each segment so IDs stay compact and human-readable.
  */
-function deriveRunId(sessionToken: string, firstUserMessage: string, startTimeMs: number): string {
+export function deriveRunId(sessionToken: string, firstUserMessage: string, startTimeMs: number): string {
   const session = sessionToken.slice(0, 12).replace(/[^a-zA-Z0-9]/g, '_');
   // Simple deterministic digest: sum of char-codes mod 1e6, zero-padded to 6 digits.
   let hash = 0;
@@ -102,6 +111,7 @@ async function callOpenAI(
     attempt++;
     let fullContent = '';
     const toolCalls: Array<{ id: string; name: string; arguments: string | Record<string, unknown> }> = [];
+    let streamUsage: any;
 
     try {
       const stream = config.gateway.stream(
@@ -138,6 +148,23 @@ async function callOpenAI(
         } else if (event.type === 'error' && event.error) {
           throw event.error; // Will be caught below and mapped if needed, though usually gateway handles it
         }
+        if (event.usage) {
+          streamUsage = event.usage;
+        }
+      }
+
+      // Token Tracking
+      if (streamUsage) {
+        config.logger?.info('Token usage (official provider metric)', streamUsage);
+      } else {
+        const estInput = messages.reduce((acc, m) => acc + estimateMessageTokens(m), 0);
+        let estOutput = estimateTokens(fullContent);
+        if (toolCalls.length > 0) {
+          for (const tc of toolCalls) {
+            estOutput += estimateTokens(tc.name) + estimateTokens(typeof tc.arguments === 'string' ? tc.arguments : JSON.stringify(tc.arguments));
+          }
+        }
+        config.logger?.info('Token usage (estimated fallback)', { inputTokens: estInput, outputTokens: estOutput });
       }
 
       if (toolCalls.length > 0) {
@@ -170,6 +197,9 @@ async function callOpenAI(
 
       if (error instanceof ProviderError && error.retryable && attempt < maxAttempts) {
         const backoffMs = error.retryAfterMs || (attempt === 1 ? 2000 : 4000);
+        // Structured warn for every retryable attempt → local file log only (not a Sentry breadcrumb).
+        // Sentry breadcrumbs are reserved for exhaustion/fatal events below.
+        config.logger?.warn(`Provider error (${error.code}). Retrying attempt ${attempt}`, { attempt, error_code: error.code, backoffMs });
         
         if (onStatus) {
           onStatus(`Provider error (${error.code}). Retrying in ${backoffMs / 1000}s...`);
@@ -193,10 +223,14 @@ async function callOpenAI(
         continue;
       }
       
+      // Non-retryable or retries exhausted → high-value event for both local log and Sentry breadcrumb.
+      config.logger?.error('Provider fatal error or non-retryable', { err: error, runId: config.runId || config.threadId, attempt, code: error.code });
       throw error;
     }
   }
   
+  // Retry loop exhausted → high-value terminal event.
+  config.logger?.error('Max retries exceeded', { runId: config.runId || config.threadId });
   throw new Error('Max retries exceeded');
 }
 
@@ -232,7 +266,8 @@ export async function runAgentLoop(
     throw new Error('AIGateway is missing from AgentConfig');
   }
 
-  const startTime = Date.now();
+  const startTimeMs = Date.now();
+  const startTime = performance.now();
   let toolLogs = '';
   let logsEmitted = false;
 
@@ -240,7 +275,7 @@ export async function runAgentLoop(
   // Timeline: derive stable IDs and emit the initial 'understanding' event
   // -------------------------------------------------------------------------
   const firstUserMsg = initialMessages.find((m) => m.role === 'user')?.content ?? '';
-  const runId = deriveRunId(config.sessionToken, firstUserMsg, startTime);
+  const runId = deriveRunId(config.sessionToken, firstUserMsg, startTimeMs);
 
   const dispatchTimeline = (activity: AgentTimelineActivity): void => {
     callbacks.onTimelineActivity?.(activity);
@@ -259,7 +294,9 @@ export async function runAgentLoop(
   const emitLogsBlockIfNeeded = () => {
     if (toolLogs && !logsEmitted) {
       logsEmitted = true;
-      const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+      const durationMs = performance.now() - startTime;
+      const duration = (durationMs / 1000).toFixed(1);
+      config.logger?.info(`Agent loop completed`, { durationMs });
       const logsBlock = `<details class="agent-activity-dropdown" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; outline: none; display: block; width: 100%;">
 <summary style="cursor: pointer; font-weight: 600; font-size: 12.5px; color: var(--gold); user-select: none; outline: none; list-style: none; display: flex; align-items: center; gap: 6px;">
   <span>▶</span> Worked for ${duration}s
@@ -272,13 +309,24 @@ export async function runAgentLoop(
     }
   };
 
+  let currentPhase = 'idle';
+  function emitPhase(phase: any) {
+    if (phase !== currentPhase) {
+      config.logger?.info(`Agent state transitioned: ${currentPhase} -> ${phase}`);
+      currentPhase = phase;
+    }
+    if (callbacks?.onPhaseChange) {
+      callbacks.onPhaseChange(phase, config.threadId);
+    }
+  }
+
   // Inject Planner directive for complex requests
   let activeContext = systemContext;
   if (isComplex) {
-    activeContext += `\n\n[PLANNING MODE ACTIVE] You are faced with a complex software engineering task. First, outline a clear step-by-step checklist of actions and files you will edit. Only then proceed to invoke your tools.`;
+    activeContext += `\n\n[PLANNING MODE ACTIVE] You are faced with a complex software engineering task. First, outline a clear step-by-step checklist of actions and files you will edit. Only then proceed.`;
   }
 
-  let messages: ChatMessage[] = [
+  let conversationHistory: ChatMessage[] = [
     { role: 'system', content: activeContext },
     ...initialMessages,
   ];
@@ -290,7 +338,7 @@ export async function runAgentLoop(
 
   let accumulatedResponseText = '';
   // Notify observer that LLM thinking begins.
-  callbacks.onPhaseChange?.('thinking');
+  emitPhase('thinking');
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     if (signal.aborted) throw new Error('Cancelled');
@@ -298,11 +346,15 @@ export async function runAgentLoop(
     callbacks.onStatus(i === 0 ? 'Thinking…' : 'Continuing…');
 
     // Truncate dynamically before each LLM call to prevent loop growth token exhaustion
-    messages = truncateConversationHistory(messages, { maxTokens: effectiveBudget });
+    conversationHistory = truncateConversationHistory(conversationHistory, { maxTokens: effectiveBudget });
+    config.logger?.info('Context window truncation completed', { 
+      budget: effectiveBudget, 
+      retainedMessages: conversationHistory.length 
+    });
 
     const assistantMessage = await callOpenAI(
       config,
-      messages,
+      conversationHistory,
       signal,
       (delta) => {
         emitLogsBlockIfNeeded();
@@ -313,7 +365,7 @@ export async function runAgentLoop(
 
     if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
       // Notify observer: entering tool execution phase.
-      callbacks.onPhaseChange?.('tool_executing');
+      emitPhase('tool_executing');
       // Accumulate action log statements
       for (const call of assistantMessage.tool_calls) {
         const name = call.function.name;
@@ -367,7 +419,7 @@ export async function runAgentLoop(
         }
       }
 
-      messages.push(assistantMessage);
+      conversationHistory.push(assistantMessage);
 
       // -----------------------------------------------------------------------
       // Timeline: emit 'in_progress' for each tool call BEFORE execution,
@@ -480,10 +532,10 @@ export async function runAgentLoop(
         });
       }
 
-      messages.push(...toolResultMessages);
+      conversationHistory.push(...toolResultMessages);
       toolLogs += 'Working.<br/><br/>';
       // Return to thinking phase for next LLM call.
-      callbacks.onPhaseChange?.('thinking');
+      emitPhase('thinking');
       continue;
     }
 
@@ -499,8 +551,8 @@ export async function runAgentLoop(
         status: 'completed',
         timestamp: new Date().toISOString(),
       });
-      callbacks.onPhaseChange?.('done');
-      callbacks.onDone();
+      emitPhase('done');
+      const durationMs = performance.now() - startTime; config.logger?.info('Agent run completed', { durationMs, runId }); callbacks.onDone();
       return accumulatedResponseText;
     }
 
@@ -512,12 +564,12 @@ export async function runAgentLoop(
 
   callbacks.onStatus('Summarizing changes…');
   // Notify observer: entering summarization phase.
-  callbacks.onPhaseChange?.('summarizing');
+  emitPhase('summarizing');
   let summaryContent = '';
   await callOpenAI(
     config,
     [
-      ...messages,
+      ...conversationHistory,
       {
         role: 'user',
         content: 'Summarize what you did and what the user should review. Be concise.',
@@ -541,6 +593,6 @@ export async function runAgentLoop(
   });
 
   callbacks.onPhaseChange?.('done');
-  callbacks.onDone();
+  const durationMs = performance.now() - startTime; config.logger?.info('Agent run completed', { durationMs, runId }); callbacks.onDone();
   return summaryContent;
 }

@@ -975,6 +975,11 @@ export class AgentService {
         });
       } else {
         // Fallback to local AI Provider for development without SaaS session
+        // SECURITY GUARD: client-side key fallback is strictly prohibited in production.
+        if (process.env.NODE_ENV === 'production') {
+          this.emitStream({ type: 'error', content: 'AUTH_REQUIRED: No session token present. Client-side key fallback is disabled in production. Please sign in via Settings → Account.' }, options.threadId);
+          return;
+        }
         const providerName = settings.aiProvider || 'gemini';
         const localKey = settings.aiProviderApiKey || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GEMINI_API_KEY;
         

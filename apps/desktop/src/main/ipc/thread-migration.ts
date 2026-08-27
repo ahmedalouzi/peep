@@ -6,12 +6,12 @@ export const activeMigrations = new Map<string, Promise<void>>();
 
 export async function performThreadMigration(projectPath: string, settings: any, gatewayUrl: string, threads: any[]): Promise<any[]> {
   const chatJsonPath = path.join(projectPath, '.peep', 'chat.json');
-  const migratedMarkerPath = path.join(projectPath, '.peep', 'chat_migrated.marker');
+  const migratedChatJsonPath = path.join(projectPath, '.peep', 'chat.json.migrated');
   let currentThreads = threads;
 
-  if (fs.existsSync(chatJsonPath) && !fs.existsSync(migratedMarkerPath)) {
+  if (fs.existsSync(chatJsonPath)) {
     const hash = crypto.createHash('sha256').update(projectPath).digest('hex');
-    const deterministicThreadId = `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
+    const deterministicThreadId = `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-c${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
 
     if (!currentThreads.find((t: any) => t.id === deterministicThreadId)) {
       if (!activeMigrations.has(deterministicThreadId)) {
@@ -96,7 +96,7 @@ export async function performThreadMigration(projectPath: string, settings: any,
             runs = Array.from(runsMap.values());
           }
 
-          const saveRes = await fetch(`${gatewayUrl}/v1/threads/${deterministicThreadId}`, {
+          const saveRes = await fetch(`${gatewayUrl}/v1/threads/${deterministicThreadId}/migrate`, {
             method: 'POST',
             headers: { 
               Authorization: `Bearer ${settings.sessionToken}`,
@@ -108,8 +108,12 @@ export async function performThreadMigration(projectPath: string, settings: any,
               runs
             })
           });
-          if (!saveRes.ok) throw new Error('Failed to migrate thread to backend');
-          await fs.promises.writeFile(migratedMarkerPath, new Date().toISOString());
+          
+          if (saveRes.ok || saveRes.status === 409) {
+            await fs.promises.rename(chatJsonPath, migratedChatJsonPath);
+          } else {
+            throw new Error(`Failed to migrate thread to backend: ${saveRes.status}`);
+          }
         };
 
         const migrationPromise = migrate().catch(err => {
@@ -137,8 +141,6 @@ export async function performThreadMigration(projectPath: string, settings: any,
           currentThreads = refetchData.threads || [];
         }
       }
-    } else {
-      await fs.promises.writeFile(migratedMarkerPath, new Date().toISOString());
     }
   }
   return currentThreads;

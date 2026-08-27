@@ -240,13 +240,20 @@ import { ServerModelRouter } from './server-router';
 import { ServerUsageStore } from './usage-store';
 import { ServerBudgetGuard } from './budget-guard';
 import { GoogleGeminiAdapter } from './google-adapter';
+import { db } from './db';
+import type { AgentLogger } from '../orchestrator';
+
+let Sentry: any;
+try { Sentry = await import('@sentry/electron/main'); } catch { Sentry = null; }
 
 export class BackendAIGateway {
   private adapters = new Map<string, ProviderAdapter>();
+  private userAiCallTracker = new Map<string, { count: number; windowStart: number }>();
   readonly authService = new AuthenticationRouter();
   private router = new ServerModelRouter();
   readonly usageStore = new ServerUsageStore();
   readonly budgetGuard = new ServerBudgetGuard();
+  private readonly logger: AgentLogger;
 
   getContextLimit(tier: CapabilityTier): number {
     const config = this.router.route(tier);
@@ -254,7 +261,12 @@ export class BackendAIGateway {
     return modelProfile?.contextWindow ?? 128000;
   }
 
-  constructor() {
+  constructor(logger?: AgentLogger) {
+    this.logger = logger ?? {
+      info: (msg, meta) => console.log(`[Gateway] ${msg}`, meta ?? ''),
+      warn: (msg, meta) => console.warn(`[Gateway] ${msg}`, meta ?? ''),
+      error: (msg, meta) => console.error(`[Gateway] ${msg}`, meta ?? ''),
+    };
     const googleKey = process.env.GOOGLE_API_KEY;
     const openaiKey = process.env.OPENAI_API_KEY;
     const anthropicKey = process.env.ANTHROPIC_API_KEY;
@@ -276,6 +288,16 @@ export class BackendAIGateway {
     } else {
       this.adapters.set('anthropic', new MockOpenAIAdapter());
     }
+
+    // Periodic memory cleanup: remove rate limit trackers older than 2 minutes
+    setInterval(() => {
+      const now = Date.now();
+      for (const [userId, tracker] of this.userAiCallTracker.entries()) {
+        if (now - tracker.windowStart > 120000) {
+          this.userAiCallTracker.delete(userId);
+        }
+      }
+    }, 5 * 60 * 1000).unref();
   }
 
   async handleRequest(
@@ -298,7 +320,6 @@ export class BackendAIGateway {
     // Kill switch check
     const isDevBypass = process.env.NODE_ENV !== 'production' && process.env.SYNKRO_DEV_AUTH_BYPASS === 'true';
     if (!isDevBypass) {
-      const { db } = require('./db');
       try {
         const ksRes = await db.query("SELECT value FROM system_config WHERE key = 'global_kill_switch'");
         if (ksRes.rows.length > 0 && ksRes.rows[0].value.is_active) {
@@ -383,6 +404,27 @@ export class BackendAIGateway {
           limit: 20.00
         }
       };
+    }
+
+    // 1.5 Rate Limiting (Per-user) for AI endpoints
+    if (path === '/v1/ai/generate' || path === '/v1/ai/stream') {
+      const now = Date.now();
+      const tracker = this.userAiCallTracker.get(session.userId) || { count: 0, windowStart: now };
+      if (now - tracker.windowStart > 60000) {
+        tracker.count = 1;
+        tracker.windowStart = now;
+      } else {
+        tracker.count += 1;
+      }
+      this.userAiCallTracker.set(session.userId, tracker);
+
+      if (tracker.count > 30) {
+        return {
+          status: 429,
+          headers: responseHeaders,
+          body: { code: 'RATE_LIMIT_EXCEEDED', message: 'AI request rate limit exceeded. Limit: 30 requests/minute.' }
+        };
+      }
     }
 
     // 2. Path routing
@@ -531,22 +573,65 @@ export class BackendAIGateway {
         // Build the Latency Header
         responseHeaders['x-synkro-latency'] = `Transit: ${transitTime}ms | Auth: ${authDuration}ms | Route: ${routingDuration}ms | Resolve: ${latencyOut.listModelsDuration}ms | GeminiAPI: ${latencyOut.geminiCallDuration}ms | AdapterTotal: ${adapterDuration}ms | BackendTotal: ${serverDuration}ms`;
 
-        // Record a success placeholder for streaming usage
-        if (!isDevBypass) {
-          await this.usageStore.recordUsage({
-            userId: session.userId,
-            requestId,
-            modelTier: requestData.tier,
-            resolvedModel: config.modelId,
-            inputTokens: 10,
-            outputTokens: 20,
-            totalTokens: 30,
-            estimatedCost: 0.001,
-            status: 'success'
-          });
-        }
+        const originalStream = stream;
+        const self = this;
+        const wrappedStream = {
+          async *[Symbol.asyncIterator]() {
+            let finalUsage: any = null;
+            let finalModelId: string | undefined = undefined;
+            let finalStatus: 'success' | 'cancelled' | 'failed' = 'success';
+            let accumulatedOutputChars = 0;
+            try {
+              for await (const chunk of originalStream) {
+                if (chunk.type === 'done' && chunk.usage) {
+                  finalUsage = chunk.usage;
+                }
+                if (chunk.type === 'delta' || chunk.type === 'content') {
+                  const text = chunk.content ?? chunk.delta ?? '';
+                  accumulatedOutputChars += typeof text === 'string' ? text.length : 0;
+                }
+                if (chunk.modelId) finalModelId = chunk.modelId;
+                else if (chunk.model) finalModelId = chunk.model;
+                yield chunk;
+              }
+            } catch (err: any) {
+              if (err.name === 'AbortError' || (options?.signal && options.signal.aborted)) {
+                finalStatus = 'cancelled';
+              } else {
+                finalStatus = 'failed';
+              }
+              throw err;
+            } finally {
+              if (!isDevBypass) {
+                const estCost = requestData.tier === 'premium' ? 0.01 : (requestData.tier === 'reasoning' ? 0.005 : 0.001);
+                const msgStr = JSON.stringify(requestData.messages || (requestData as any).prompt || '');
+                const fallbackInputTokens = Math.ceil(msgStr.length / 4);
+                const fallbackOutputTokens = accumulatedOutputChars > 0 ? Math.ceil(accumulatedOutputChars / 4) : 1;
+                const iTokens = finalUsage?.inputTokens || finalUsage?.prompt_tokens || fallbackInputTokens;
+                const oTokens = finalUsage?.outputTokens || finalUsage?.completion_tokens || fallbackOutputTokens;
+                
+                await self.usageStore.recordUsage({
+                  userId: session.userId,
+                  requestId,
+                  modelTier: requestData.tier,
+                  resolvedModel: finalModelId || config.modelId,
+                  inputTokens: iTokens,
+                  outputTokens: oTokens,
+                  totalTokens: finalUsage?.totalTokens || finalUsage?.total_tokens || (iTokens + oTokens),
+                  estimatedCost: estCost,
+                  status: options?.signal?.aborted ? 'cancelled' : finalStatus
+                }).catch((usageErr: any) => {
+                  self.logger.error('Failed to record streaming usage — financial data loss risk', { requestId, error: usageErr?.message });
+                  if (Sentry?.captureException) Sentry.captureException(usageErr, { tags: { requestId, path: '/v1/ai/stream' } });
+                });
 
-        return { status: 200, headers: responseHeaders, body: stream };
+                self.budgetGuard.releaseLock(session.userId);
+              }
+            }
+          }
+        };
+
+        return { status: 200, headers: responseHeaders, body: wrappedStream };
       } catch (e: any) {
         console.error(`[BackendAIGateway] [${requestId}] Request failed with error:`, e);
         if (!isDevBypass) {
@@ -560,11 +645,13 @@ export class BackendAIGateway {
             totalTokens: 0,
             estimatedCost: 0,
             status: options?.signal?.aborted ? 'cancelled' : 'failed'
+          }).catch((usageErr: any) => {
+            this.logger.error('Failed to record stream error usage — financial data loss risk', { requestId, error: usageErr?.message });
+            if (Sentry?.captureException) Sentry.captureException(usageErr, { tags: { requestId, path: '/v1/ai/stream' } });
           });
+          this.budgetGuard.releaseLock(session.userId);
         }
         return { status: 502, headers: responseHeaders, body: this.mapError(e) };
-      } finally {
-        if (!isDevBypass) this.budgetGuard.releaseLock(session.userId);
       }
     }
 
@@ -621,6 +708,12 @@ export class BackendAIGateway {
 
   private isRetryable(e: any): boolean {
     if (!e) return false;
+    // Prefer typed ProviderError.retryable — this is the authoritative classification
+    // set by error-classifier.ts from the provider's actual HTTP status / error code.
+    if (e.name === 'ProviderError' && typeof e.retryable === 'boolean') {
+      return e.retryable;
+    }
+    // Fallback heuristic for unclassified raw errors (e.g. pre-adapter network failures)
     const msg = String(e.message || '').toLowerCase();
     const isRetryableStatus = [429, 500, 502, 503, 504].includes(e.status);
     const isRetryableMsg = msg.includes('rate limit') || msg.includes('timeout') || msg.includes('overload') || msg.includes('temporary');

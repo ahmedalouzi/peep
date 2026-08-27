@@ -24,7 +24,7 @@ import { buildAuditReport, capturePerformanceSnapshot } from '../services/audit-
 import { ExtensionService } from '../services/extension-service';
 import { PublishService } from '../services/publish-service';
 import { DeviceService } from '../services/device-service';
-import { performThreadMigration } from './thread-migration';
+
 
 let db: DatabaseService | null = null;
 let mainWindow: BrowserWindow | null = null;
@@ -659,6 +659,8 @@ export async function registerIpcHandlers(): Promise<{
 
   ipcMain.handle(IPC_CHANNELS.TELEMETRY_SET, async (_event, enabled: boolean) => {
     await telemetryService.setEnabled(enabled);
+    const { syncSentryOptIn } = require('../index');
+    syncSentryOptIn(enabled);
     await db!.setSettings({ telemetryEnabled: enabled });
   });
 

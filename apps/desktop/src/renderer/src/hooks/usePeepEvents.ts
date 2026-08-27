@@ -28,6 +28,11 @@ export function usePeepEvents(): void {
     const unsubLog = window.peep.onPreviewLog(addLog);
 
     const unsubAgent = window.peep.onAgentStream((event) => {
+      const activeThreadId = useChatStore.getState().activeThreadId;
+      if (event.threadId && event.threadId !== activeThreadId) {
+        return; // Ignore events from other threads
+      }
+
       const isComposer = useComposerStore.getState().isOpen;
       if (isComposer) {
         const composerStore = useComposerStore.getState();
@@ -115,8 +120,12 @@ export function usePeepEvents(): void {
       }).catch(() => {});
     });
 
-    const unsubPhase = window.peep.onAgentPhase((phase) => {
-      setAgentPhase(phase);
+    const unsubPhase = window.peep.onAgentPhase((phase: import('@peep/shared').AgentPhase, threadId?: string) => {
+      const activeThreadId = useChatStore.getState().activeThreadId;
+      // Phase event from IPC might have { phase, threadId } if updated in shared, wait it's just passing event
+      const ev = (typeof phase === 'object' && phase !== null) ? (phase as any) : { phase, threadId };
+      if (ev.threadId && ev.threadId !== activeThreadId) return;
+      setAgentPhase(ev.phase);
     });
 
     return () => {

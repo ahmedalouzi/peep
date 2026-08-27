@@ -1,5 +1,8 @@
 import * as path from 'node:path';
 import { config } from 'dotenv';
+import pino from 'pino';
+import pinoHttp from 'pino-http';
+import { ipRateLimiter } from './rate-limiter';
 
 // Load env from root workspace
 config({ path: path.resolve(process.cwd(), '.env') });
@@ -39,8 +42,13 @@ async function bootstrap() {
     console.error('[DATABASE_BOOT] Database initialization failed:', dbErr.message);
   }
 
-  // Initialize the backend gateway
-  const gateway = new BackendAIGateway();
+  // Initialize the backend gateway with structured pino logger
+  const logger = pino({ level: 'info' });
+  const gateway = new BackendAIGateway({
+    info: (msg, meta) => logger.info(meta ?? {}, msg),
+    warn: (msg, meta) => logger.warn(meta ?? {}, msg),
+    error: (msg, meta) => logger.error(meta ?? {}, msg),
+  });
 
   const app = express();
   app.use((req, _res, next) => {
@@ -49,6 +57,7 @@ async function bootstrap() {
     next();
   });
   app.use(express.json({ limit: '50mb' }));
+  app.use(ipRateLimiter());
 
   // Healthcheck endpoint for AWS ECS Load Balancer
   app.get('/health', (_req, res) => {

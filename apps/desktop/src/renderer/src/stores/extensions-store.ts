@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/electron/renderer';
 import { create } from 'zustand';
 import type { ExtensionInfo } from '@peep/shared';
 
@@ -36,6 +37,7 @@ export const useExtensionsStore = create<ExtensionsState>((set, get) => ({
       set({ searchResults: result.extensions });
     } catch (err) {
       console.error('Failed to search extensions:', err);
+        Sentry.captureException(err);
     } finally {
       set({ isSearching: false });
     }
@@ -47,6 +49,7 @@ export const useExtensionsStore = create<ExtensionsState>((set, get) => ({
       set({ installedExtensions: installed });
     } catch (err) {
       console.error('Failed to fetch installed extensions:', err);
+        Sentry.captureException(err);
     }
   },
 
@@ -64,6 +67,7 @@ export const useExtensionsStore = create<ExtensionsState>((set, get) => ({
       }));
     } catch (err) {
       console.error(`Failed to install ${id}:`, err);
+        Sentry.captureException(err);
     } finally {
       set((state) => ({ isInstalling: { ...state.isInstalling, [id]: false } }));
     }
@@ -83,6 +87,7 @@ export const useExtensionsStore = create<ExtensionsState>((set, get) => ({
       }));
     } catch (err) {
       console.error(`Failed to uninstall ${id}:`, err);
+        Sentry.captureException(err);
     } finally {
       set((state) => ({ isInstalling: { ...state.isInstalling, [id]: false } }));
     }

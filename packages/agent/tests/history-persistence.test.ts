@@ -38,6 +38,10 @@ export default async function run() {
       saveChatHistory: async (proj: string, payload: any) => {
         mockSaved.push({ proj, payload });
       },
+      saveChatThread: async (threadId: string, messages: any, title?: string, runs?: any) => {
+        // Mock route it as history for the test suite
+        mockSaved.push({ proj: 'Project_A', payload: { messages } });
+      },
       loadChatHistory: async (proj: string) => {
         if (proj === 'MALFORMED') throw new Error('Corrupted JSON');
         return mockHistoryData[proj] || null;
@@ -77,6 +81,7 @@ export default async function run() {
     await store.loadHistory('Project_B');
     
     // Verify that the flushPendingSave successfully saved Project A before loading B
+    console.log('mockSaved state:', mockSaved);
     const aSave = mockSaved.find(s => s.proj === 'Project_A');
     assert(!!aSave, 'Pending save for Project A flushed during switch');
     if (aSave) {

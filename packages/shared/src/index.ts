@@ -92,6 +92,7 @@ export interface ProposedEdit {
 export interface AgentStreamEvent {
   type: 'status' | 'delta' | 'done' | 'error' | 'activity';
   content: string;
+  threadId?: string;
 }
 
 export interface AgentActivityEvent {
@@ -134,6 +135,7 @@ export type AgentTimelineActivityType =
 export interface AgentTimelineActivity {
   id: string;
   runId: string;
+  threadId?: string;
   type: AgentTimelineActivityType;
   message: string;
   status: 'in_progress' | 'completed' | 'failed';
@@ -352,6 +354,7 @@ export interface SdkInfo {
 }
 
 export interface AgentSendOptions {
+  threadId?: string;
   message: string;
   history?: Array<{ role: 'user' | 'assistant'; content: string }>;
   projectPath?: string;
@@ -480,6 +483,10 @@ export const IPC_CHANNELS = {
   WORKSPACE_SEARCH_CONTENT: 'workspace:searchContent',
   CHAT_LOAD_HISTORY: 'chat:loadHistory',
   CHAT_SAVE_HISTORY: 'chat:saveHistory',
+  CHAT_LIST_THREADS: 'chat:listThreads',
+  CHAT_LOAD_THREAD: 'chat:loadThread',
+  CHAT_SAVE_THREAD: 'chat:saveThread',
+  CHAT_DELETE_THREAD: 'chat:deleteThread',
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
   APP_GET_VERSION: 'app:getVersion',
@@ -695,6 +702,10 @@ export interface IpcApi {
   searchContent: (opts: { projectPath: string; query: string; caseSensitive?: boolean; isRegex?: boolean; maxResults?: number }) => Promise<any[]>;
   loadChatHistory: (projectPath: string) => Promise<any>;
   saveChatHistory: (projectPath: string, state: any) => Promise<void>;
+  listChatThreads: () => Promise<any[]>;
+  loadChatThread: (threadId: string) => Promise<any>;
+  saveChatThread: (threadId: string, messages: any[], title?: string, runs?: any[]) => Promise<void>;
+  deleteChatThread: (threadId: string) => Promise<void>;
   getSettings: () => Promise<Settings>;
   setSettings: (settings: Partial<Settings>) => Promise<Settings>;
   getVersion: () => Promise<string>;

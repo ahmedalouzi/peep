@@ -5,6 +5,8 @@ import { useChatStore } from '../stores/chat-store';
 import { useWorkspaceStore } from '../stores/workspace-store';
 import { useDiagnosticsStore, usePreviewStore } from '../stores/preview-store';
 import { AgentTimeline } from './AgentTimeline';
+import { usePeepEvents } from './hooks/usePeepEvents';
+import { Virtuoso } from 'react-virtuoso';
 
 interface ChatPaneProps {
   onOpenSettings: () => void;
@@ -36,6 +38,7 @@ export function ChatPane({ onOpenSettings: _onOpenSettings }: ChatPaneProps) {
     isStreaming,
     streamStatus,
     proposedEdits,
+    ipcError,
     setInput,
     addMessage,
     startStreaming,
@@ -49,7 +52,6 @@ export function ChatPane({ onOpenSettings: _onOpenSettings }: ChatPaneProps) {
   const activeFile = openFiles.find((f) => f.path === activeFilePath) ?? null;
   const activeSelection = useWorkspaceStore((s) => s.activeSelection);
   const diagnostics = useDiagnosticsStore((s) => s.items);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -91,7 +93,7 @@ export function ChatPane({ onOpenSettings: _onOpenSettings }: ChatPaneProps) {
   }, []);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Scroll into view logic removed, Virtuoso handles this automatically with followOutput
   }, [messages, streamStatus, proposedEdits]);
 
   useEffect(() => {
@@ -121,6 +123,7 @@ export function ChatPane({ onOpenSettings: _onOpenSettings }: ChatPaneProps) {
       startStreaming(assistantId);
 
       void window.peep.sendAgentMessage({
+        threadId: useChatStore.getState().activeThreadId ?? undefined,
         message,
         history: messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
         projectPath: project?.path,
@@ -156,6 +159,7 @@ export function ChatPane({ onOpenSettings: _onOpenSettings }: ChatPaneProps) {
     startStreaming(assistantId);
 
     void window.peep.sendAgentMessage({
+      threadId: useChatStore.getState().activeThreadId ?? undefined,
       message: trimmed,
       history: messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
       projectPath: project?.path,
@@ -189,14 +193,42 @@ export function ChatPane({ onOpenSettings: _onOpenSettings }: ChatPaneProps) {
   };
 
   return (
-    <div className="agent-panel">
-      <div className="agent-header">
-        <span className="agent-title">Agent</span>
+    <div style={{ display: 'flex', height: '100%' }}>
+      <div className="agent-panel" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        {ipcError && (
+          <div style={{
+            background: 'rgba(248, 81, 73, 0.1)',
+            borderBottom: '1px solid rgba(248, 81, 73, 0.4)',
+            color: '#f85149',
+            padding: '8px 12px',
+            fontSize: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexShrink: 0
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4m0 4h.01"/></svg>
+              <span><strong>Backend Unreachable:</strong> {ipcError} — History cannot be synced.</span>
+            </div>
+            <button 
+              onClick={() => useChatStore.getState().setIpcError(null)} 
+              style={{ background: 'none', border: 'none', color: '#f85149', cursor: 'pointer', padding: '4px' }}
+              title="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+        <div className="agent-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingRight: '8px', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span className="agent-title">Agent</span>
+          </div>
         <div style={{ position: 'relative' }} ref={dropdownRef}>
           <div
             className="agent-model-badge"
             onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
-            style={{ cursor: 'pointer', userSelect: 'none' }}
+            style={{ cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center' }}
           >
             <div className="agent-ai-dot"></div>
             {selectedModel}
@@ -275,8 +307,11 @@ export function ChatPane({ onOpenSettings: _onOpenSettings }: ChatPaneProps) {
             </div>
           </div>
         ) : (
-          <>
-            {messages.map((message, idx) => {
+          <Virtuoso
+            style={{ height: '100%' }}
+            data={messages}
+            followOutput="smooth"
+            itemContent={(idx, message) => {
               const isLastAssistantMessage = message.role === 'assistant' && idx === messages.length - 1;
               return (
                 <div key={message.id} className={`chat-message chat-message--${message.role}`}>
@@ -323,10 +358,9 @@ export function ChatPane({ onOpenSettings: _onOpenSettings }: ChatPaneProps) {
                   )}
                 </div>
               );
-            })}
-          </>
+            }}
+          />
         )}
-        <div ref={messagesEndRef} />
       </div>
 
       {proposedEdits.length > 0 && (
@@ -432,6 +466,7 @@ export function ChatPane({ onOpenSettings: _onOpenSettings }: ChatPaneProps) {
             <div className="agent-footer-text">{selectedModel} · Context: {activeFile?.name ?? 'None'}</div>
           </form>
         </div>
+      </div>
       </div>
     </div>
   );

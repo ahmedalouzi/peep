@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/electron/renderer';
 import { create } from 'zustand';
 import type { Settings } from '@peep/shared';
 
@@ -62,6 +63,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
       }
     } catch (err) {
       console.error('Failed to restore auth session:', err);
+        Sentry.captureException(err);
       set({ authState: 'LOGIN', user: null });
     }
   },
@@ -92,6 +94,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
       await window.peep.authLogout();
     } catch (err) {
       console.error('Logout request failed:', err);
+        Sentry.captureException(err);
     } finally {
       const wsStore = (await import('./workspace-store')).useWorkspaceStore.getState();
       wsStore.setProject(null);

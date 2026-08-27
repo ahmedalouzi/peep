@@ -3,6 +3,7 @@ import { createTwoFilesPatch } from 'diff';
 import { useComposerStore } from '../../stores/composer-store';
 import { useWorkspaceStore } from '../../stores/workspace-store';
 import { usePreviewStore } from '../../stores/preview-store';
+import { useChatStore } from '../../stores/chat-store';
 import './ComposerOverlay.css';
 
 function fileName(path: string): string {
@@ -71,6 +72,7 @@ export function ComposerOverlay() {
 
     try {
       void window.peep.sendAgentMessage({
+        threadId: useChatStore.getState().activeThreadId ?? undefined,
         message: trimmed + `\n\nPlease apply changes to: ${stagedFiles.join(', ')}`,
         history: [],
         projectPath: project?.path,

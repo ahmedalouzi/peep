@@ -15,18 +15,13 @@ export interface UsageRecord {
 
 export class ServerUsageStore {
   async recordUsage(record: Omit<UsageRecord, 'timestamp'>): Promise<void> {
-    const res = await db.query('SELECT id FROM usage_records WHERE request_id = $1', [record.requestId]);
-    if (res.rows.length > 0) {
-      // Prevent double counting
-      return;
-    }
-
     await db.query(
       `INSERT INTO usage_records (
         user_id, request_id, model_tier, resolved_model, 
         input_tokens, output_tokens, total_tokens, 
         estimated_cost, status, timestamp
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+      ON CONFLICT (request_id) DO NOTHING`,
       [
         record.userId, record.requestId, record.modelTier, record.resolvedModel,
         record.inputTokens, record.outputTokens, record.totalTokens,

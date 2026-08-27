@@ -1,7 +1,7 @@
 import { performThreadMigration, activeMigrations } from '../../../apps/desktop/src/main/ipc/thread-migration';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdir, writeFile, rm, rename } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 
@@ -47,7 +47,7 @@ export default async function run() {
 
   try {
     const chatJsonPath = join(peepDir, 'chat.json');
-    const migratedMarkerPath = join(peepDir, 'chat_migrated.marker');
+    const migratedChatJsonPath = join(peepDir, 'chat.json.migrated');
     
     // 1. Test Deterministic Migration
     await writeFile(chatJsonPath, JSON.stringify({ messages: [{ id: '1' }] }));
@@ -55,28 +55,30 @@ export default async function run() {
     const threads = await performThreadMigration(projectPath, { sessionToken: 'abc' }, 'https://api.synkro.com', []);
     
     assert(mockSavedThreads.length === 1, 'Migration successfully saved to backend');
-    assert(existsSync(migratedMarkerPath), 'Migrated marker was created');
+    assert(existsSync(migratedChatJsonPath), 'Migrated file was renamed to .migrated');
+    assert(!existsSync(chatJsonPath), 'Original chat.json was removed');
     
     // 2. Idempotent Migration
     // Clear mock
     mockSavedThreads.length = 0;
     
-    // Running again shouldn't do anything because marker exists
+    // Running again shouldn't do anything because chat.json does not exist
     await performThreadMigration(projectPath, { sessionToken: 'abc' }, 'https://api.synkro.com', []);
-    assert(mockSavedThreads.length === 0, 'Migration is idempotent when marker exists');
+    assert(mockSavedThreads.length === 0, 'Migration is idempotent when chat.json is missing');
 
     // 3. Retryable Failure
-    // Remove marker
-    await rm(migratedMarkerPath);
+    // Restore file
+    await rename(migratedChatJsonPath, chatJsonPath).catch(() => {});
     fetchError = true;
     
     try {
       await performThreadMigration(projectPath, { sessionToken: 'abc' }, 'https://api.synkro.com', []);
     } catch (e) {} // it might swallow or throw inside
     
-    assert(!existsSync(migratedMarkerPath), 'Migrated marker NOT created if backend fails');
+    assert(!existsSync(migratedChatJsonPath), 'Migrated file NOT renamed if backend fails');
+    assert(existsSync(chatJsonPath), 'Original chat.json remains if backend fails');
     
-    // 4. Duplicate prevention
+    // 4. Duplicate prevention (In-process Promise.all concurrency lock)
     fetchError = false;
     
     // Fire two migrations concurrently
@@ -85,11 +87,11 @@ export default async function run() {
     
     await Promise.all([p1, p2]);
     
-    assert(mockSavedThreads.length === 1, 'Only one migration was performed concurrently');
-    assert(existsSync(migratedMarkerPath), 'Migrated marker was created after concurrent migration');
+    assert(mockSavedThreads.length === 1, 'Only one migration was performed concurrently (In-process JS lock verified)');
+    assert(existsSync(migratedChatJsonPath), 'Migrated file was renamed after concurrent migration');
 
     // 5. Task 13: Deterministic Legacy Run ID Migration & Grouping Rule
-    await rm(migratedMarkerPath);
+    await rename(migratedChatJsonPath, chatJsonPath).catch(() => {});
     mockSavedThreads.length = 0;
     
     // Create a history file with timelineActivities but NO runId
@@ -130,7 +132,7 @@ export default async function run() {
     assert(legacyRunId.startsWith('run:legacy:'), 'Run ID uses legacy prefix');
     
     // Run it again on a fresh project to prove determinism
-    await rm(migratedMarkerPath);
+    await rename(migratedChatJsonPath, chatJsonPath).catch(() => {});
     mockSavedThreads.length = 0;
     await performThreadMigration(projectPath, { sessionToken: 'abc' }, 'https://api.synkro.com', []);
     

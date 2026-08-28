@@ -15,14 +15,19 @@ const ICONS: Record<string, string> = {
 
 export function AgentTimeline() {
   const activities = useChatStore((s) => s.timelineActivities);
+  const runs = useChatStore((s) => s.runs);
+  const selectedRunId = useChatStore((s) => s.selectedRunId);
+  const selectRun = useChatStore((s) => s.selectRun);
   const isStreaming = useChatStore((s) => s.isStreaming);
   const endRef = useRef<HTMLDivElement>(null);
 
+  const displayedActivities = activities.filter(a => a.runId === selectedRunId);
+
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [activities]);
+  }, [displayedActivities]);
 
-  if (activities.length === 0) return null;
+  if (activities.length === 0 && (!runs || runs.length === 0)) return null;
 
   return (
     <div className="agent-timeline" style={{
@@ -33,6 +38,54 @@ export function AgentTimeline() {
       border: '1px solid var(--border)',
       fontFamily: 'var(--font-system)'
     }}>
+      {runs && runs.length > 0 && (
+        <div className="agent-timeline-runs" style={{
+          display: 'flex',
+          gap: '8px',
+          overflowX: 'auto',
+          marginBottom: '16px',
+          paddingBottom: '8px',
+          borderBottom: '1px solid var(--border)'
+        }}>
+          {runs.map(run => {
+            const isActive = run.run_id === selectedRunId;
+            let statusIcon = '◌';
+            if (run.status === 'completed') statusIcon = '✅';
+            if (run.status === 'error' || run.status === 'failed') statusIcon = '❌';
+            if (run.status === 'cancelled') statusIcon = '⚠️';
+            
+            const date = new Date(run.started_at);
+            const dateStr = `${date.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`;
+            
+            return (
+              <div 
+                key={run.run_id}
+                className={`run-item ${isActive ? 'active' : ''}`}
+                onClick={() => {
+                  if (!isStreaming) selectRun(run.run_id);
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '4px 10px',
+                  borderRadius: '12px',
+                  fontSize: '11px',
+                  background: isActive ? 'var(--bg-active, rgba(255,255,255,0.1))' : 'transparent',
+                  border: `1px solid ${isActive ? 'var(--text-secondary)' : 'transparent'}`,
+                  cursor: isStreaming ? 'not-allowed' : 'pointer',
+                  opacity: isStreaming && !isActive ? 0.5 : 1,
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                <span>{dateStr}</span>
+                <span style={{ fontSize: '12px' }}>{statusIcon}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <div className="agent-timeline-header" style={{
         display: 'flex',
         alignItems: 'center',
@@ -54,7 +107,7 @@ export function AgentTimeline() {
         maxHeight: '300px',
         overflowY: 'auto'
       }}>
-        {activities.map((act) => {
+        {displayedActivities.map((act) => {
           const icon = ICONS[act.type] || '⚙️';
           const isError = act.status === 'failed' || act.type === 'error';
           const isDone = act.status === 'completed' || act.type === 'completed';

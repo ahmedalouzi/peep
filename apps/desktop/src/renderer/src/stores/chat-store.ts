@@ -20,7 +20,9 @@ interface ChatState {
   proposedEdits: ProposedEdit[];
   agentTask: any | null;
   timelineActivities: AgentTimelineActivity[];
+  runs: any[];
   currentRunId: string | null;
+  selectedRunId: string | null;
   agentPhase: AgentPhase;
 
   ipcError: string | null;
@@ -37,6 +39,7 @@ interface ChatState {
   clearMessages: () => void;
   upsertTimelineActivity: (activity: AgentTimelineActivity) => void;
   clearTimelineActivities: () => void;
+  selectRun: (runId: string) => void;
   setAgentPhase: (phase: AgentPhase) => void;
   setIpcError: (error: string | null) => void;
   loadHistory: (projectPath: string) => Promise<void>;
@@ -141,10 +144,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
   proposedEdits: [],
   agentTask: null,
   timelineActivities: [],
+  runs: [],
   currentRunId: null,
+  selectedRunId: null,
   agentPhase: 'idle',
   ipcError: null,
 
+  selectRun: (runId) => set({ selectedRunId: runId }),
   setInput: (input) => set({ input }),
   setAgentTask: (task) => set({ agentTask: task }),
   setIpcError: (ipcError) => set({ ipcError }),
@@ -184,20 +190,42 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setProposedEdits: (proposedEdits) => set({ proposedEdits }),
   clearMessages: () => set({ messages: [] }),
   upsertTimelineActivity: (activity) => set((state) => {
-    // Auto-clear if we receive a new runId
+    let newRuns = [...state.runs];
+
+    // If we receive a new runId
     if (state.currentRunId !== activity.runId) {
+      newRuns.push({
+        run_id: activity.runId,
+        started_at: activity.timestamp,
+        status: 'in_progress',
+      });
       return {
         currentRunId: activity.runId,
-        timelineActivities: [activity]
+        selectedRunId: activity.runId,
+        timelineActivities: [...state.timelineActivities, activity],
+        runs: newRuns
       };
     }
+
+    // Update the live run's status if this activity is a terminal one
+    if (activity.type === 'completed' || activity.type === 'error' || activity.status === 'failed') {
+      const runIndex = newRuns.findIndex(r => r.run_id === activity.runId);
+      if (runIndex >= 0) {
+        newRuns[runIndex] = {
+          ...newRuns[runIndex],
+          status: (activity.status === 'failed' || activity.type === 'error') ? 'failed' : 'completed',
+          completed_at: activity.timestamp
+        };
+      }
+    }
+
     const index = state.timelineActivities.findIndex(a => a.id === activity.id);
     if (index >= 0) {
       const newActivities = [...state.timelineActivities];
       newActivities[index] = activity;
-      return { timelineActivities: newActivities };
+      return { timelineActivities: newActivities, runs: newRuns };
     }
-    return { timelineActivities: [...state.timelineActivities, activity] };
+    return { timelineActivities: [...state.timelineActivities, activity], runs: newRuns };
   }),
   clearTimelineActivities: () => set({ timelineActivities: [], currentRunId: null }),
   setAgentPhase: (agentPhase) => set({ agentPhase }),
@@ -278,6 +306,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       set({ 
         activeThreadId: threadId, 
         messages,
+        runs,
+        selectedRunId: runs.length > 0 ? runs[runs.length - 1].run_id : null,
         timelineActivities,
         currentRunId: null,
         agentPhase: 'idle'
@@ -309,6 +339,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         content: 'Ask anything, @ to mention, / for actions.',
         createdAt: new Date().toISOString(),
       }],
+      runs: [],
+      selectedRunId: null,
       timelineActivities: [],
       currentRunId: null,
       agentPhase: 'idle'

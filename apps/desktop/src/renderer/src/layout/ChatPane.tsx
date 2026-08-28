@@ -5,6 +5,7 @@ import { useChatStore } from '../stores/chat-store';
 import { useWorkspaceStore } from '../stores/workspace-store';
 import { useDiagnosticsStore, usePreviewStore } from '../stores/preview-store';
 import { AgentTimeline } from './AgentTimeline';
+import { ThreadSidebar } from './ThreadSidebar';
 import { usePeepEvents } from './hooks/usePeepEvents';
 import { Virtuoso } from 'react-virtuoso';
 
@@ -194,6 +195,7 @@ export function ChatPane({ onOpenSettings: _onOpenSettings }: ChatPaneProps) {
 
   return (
     <div style={{ display: 'flex', height: '100%' }}>
+      <ThreadSidebar />
       <div className="agent-panel" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         {ipcError && (
           <div style={{

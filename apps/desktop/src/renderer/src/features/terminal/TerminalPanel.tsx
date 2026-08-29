@@ -24,6 +24,7 @@ export function TerminalPanel() {
   terminalsRef.current = terminals;
   const activeIdRef = useRef(activeId);
   activeIdRef.current = activeId;
+  const lastAgentSessionIdRef = useRef<string | null>(null);
 
   // Initialize first terminal on mount
   useEffect(() => {
@@ -35,18 +36,78 @@ export function TerminalPanel() {
 
   // Handle terminal output and exit events
   useEffect(() => {
+    const getOrCreateAgentTerminal = (terminalsArr: TermInstance[]) => {
+      let agentTerm = terminalsArr.find(t => t.id === 'agent-terminal');
+      if (!agentTerm) {
+        const term = new Terminal({
+          theme: { background: '#0d1117', foreground: '#e6edf3', cursor: '#58a6ff', selectionBackground: '#264f78' },
+          fontFamily: "'Cascadia Code', Consolas, monospace",
+          fontSize: 12,
+          scrollback: 5000,
+          convertEol: true,
+          disableStdin: true,
+          cursorBlink: false
+        });
+        const fit = new FitAddon();
+        term.loadAddon(fit);
+        const tempDiv = document.createElement('div');
+        term.open(tempDiv);
+        
+        term.attachCustomKeyEventHandler((e) => {
+          if ((e.ctrlKey || e.metaKey) && e.code === 'KeyC' && term.hasSelection() && e.type === 'keydown') {
+            navigator.clipboard.writeText(term.getSelection());
+            return false;
+          }
+          return true;
+        });
+
+        tempDiv.addEventListener('copy', (e) => {
+          if (term.hasSelection()) {
+            e.clipboardData?.setData('text/plain', term.getSelection());
+            e.preventDefault();
+          }
+        });
+
+        agentTerm = { id: 'agent-terminal', name: '🤖 Agent Terminal', term, fit };
+        setTerminals(prev => [...prev, agentTerm!]);
+        
+        // Auto-switch to Agent Terminal when created
+        setActiveId('agent-terminal');
+        // Ensure bottom panel is open and on the terminal tab
+        const wsState = useWorkspaceStore.getState();
+        if (wsState.bottomPanelTab !== 'terminal') wsState.setBottomPanelTab('terminal');
+        if (!wsState.isBottomPanelOpen) wsState.toggleBottomPanel();
+      }
+      return agentTerm;
+    };
+
     const unsubOutput = window.peep.onTerminalOutput(({ id, data }) => {
+      if (id.startsWith('agent-cmd-')) {
+        const t = getOrCreateAgentTerminal(terminalsRef.current);
+        if (lastAgentSessionIdRef.current && lastAgentSessionIdRef.current !== id) {
+          t.term.writeln(`\r\n\x1b[90m--- New Agent Command Session ---\x1b[0m\r\n`);
+        }
+        lastAgentSessionIdRef.current = id;
+        t.term.write(data);
+        return;
+      }
+
       const t = terminalsRef.current.find(x => x.id === id);
       if (t) t.term.write(data);
     });
 
     const unsubExit = window.peep.onTerminalExit(({ id, code }) => {
+      if (id.startsWith('agent-cmd-')) {
+        const t = terminalsRef.current.find(x => x.id === 'agent-terminal');
+        if (t) t.term.writeln(`\r\n\x1b[90m[Agent command finished with code ${code}]\x1b[0m\r\n`);
+        return;
+      }
+
       const t = terminalsRef.current.find(x => x.id === id);
       if (t && code !== 0) t.term.writeln(`\r\n[process exited with code ${code}]`);
     });
 
     const unsubPreviewLog = window.peep.onPreviewLog((msg) => {
-      // Find the active terminal, or if there's only one terminal, use that
       const targetId = activeIdRef.current || (terminalsRef.current.length > 0 ? terminalsRef.current[0].id : null);
       if (targetId) {
         const t = terminalsRef.current.find(x => x.id === targetId);
@@ -215,13 +276,15 @@ export function TerminalPanel() {
             }}
           >
             <span>{t.name}</span>
-            <button 
-              onClick={(e) => removeTerminal(t.id, e)}
-              style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, opacity: 0.6 }}
-              title="Close terminal"
-            >
-              ✕
-            </button>
+            {t.id !== 'agent-terminal' && (
+              <button 
+                onClick={(e) => removeTerminal(t.id, e)}
+                style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, opacity: 0.6 }}
+                title="Close terminal"
+              >
+                ✕
+              </button>
+            )}
           </div>
         ))}
         <button 

@@ -48,11 +48,19 @@ export default async function runP312Tests() {
       throw err;
     }
 
+    const headersMock = {
+      get: (key: string) => {
+        if (key.toLowerCase() === 'x-synkro-server-version') return '1.0.0';
+        return null;
+      }
+    };
+
     if (mockStatus !== 200) {
       return {
         ok: false,
         status: mockStatus,
         statusText: mockStatus === 401 ? 'Unauthorized' : mockStatus === 403 ? 'Forbidden' : 'Error',
+        headers: headersMock,
         json: async () => ({ error: { code: mockStatus === 401 ? 'UNAUTHORIZED' : 'FORBIDDEN', message: 'Session expired' } })
       } as any;
     }
@@ -60,6 +68,7 @@ export default async function runP312Tests() {
     return {
       ok: true,
       status: 200,
+      headers: headersMock,
       json: async () => mockResponseJson,
       body: null
     } as any;

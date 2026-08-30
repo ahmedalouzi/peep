@@ -1,15 +1,24 @@
 import { ServerUsageStore } from '../src/models/usage-store';
 import { BackendAIGateway } from '../src/models/backend-gateway';
+import { db } from '../src/models/db';
 
 export default async function runTests() {
   console.log('  Running ServerUsageStore & Accounting unit tests...');
 
   const store = new ServerUsageStore();
+  const testUserId = '00000000-0000-0000-0000-000000000123';
+  const testReqId = `req-abc-${Math.random().toString(36).substring(7)}`;
+
+  // Seed the test user to satisfy foreign key constraints
+  await db.query(
+    "INSERT INTO users (id, email, password_hash) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
+    [testUserId, 'test-usage-user@example.com', 'scrypt:mock-hash']
+  );
 
   // Test 1: Record Usage
-  store.recordUsage({
-    userId: 'user-123',
-    requestId: 'req-abc',
+  await store.recordUsage({
+    userId: testUserId,
+    requestId: testReqId,
     modelTier: 'fast',
     resolvedModel: 'gemini-3.6-flash',
     inputTokens: 100,
@@ -19,15 +28,16 @@ export default async function runTests() {
     status: 'success'
   });
 
-  const records = store.getRecordsForUser('user-123');
-  if (records.length !== 1 || records[0].totalTokens !== 300) {
+  const records = await store.getRecordsForUser(testUserId);
+  const matchedRecs = records.filter(r => r.requestId === testReqId);
+  if (matchedRecs.length !== 1 || matchedRecs[0].totalTokens !== 300) {
     throw new Error('recordUsage failed to store correct token count');
   }
 
   // Test 2: Double Counting Prevention
-  store.recordUsage({
-    userId: 'user-123',
-    requestId: 'req-abc', // Same Request ID
+  await store.recordUsage({
+    userId: testUserId,
+    requestId: testReqId, // Same Request ID
     modelTier: 'fast',
     resolvedModel: 'gemini-3.6-flash',
     inputTokens: 100,
@@ -37,8 +47,9 @@ export default async function runTests() {
     status: 'success'
   });
 
-  const doubleCheckRecords = store.getRecordsForUser('user-123');
-  if (doubleCheckRecords.length !== 1) {
+  const doubleCheckRecords = await store.getRecordsForUser(testUserId);
+  const matchedDoubleCheck = doubleCheckRecords.filter(r => r.requestId === testReqId);
+  if (matchedDoubleCheck.length !== 1) {
     throw new Error('ServerUsageStore failed to prevent double counting on same Request ID');
   }
 
@@ -49,25 +60,29 @@ export default async function runTests() {
   const { MockOpenAIAdapter } = await import('../src/models/backend-gateway');
   (gateway as any).adapters.set('google', new MockOpenAIAdapter());
   
-  const session = await gateway.authService.login('user@example.com', 'hash-password-123');
+  const email = `usage_test_${Math.random().toString(36).substring(7)}@example.com`;
+  await gateway.authService.signup(email, 'hash-password-123');
+  const session = await gateway.authService.login(email, 'hash-password-123');
 
+  const gatewayReqId = `gateway-usage-req-${Math.random().toString(36).substring(7)}`;
   const headers = {
     'authorization': `Bearer ${session.sessionToken}`,
-    'x-request-id': 'gateway-usage-req'
+    'x-request-id': gatewayReqId
   };
 
   await gateway.handleRequest('POST', '/v1/ai/generate', headers, {
     tier: 'fast',
-    prompt: 'please log this usage'
+    messages: [{ role: 'user', content: 'please log this usage' }]
   });
 
-  const gatewayRecords = gateway.usageStore.getRecordsForUser(session.userId);
-  if (gatewayRecords.length !== 1 || gatewayRecords[0].requestId !== 'gateway-usage-req') {
+  const gatewayRecords = await gateway.usageStore.getRecordsForUser(session.userId);
+  const matchedGatewayRecs = gatewayRecords.filter(r => r.requestId === gatewayReqId);
+  if (matchedGatewayRecs.length !== 1) {
     throw new Error('Gateway failed to log usage to usageStore');
   }
 
   // Test 4: Cost Accumulation
-  const totalCost = gateway.usageStore.getAccumulatedCost(session.userId);
+  const totalCost = await gateway.usageStore.getAccumulatedCost(session.userId);
   if (totalCost <= 0) {
     throw new Error('Cost calculation returned incorrect accumulated value');
   }

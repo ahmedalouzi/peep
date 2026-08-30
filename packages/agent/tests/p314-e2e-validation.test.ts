@@ -4,6 +4,7 @@
  */
 
 import { BackendAIGateway } from '../src/models/backend-gateway';
+import { db } from '../src/models/db';
 import { ProductionAIGateway } from '../src/models/production-gateway';
 import { MockAIGateway } from '../src/models/mock-gateway';
 import { AuthService } from '../src/models/auth';
@@ -61,7 +62,7 @@ async function runScenario(backend: BackendAIGateway, opts: {id:string;prompt:st
   const ms = Date.now()-t0;
   assert(res.status===200, 'Scenario ' + opts.id + ' expected 200, got ' + res.status);
   assert(typeof res.body.content==='string', 'content must be string');
-  const recs = backend.usageStore.getRecordsForUser(session.userId);
+  const recs = await backend.usageStore.getRecordsForUser(session.userId);
   const rec = recs.find((r:any)=>r.requestId===reqId);
   assert(!!rec, 'No usage record for ' + reqId);
   assert(rec!.status==='success', 'Expected success, got ' + rec!.status);
@@ -109,22 +110,23 @@ export default async function runP314E2ETests() {
     const r2 = await b.handleRequest('POST', '/v1/ai/generate', h('chat-2'), {tier:'fast', prompt:'Add read receipts.'});
     assert(r1.status===200, 'Chat r1 failed: ' + r1.status);
     assert(r2.status===200, 'Chat r2 failed: ' + r2.status);
-    assert(b.usageStore.getRecordsForUser(session.userId).length>=2, 'Expected >=2 records');
-    assert(b.usageStore.getAccumulatedCost(session.userId)>0, 'Cost must be > 0');
+    assert((await b.usageStore.getRecordsForUser(session.userId)).length>=2, 'Expected >=2 records');
+    assert((await b.usageStore.getAccumulatedCost(session.userId))>0, 'Cost must be > 0');
   });
 
   await gate('[S5] Personal Wallet — estimate + generation', 'Personal Wallet', async () => {
     const b = await mkBackend();
     const session = await b.authService.login('user@example.com', 'hash-password-123');
-    const h = (id:string) => ({'authorization': 'Bearer ' + session.sessionToken, 'x-request-id': id});
+    const rand = Math.random().toString(36).substring(7);
+    const h = (id:string) => ({'authorization': 'Bearer ' + session.sessionToken, 'x-request-id': id + '-' + rand});
     const est = await b.handleRequest('POST', '/v1/ai/estimate-cost', h('w-est'), {tier:'premium', prompt:'wallet app'});
     assert(est.status===200, 'Estimate failed: ' + est.status);
     assert(typeof est.body.cost==='number' && est.body.cost>0, 'Estimate cost must be positive');
     assert(est.body.currency==='USD', 'Currency must be USD');
-    const before = b.usageStore.getRecordsForUser(session.userId).length;
+    const before = (await b.usageStore.getRecordsForUser(session.userId)).length;
     const gen = await b.handleRequest('POST', '/v1/ai/generate', h('w-gen'), {tier:'premium', prompt:'Build a personal wallet app.'});
     assert(gen.status===200, 'Wallet gen failed: ' + gen.status);
-    assert(b.usageStore.getRecordsForUser(session.userId).length===before+1, 'Expected 1 new usage record');
+    assert((await b.usageStore.getRecordsForUser(session.userId)).length===before+1, 'Expected 1 new usage record');
   });
 
   // ── BLOCK 2: AUTH ───────────────────────────────────────────────
@@ -157,7 +159,7 @@ export default async function runP314E2ETests() {
   await gate('[AUTH-5] Token refresh produces new token', undefined, async () => {
     const auth = new AuthService();
     const orig = await auth.login('user@example.com', 'hash-password-123');
-    const refreshed = await auth.refreshToken(orig.refreshToken);
+    const refreshed = await auth.refresh(orig.refreshToken);
     assert(refreshed.sessionToken!==orig.sessionToken, 'New token must differ');
     assertNoKey(refreshed.sessionToken, 'refreshed sessionToken');
   });
@@ -195,19 +197,19 @@ export default async function runP314E2ETests() {
   await gate('[USAGE-1] Usage recorded once (no double-count)', undefined, async () => {
     const b = await mkBackend();
     const s = await b.authService.login('user@example.com', 'hash-password-123');
-    const id = 'dedup-test';
+    const id = 'dedup-test-' + Math.random().toString(36).substring(7);
     await b.handleRequest('POST', '/v1/ai/generate', {'authorization': 'Bearer ' + s.sessionToken, 'x-request-id': id}, {tier:'fast', prompt:'test'});
-    b.usageStore.recordUsage({userId:s.userId, requestId:id, modelTier:'fast', resolvedModel:'dup', inputTokens:99, outputTokens:99, totalTokens:198, estimatedCost:9.99, status:'success'});
-    const count = b.usageStore.getRecordsForUser(s.userId).filter((r:any)=>r.requestId===id).length;
+    await b.usageStore.recordUsage({userId:s.userId, requestId:id, modelTier:'fast', resolvedModel:'dup', inputTokens:99, outputTokens:99, totalTokens:198, estimatedCost:9.99, status:'success'});
+    const count = (await b.usageStore.getRecordsForUser(s.userId)).filter((r:any)=>r.requestId===id).length;
     assert(count===1, 'Expected 1 (dedup), got ' + count);
   });
   await gate('[USAGE-2] Cancelled -> status=cancelled, cost=0', undefined, async () => {
     const b = await mkBackend();
     const s = await b.authService.login('user@example.com', 'hash-password-123');
     const ctrl = new AbortController(); ctrl.abort();
-    const id = 'cancel-rec';
+    const id = 'cancel-rec-' + Math.random().toString(36).substring(7);
     await b.handleRequest('POST', '/v1/ai/generate', {'authorization': 'Bearer ' + s.sessionToken, 'x-request-id': id}, {tier:'fast', prompt:'cancel'}, {signal:ctrl.signal});
-    const rec = b.usageStore.getRecordsForUser(s.userId).find((r:any)=>r.requestId===id);
+    const rec = (await b.usageStore.getRecordsForUser(s.userId)).find((r:any)=>r.requestId===id);
     assert(!!rec, 'Usage record must exist for cancelled');
     assert(rec!.status==='cancelled', 'Expected cancelled, got ' + rec!.status);
     assert(rec!.estimatedCost===0, 'Cancelled must not be charged');
@@ -215,19 +217,20 @@ export default async function runP314E2ETests() {
   await gate('[USAGE-3] Accumulated cost increases after requests', undefined, async () => {
     const b = await mkBackend();
     const s = await b.authService.login('user@example.com', 'hash-password-123');
-    const h = (id:string) => ({'authorization': 'Bearer ' + s.sessionToken, 'x-request-id': id});
-    const before = b.usageStore.getAccumulatedCost(s.userId);
+    const rand = Math.random().toString(36).substring(7);
+    const h = (id:string) => ({'authorization': 'Bearer ' + s.sessionToken, 'x-request-id': id + '-' + rand});
+    const before = await b.usageStore.getAccumulatedCost(s.userId);
     await b.handleRequest('POST', '/v1/ai/generate', h('a1'), {tier:'fast', prompt:'p1'});
     await b.handleRequest('POST', '/v1/ai/generate', h('a2'), {tier:'fast', prompt:'p2'});
-    assert(b.usageStore.getAccumulatedCost(s.userId)>before, 'Cost must increase');
+    assert((await b.usageStore.getAccumulatedCost(s.userId))>before, 'Cost must increase');
   });
   await gate('[USAGE-4] Streaming records usage once at completion', undefined, async () => {
     const b = await mkBackend();
     const s = await b.authService.login('user@example.com', 'hash-password-123');
-    const id = 'stream-usage';
+    const id = 'stream-usage-' + Math.random().toString(36).substring(7);
     const res = await b.handleRequest('POST', '/v1/ai/stream', {'authorization': 'Bearer ' + s.sessionToken, 'x-request-id': id}, {tier:'fast', prompt:'stream'});
     assert(res.status===200, 'Stream must return 200, got ' + res.status);
-    const recs = b.usageStore.getRecordsForUser(s.userId).filter((r:any)=>r.requestId===id);
+    const recs = (await b.usageStore.getRecordsForUser(s.userId)).filter((r:any)=>r.requestId===id);
     assert(recs.length===1, 'Expected 1 stream record, got ' + recs.length);
     assert(recs[0]!.status==='success', 'Expected success, got ' + recs[0]!.status);
   });
@@ -235,8 +238,15 @@ export default async function runP314E2ETests() {
   // ── BLOCK 5: BUDGET ─────────────────────────────────────────────
   await gate('[BUDGET-1] Over-limit cost throws BUDGET_EXCEEDED', undefined, async () => {
     const guard = new ServerBudgetGuard(new ServerUsageStore());
+    const testUserUuid = '00000000-0000-0000-0000-000000000008';
+    await db.query(
+      "INSERT INTO users (id, email, password_hash) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
+      [testUserUuid, 'budget-1-user@example.com', 'scrypt:mock-hash']
+    );
     let threw=false;
-    try { guard.checkBudget('u1', 'free', 9999.0); } catch(e:any) {
+    try {
+      await guard.checkBudget(testUserUuid, 'free', 9999.0);
+    } catch(e:any) {
       threw=true;
       assert(e.code==='BUDGET_EXCEEDED', 'Expected BUDGET_EXCEEDED, got ' + e.code);
     }
@@ -246,20 +256,29 @@ export default async function runP314E2ETests() {
     const b = await mkBackend();
     const s = await b.authService.login('user@example.com', 'hash-password-123');
     const ctrl = new AbortController(); ctrl.abort();
-    await b.handleRequest('POST', '/v1/ai/generate', {'authorization': 'Bearer ' + s.sessionToken, 'x-request-id': 'bl-cancel'}, {tier:'fast', prompt:'cancel'}, {signal:ctrl.signal});
-    const res = await b.handleRequest('POST', '/v1/ai/generate', {'authorization': 'Bearer ' + s.sessionToken, 'x-request-id': 'bl-after'}, {tier:'fast', prompt:'after cancel'});
+    const cancelId = 'bl-cancel-' + Math.random().toString(36).substring(7);
+    const afterId = 'bl-after-' + Math.random().toString(36).substring(7);
+    await b.handleRequest('POST', '/v1/ai/generate', {'authorization': 'Bearer ' + s.sessionToken, 'x-request-id': cancelId}, {tier:'fast', prompt:'cancel'}, {signal:ctrl.signal});
+    const res = await b.handleRequest('POST', '/v1/ai/generate', {'authorization': 'Bearer ' + s.sessionToken, 'x-request-id': afterId}, {tier:'fast', prompt:'after cancel'});
     assert(res.status===200, 'Post-cancel must succeed (lock not held): ' + res.status);
   });
   await gate('[BUDGET-3] Cancelled costs not counted toward daily budget', undefined, async () => {
     const store = new ServerUsageStore();
     const guard = new ServerBudgetGuard(store);
-    store.recordUsage({userId:'u2', requestId:'c1', modelTier:'fast', resolvedModel:'m', inputTokens:0, outputTokens:0, totalTokens:0, estimatedCost:9999.99, status:'cancelled'});
-    guard.checkBudget('u2', 'free', 0.001); // Must not throw
+    const id = 'c1-' + Math.random().toString(36).substring(7);
+    const testUserUuid = '00000000-0000-0000-0000-000000000009';
+    await db.query(
+      "INSERT INTO users (id, email, password_hash) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
+      [testUserUuid, 'budget-3-user@example.com', 'scrypt:mock-hash']
+    );
+    await store.recordUsage({userId:testUserUuid, requestId:id, modelTier:'fast', resolvedModel:'m', inputTokens:0, outputTokens:0, totalTokens:0, estimatedCost:9999.99, status:'cancelled'});
+    await guard.checkBudget(testUserUuid, 'free', 0.001); // Must not throw
   });
   await gate('[BUDGET-4] Client budget override fields ignored by server', undefined, async () => {
     const b = await mkBackend();
     const s = await b.authService.login('user@example.com', 'hash-password-123');
-    const res = await b.handleRequest('POST', '/v1/ai/generate', {'authorization': 'Bearer ' + s.sessionToken, 'x-request-id': 'bypass'}, {tier:'fast', prompt:'test', plan:'enterprise', budgetOverride:99999});
+    const bypassId = 'bypass-' + Math.random().toString(36).substring(7);
+    const res = await b.handleRequest('POST', '/v1/ai/generate', {'authorization': 'Bearer ' + s.sessionToken, 'x-request-id': bypassId}, {tier:'fast', prompt:'test', plan:'enterprise', budgetOverride:99999});
     assert(res.status===200, 'Server must ignore override, got ' + res.status);
     assertNoKey(JSON.stringify(res.body), 'bypass response');
   });
@@ -355,7 +374,7 @@ export default async function runP314E2ETests() {
     const s = await b.authService.login('user@example.com', 'hash-password-123');
     const id = 'fo-nodup';
     await b.handleRequest('POST', '/v1/ai/generate', {'authorization': 'Bearer ' + s.sessionToken, 'x-request-id': id}, {tier:'fast', prompt:'nodup'});
-    const cnt = b.usageStore.getRecordsForUser(s.userId).filter((r:any)=>r.requestId===id).length;
+    const cnt = (await b.usageStore.getRecordsForUser(s.userId)).filter((r:any)=>r.requestId===id).length;
     assert(cnt===1, 'Expected 1 record, got ' + cnt + ' (double-charge)');
   });
 
@@ -533,7 +552,7 @@ export default async function runP314E2ETests() {
     const auth = new AuthService();
     const t0 = Date.now();
     const s = await auth.login('user@example.com', 'hash-password-123');
-    auth.validateSession(s.sessionToken);
+    await auth.validateSession(s.sessionToken);
     assert(Date.now()-t0<100, 'Auth took ' + (Date.now()-t0) + 'ms');
   });
   await gate('[PERF-2] Backend generate (mock) in <500ms', undefined, async () => {

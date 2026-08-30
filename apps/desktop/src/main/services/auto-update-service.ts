@@ -84,7 +84,11 @@ export class AutoUpdateService {
 
   async downloadAndInstall(): Promise<void> {
     if (!app.isPackaged) return;
-    await autoUpdater.downloadUpdate();
+    if (this.currentInfo.status === 'ready') {
+      this.quitAndInstall();
+    } else {
+      await autoUpdater.downloadUpdate();
+    }
   }
 
   quitAndInstall(): void {

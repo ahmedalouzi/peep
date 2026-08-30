@@ -11,8 +11,6 @@ publish:
 win:
   target: nsis
   icon: resources/icons/icon.ico
-  certificateSha1: ${env.WIN_CSC_SHA1} # GitHub Secrets / AWS Secrets integration
-  signAndEditExecutable: true
 mac:
   target:
     - dmg
@@ -23,8 +21,6 @@ mac:
   gatekeeperAssess: false
   entitlements: "build/entitlements.mac.plist"
   entitlementsInherit: "build/entitlements.mac.plist"
-  notarize:
-    teamId: ${env.APPLE_TEAM_ID}
   # gatekeeperAssess: false
   # hardentedRuntime: true
 nsis:

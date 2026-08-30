@@ -51,6 +51,14 @@ export async function initDbSchema() {
       CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
     `);
     
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS rotated_refresh_tokens (
+        refresh_token VARCHAR(255) PRIMARY KEY,
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_rotated_refresh_user ON rotated_refresh_tokens(user_id);
+    `);
+    
     // Rate limits (Authentication brute force protection)
     await client.query(`
       CREATE TABLE IF NOT EXISTS rate_limits (

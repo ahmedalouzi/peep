@@ -34,7 +34,10 @@ export default async function runTests() {
   const gateway = new BackendAIGateway();
   const { MockOpenAIAdapter } = await import('../src/models/backend-gateway');
   (gateway as any).adapters.set('google', new MockOpenAIAdapter());
-  const session = await gateway.authService.login('user@example.com', 'hash-password-123');
+  
+  const email = `router_test_${Math.random().toString(36).substring(7)}@example.com`;
+  await gateway.authService.signup(email, 'hash-password-123');
+  const session = await gateway.authService.login(email, 'hash-password-123');
 
   const headers = {
     'authorization': `Bearer ${session.sessionToken}`,
@@ -43,7 +46,7 @@ export default async function runTests() {
 
   const res = await gateway.handleRequest('POST', '/v1/ai/generate', headers, {
     tier: 'fast',
-    prompt: 'route this please'
+    messages: [{ role: 'user', content: 'route this please' }]
   });
   if (res.status !== 200) {
     throw new Error(`Gateway handleRequest failed under routing. Status: ${res.status}`);
@@ -52,7 +55,7 @@ export default async function runTests() {
   // Test 4: Unsupported Tier Rejection
   const badRes = await gateway.handleRequest('POST', '/v1/ai/generate', headers, {
     tier: 'ultra-fast-hyper-intelligence' as any,
-    prompt: 'test'
+    messages: [{ role: 'user', content: 'test' }]
   });
   if (badRes.status !== 400 || badRes.body.code !== 'VALIDATION_ERROR') {
     throw new Error('Gateway failed to reject unsupported model tier');

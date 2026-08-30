@@ -6,7 +6,9 @@ export default async function runTests() {
 
   // Setup Backend
   const backend = new BackendAIGateway();
-  const session = await backend.authService.login('user@example.com', 'hash-password-123');
+  const email = `cancel_test_${Math.random().toString(36).substring(7)}@example.com`;
+  await backend.authService.signup(email, 'hash-password-123');
+  const session = await backend.authService.login(email, 'hash-password-123');
 
   // Mock global fetch to route requests directly to our BackendAIGateway instance
   const originalFetch = global.fetch;
@@ -71,7 +73,7 @@ export default async function runTests() {
     controller1.abort();
 
     try {
-      await client.generate({ tier: 'fast', prompt: 'test' }, { signal: controller1.signal });
+      await client.generate({ tier: 'fast', messages: [{ role: 'user', content: 'test' }] }, { signal: controller1.signal });
       throw new Error('generate did not throw when AbortSignal was aborted beforehand');
     } catch (err: any) {
       if (err.message !== 'Request aborted') throw err;
@@ -79,7 +81,7 @@ export default async function runTests() {
 
     // 2. Test Client Abort During Streaming
     const controller2 = new AbortController();
-    const stream = client.stream({ tier: 'fast', prompt: 'test' }, { signal: controller2.signal });
+    const stream = client.stream({ tier: 'fast', messages: [{ role: 'user', content: 'test' }] }, { signal: controller2.signal });
 
     let collected = 0;
     try {
@@ -94,7 +96,7 @@ export default async function runTests() {
     }
 
     // 3. Verify Budget locks and usage records are cleanly processed
-    const records = backend.usageStore.getRecordsForUser(session.userId);
+    const records = await backend.usageStore.getRecordsForUser(session.userId);
     const cancelRecords = records.filter(r => r.status === 'cancelled');
     if (cancelRecords.length === 0) {
       // If client aborted mid-way, backend should log cancellation status

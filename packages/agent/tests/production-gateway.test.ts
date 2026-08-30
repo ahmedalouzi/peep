@@ -22,11 +22,19 @@ export default async function runTests() {
       throw err;
     }
 
+    const headersMock = {
+      get: (key: string) => {
+        if (key.toLowerCase() === 'x-synkro-server-version') return '1.0.0';
+        return null;
+      }
+    };
+
     if (mockStatus !== 200) {
       return {
         ok: false,
         status: mockStatus,
         statusText: 'Error',
+        headers: headersMock,
         json: async () => mockResponseJson
       } as any;
     }
@@ -34,6 +42,7 @@ export default async function runTests() {
     return {
       ok: true,
       status: mockStatus,
+      headers: headersMock,
       json: async () => mockResponseJson,
       body: mockResponseBody
     } as any;
@@ -44,7 +53,7 @@ export default async function runTests() {
     mockStatus = 200;
     mockResponseJson = { content: 'production response content' };
     const gateway = new ProductionAIGateway({ baseUrl: 'http://localhost:3000', sessionToken: 'session-123' });
-    const res = await gateway.generate({ tier: 'fast', prompt: 'hello' });
+    const res = await gateway.generate({ tier: 'fast', messages: [{ role: 'user', content: 'hello' }] });
     
     if (lastUrl !== 'http://localhost:3000/v1/ai/generate') {
       throw new Error('generate did not target correct endpoint');
@@ -59,7 +68,7 @@ export default async function runTests() {
     // 2. Test Missing Session Token
     const badGateway = new ProductionAIGateway({ baseUrl: 'http://localhost:3000', sessionToken: '' });
     try {
-      await badGateway.generate({ tier: 'fast', prompt: 'hello' });
+      await badGateway.generate({ tier: 'fast', messages: [{ role: 'user', content: 'hello' }] });
       throw new Error('unauthorized request did not throw');
     } catch (err: any) {
       if (err.code !== 'UNAUTHORIZED') throw err;
@@ -69,7 +78,7 @@ export default async function runTests() {
     mockStatus = 401;
     mockResponseJson = { message: 'invalid session' };
     try {
-      await gateway.generate({ tier: 'fast', prompt: 'hello' });
+      await gateway.generate({ tier: 'fast', messages: [{ role: 'user', content: 'hello' }] });
       throw new Error('401 error response did not throw');
     } catch (err: any) {
       if (err.code !== 'UNAUTHORIZED' || err.status !== 401) throw err;
@@ -79,7 +88,7 @@ export default async function runTests() {
     mockStatus = 429;
     mockResponseJson = { message: 'rate limit hit' };
     try {
-      await gateway.generate({ tier: 'fast', prompt: 'hello' });
+      await gateway.generate({ tier: 'fast', messages: [{ role: 'user', content: 'hello' }] });
       throw new Error('429 error response did not throw');
     } catch (err: any) {
       if (err.code !== 'RATE_LIMIT_EXCEEDED') throw err;
@@ -89,7 +98,7 @@ export default async function runTests() {
     mockStatus = 400;
     mockResponseJson = { code: 'BUDGET_EXCEEDED', message: 'Budget exceeded' };
     try {
-      await gateway.generate({ tier: 'fast', prompt: 'hello' });
+      await gateway.generate({ tier: 'fast', messages: [{ role: 'user', content: 'hello' }] });
       throw new Error('budget exceeded response did not throw');
     } catch (err: any) {
       if (err.code !== 'BUDGET_EXCEEDED') throw err;
@@ -117,7 +126,7 @@ export default async function runTests() {
       }
     });
 
-    const stream = gateway.stream({ tier: 'fast', prompt: 'hello' }, { signal: controller.signal });
+    const stream = gateway.stream({ tier: 'fast', messages: [{ role: 'user', content: 'hello' }] }, { signal: controller.signal });
     const collected: string[] = [];
     for await (const event of stream) {
       if (event.type === 'delta' && event.content) {

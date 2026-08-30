@@ -129,6 +129,27 @@ export async function registerIpcHandlers(): Promise<{
   telemetryService: TelemetryService;
   autoUpdateService: AutoUpdateService;
 }> {
+  // IPC Validation Wrapper
+  const originalHandle = ipcMain.handle.bind(ipcMain);
+  ipcMain.handle = (channel: string, listener: (...args: any[]) => any) => {
+    return originalHandle(channel, async (event, ...args) => {
+      for (const arg of args) {
+        if (typeof arg === 'string') {
+          if (arg.includes('..') || arg.split(/[/\\]/).includes('..')) {
+            throw new Error(`IPC Security Block: Traversal path argument not allowed in channel ${channel}`);
+          }
+        } else if (typeof arg === 'object' && arg !== null) {
+          for (const [key, value] of Object.entries(arg)) {
+            if (typeof value === 'string' && (value.includes('..') || value.split(/[/\\]/).includes('..'))) {
+              throw new Error(`IPC Security Block: Traversal path argument key "${key}" not allowed in channel ${channel}`);
+            }
+          }
+        }
+      }
+      return listener(event, ...args);
+    });
+  };
+
   db = new DatabaseService();
   await db.init();
 

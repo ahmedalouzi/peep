@@ -1,35 +1,43 @@
 import { ServerUsageStore } from '../src/models/usage-store';
 import { ServerBudgetGuard } from '../src/models/budget-guard';
 import { BackendAIGateway } from '../src/models/backend-gateway';
+import { db } from '../src/models/db';
 
 export default async function runTests() {
   console.log('  Running ServerBudgetGuard unit tests...');
 
   const store = new ServerUsageStore();
-  const guard = new ServerBudgetGuard(store);
+  const guard = new ServerBudgetGuard();
+  const testUserId = '00000000-0000-0000-0000-000000000001';
+
+  // Seed user to satisfy foreign key constraints
+  await db.query(
+    "INSERT INTO users (id, email, password_hash) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
+    [testUserId, 'budget-guard-user@example.com', 'scrypt:mock-hash']
+  );
 
   // Test 1: Request within budget
-  await guard.acquireLock('user-1');
+  await guard.acquireLock(testUserId);
   try {
-    guard.checkBudget('user-1', 'pro', 0.001); // Within maxRequestCost ($0.05) and daily ($0.50)
+    await guard.checkBudget(testUserId, 'pro', 0.001); // Within maxRequestCost ($0.05) and daily ($0.50)
   } finally {
-    guard.releaseLock('user-1');
+    guard.releaseLock(testUserId);
   }
 
   // Test 2: Request exceeding per-request limit
-  await guard.acquireLock('user-1');
+  await guard.acquireLock(testUserId);
   try {
-    guard.checkBudget('user-1', 'pro', 0.10); // Exceeds pro maxRequestCost ($0.05)
+    await guard.checkBudget(testUserId, 'pro', 0.10); // Exceeds pro maxRequestCost ($0.05)
     throw new Error('Allowed request exceeding per-request cost limit');
   } catch (err: any) {
     if (err.code !== 'BUDGET_EXCEEDED') throw err;
   } finally {
-    guard.releaseLock('user-1');
+    guard.releaseLock(testUserId);
   }
 
   // Test 3: Daily budget exceeded
-  store.recordUsage({
-    userId: 'user-1',
+  await store.recordUsage({
+    userId: testUserId,
     requestId: 'req-large-1',
     modelTier: 'premium',
     resolvedModel: 'claude-3-5-sonnet',
@@ -40,19 +48,25 @@ export default async function runTests() {
     status: 'success'
   });
 
-  await guard.acquireLock('user-1');
+  await guard.acquireLock(testUserId);
   try {
-    guard.checkBudget('user-1', 'pro', 0.01); // daily spent 0.495 + 0.01 = 0.505 > daily limit of 0.50
+    await guard.checkBudget(testUserId, 'pro', 0.01); // daily spent 0.495 + 0.01 = 0.505 > daily limit of 0.50
     throw new Error('Allowed request exceeding daily budget limit');
   } catch (err: any) {
     if (err.code !== 'BUDGET_EXCEEDED') throw err;
   } finally {
-    guard.releaseLock('user-1');
+    guard.releaseLock(testUserId);
   }
 
   // Test 4: Gateway Authorization Rejection integration
   const gateway = new BackendAIGateway();
-  const session = await gateway.authService.login('user@example.com', 'hash-password-123');
+  const { MockOpenAIAdapter } = await import('../src/models/backend-gateway');
+  (gateway as any).adapters.set('google', new MockOpenAIAdapter());
+  
+  // Create user first
+  const email = `budget_test_${Math.random().toString(36).substring(7)}@example.com`;
+  await gateway.authService.signup(email, 'hash-password-123');
+  const session = await gateway.authService.login(email, 'hash-password-123');
 
   const headers = {
     'authorization': `Bearer ${session.sessionToken}`,
@@ -60,9 +74,10 @@ export default async function runTests() {
   };
 
   // Force daily budget usage onto gateway store
-  gateway.usageStore.recordUsage({
+  const gatewaySpentReqId = `gateway-spent-${Math.random().toString(36).substring(7)}`;
+  await gateway.usageStore.recordUsage({
     userId: session.userId,
-    requestId: 'gateway-spent',
+    requestId: gatewaySpentReqId,
     modelTier: 'premium',
     resolvedModel: 'claude-3-5-sonnet',
     inputTokens: 100,
@@ -74,7 +89,7 @@ export default async function runTests() {
 
   const res = await gateway.handleRequest('POST', '/v1/ai/generate', headers, {
     tier: 'fast',
-    prompt: 'triggers budget error'
+    messages: [{ role: 'user', content: 'triggers budget error' }]
   });
   
   if (res.status !== 403 || res.body.code !== 'BUDGET_EXCEEDED') {

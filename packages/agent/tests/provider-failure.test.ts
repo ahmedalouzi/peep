@@ -63,7 +63,7 @@ class FlakyGateway extends MockAIGateway {
       if (this.emitPartialBeforeFail) {
         yield { type: 'delta', content: 'Partial content...' };
       }
-      throw classifyProviderError(new Error('fetch failed'), 'synkro');
+      throw classifyProviderError(new Error('fetch failed'));
     }
     
     // Succeed on subsequent attempts

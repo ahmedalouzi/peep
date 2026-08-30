@@ -6,7 +6,10 @@ export default async function runTests() {
   const gateway = new BackendAIGateway();
   const { MockOpenAIAdapter } = await import('../src/models/backend-gateway');
   (gateway as any).adapters.set('google', new MockOpenAIAdapter());
-  const session = await gateway.authService.login('user@example.com', 'hash-password-123');
+  
+  const email = `gateway_test_${Math.random().toString(36).substring(7)}@example.com`;
+  await gateway.authService.signup(email, 'hash-password-123');
+  const session = await gateway.authService.login(email, 'hash-password-123');
 
   // Test 1: Successful Auth & Generate routing
   const authHeaders = {
@@ -15,7 +18,7 @@ export default async function runTests() {
   };
   const body = {
     tier: 'fast',
-    prompt: 'hello adapter'
+    messages: [{ role: 'user', content: 'hello adapter' }]
   };
   
   const res = await gateway.handleRequest('POST', '/v1/ai/generate', authHeaders, body);
@@ -34,12 +37,12 @@ export default async function runTests() {
 
   // Test 3: Invalid Session Token
   const badRes2 = await gateway.handleRequest('POST', '/v1/ai/generate', { 'authorization': 'Bearer bad-token' }, body);
-  if (badRes2.status !== 401 || !badRes2.body.message.includes('Session not found')) {
+  if (badRes2.status !== 401 || (!badRes2.body.message.includes('Session not found') && !badRes2.body.message.includes('Invalid session token'))) {
     throw new Error('Invalid token check failed');
   }
 
   // Test 4: Request Validation (Invalid Tier)
-  const badRes3 = await gateway.handleRequest('POST', '/v1/ai/generate', authHeaders, { tier: 'ultra-premium', prompt: 'test' });
+  const badRes3 = await gateway.handleRequest('POST', '/v1/ai/generate', authHeaders, { tier: 'ultra-premium', messages: [{ role: 'user', content: 'test' }] });
   if (badRes3.status !== 400 || badRes3.body.code !== 'VALIDATION_ERROR') {
     throw new Error('Model tier validation failed to reject request');
   }

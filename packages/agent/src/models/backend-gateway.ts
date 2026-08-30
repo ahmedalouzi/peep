@@ -320,6 +320,7 @@ export class BackendAIGateway {
     // Kill switch check
     const isDevBypass = process.env.NODE_ENV !== 'production' && process.env.SYNKRO_DEV_AUTH_BYPASS === 'true';
     if (!isDevBypass) {
+      const { db } = await import('./db');
       try {
         const ksRes = await db.query("SELECT value FROM system_config WHERE key = 'global_kill_switch'");
         if (ksRes.rows.length > 0 && ksRes.rows[0].value.is_active) {
@@ -497,7 +498,7 @@ export class BackendAIGateway {
         return { status: 200, headers: responseHeaders, body: result };
       } catch (e: any) {
         if (!isDevBypass) {
-          this.usageStore.recordUsage({
+          await this.usageStore.recordUsage({
             userId: session.userId,
             requestId,
             modelTier: requestData.tier,

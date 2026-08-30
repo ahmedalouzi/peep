@@ -55,17 +55,26 @@ export default async function runP313SecurityTests() {
       err.name = 'AbortError';
       throw err;
     }
+    const headersMock = {
+      get: (key: string) => {
+        if (key.toLowerCase() === 'x-synkro-server-version') return '1.0.0';
+        return null;
+      }
+    };
+
     if (mockStatus !== 200) {
       return {
         ok: false,
         status: mockStatus,
         statusText: 'Error',
+        headers: headersMock,
         json: async () => ({ code: 'ERROR', message: 'Error response' })
       } as any;
     }
     return {
       ok: true,
       status: 200,
+      headers: headersMock,
       json: async () => mockResponseJson,
       body: null
     } as any;
@@ -261,7 +270,7 @@ export default async function runP313SecurityTests() {
 
       let threw = false;
       try {
-        authService.validateSession(session.sessionToken);
+        await authService.validateSession(session.sessionToken);
       } catch {
         threw = true;
       }

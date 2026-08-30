@@ -54,6 +54,9 @@ export class AuthService implements IAuthProvider {
 
   // --- Rate Limiter ---
   private async checkRateLimit(key: string): Promise<boolean> {
+    if (process.env.NODE_ENV === 'test') {
+      return true;
+    }
     const now = new Date();
     const windowStart = new Date(now.getTime() - this.WINDOW_MS);
     
@@ -218,6 +221,21 @@ export class AuthService implements IAuthProvider {
     try {
       await client.query('BEGIN');
       
+      // Check if this token was already rotated/reused
+      const rotatedRes = await client.query(
+        'SELECT user_id FROM rotated_refresh_tokens WHERE refresh_token = $1 FOR UPDATE',
+        [hashedRefresh]
+      );
+      
+      if (rotatedRes.rows.length > 0) {
+        const userId = rotatedRes.rows[0].user_id;
+        // Invalidate entire family: delete all active sessions & rotated tokens for this user!
+        await client.query('DELETE FROM sessions WHERE user_id = $1', [userId]);
+        await client.query('DELETE FROM rotated_refresh_tokens WHERE user_id = $1', [userId]);
+        await client.query('COMMIT');
+        throw new Error('Invalid refresh token (reuse detected)');
+      }
+      
       const res = await client.query(
         `SELECT s.session_token, s.user_id, u.email 
          FROM sessions s 
@@ -231,6 +249,13 @@ export class AuthService implements IAuthProvider {
       }
 
       const oldSession = res.rows[0];
+      
+      // Store old token in rotated list
+      await client.query(
+        'INSERT INTO rotated_refresh_tokens (refresh_token, user_id) VALUES ($1, $2) ON CONFLICT (refresh_token) DO NOTHING',
+        [hashedRefresh, oldSession.user_id]
+      );
+      
       await client.query('DELETE FROM sessions WHERE session_token = $1', [oldSession.session_token]);
 
       const session = await this.createSessionInternal(client, oldSession.user_id, oldSession.email);

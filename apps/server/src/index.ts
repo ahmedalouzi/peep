@@ -50,6 +50,43 @@ async function bootstrap() {
     error: (msg, meta) => logger.error(meta ?? {}, msg),
   });
 
+  interface RateLimitInfo {
+    count: number;
+    resetTime: number;
+  }
+
+  const rateLimitStore = new Map<string, RateLimitInfo>();
+
+  function apiRateLimiter(req: express.Request, res: express.Response, next: express.NextFunction) {
+    const key = (req.headers['session'] as string) || (req.headers['authorization'] as string) || req.ip || 'unknown';
+    const now = Date.now();
+    const windowMs = 60 * 1000;
+    const maxRequests = 60;
+
+    let limitInfo = rateLimitStore.get(key);
+
+    if (!limitInfo || now > limitInfo.resetTime) {
+      limitInfo = {
+        count: 1,
+        resetTime: now + windowMs,
+      };
+      rateLimitStore.set(key, limitInfo);
+    } else {
+      limitInfo.count++;
+    }
+
+    res.setHeader('X-RateLimit-Limit', maxRequests);
+    res.setHeader('X-RateLimit-Remaining', Math.max(0, maxRequests - limitInfo.count));
+    res.setHeader('X-RateLimit-Reset', Math.ceil(limitInfo.resetTime / 1000));
+
+    if (limitInfo.count > maxRequests) {
+      res.status(429).json({ error: 'Too many requests. Please try again later.' });
+      return;
+    }
+
+    next();
+  }
+
   const app = express();
   app.use((req, _res, next) => {
     console.log("[REQUEST ARRIVED]", req.method, req.url);
@@ -125,7 +162,7 @@ async function bootstrap() {
   });
 
   // AI Generate Endpoint
-  app.post('/v1/ai/generate', async (req, res) => {
+  app.post('/v1/ai/generate', apiRateLimiter, async (req, res) => {
     const requestId = Math.random().toString(36).slice(2, 10);
     console.log(`\n[BACKEND_RECEIVED] [${requestId}] POST /v1/ai/generate`);
     console.log(`[BACKEND_RECEIVED] [${requestId}] Authorization: Bearer ***  Session: ${req.headers['session'] ?? '(none)'}`);
@@ -144,7 +181,7 @@ async function bootstrap() {
   });
 
   // AI Stream Endpoint
-  app.post('/v1/ai/stream', async (req, res) => {
+  app.post('/v1/ai/stream', apiRateLimiter, async (req, res) => {
     const requestId = Math.random().toString(36).slice(2, 10);
     console.log(`\n[BACKEND_RECEIVED] [${requestId}] POST /v1/ai/stream`);
     console.log(`[BACKEND_RECEIVED] [${requestId}] Authorization: Bearer ***  Session: ${req.headers['session'] ?? '(none)'}`);

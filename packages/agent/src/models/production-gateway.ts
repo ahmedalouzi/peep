@@ -116,10 +116,10 @@ export class ProductionAIGateway implements AIGateway {
       const clientRoundtrip = fetchEnd - fetchStart;
       
       console.log(`[HTTP_TRACE] HTTP Status: ${response.status} ${response.statusText}`);
-      const serverVersion = response.headers.get('x-synkro-server-version') || '(unknown)';
+      const serverVersion = response.headers?.get('x-synkro-server-version') || '(unknown)';
       console.log(`[HTTP_TRACE] Server Version: ${serverVersion}`);
       
-      const latencyHeader = response.headers.get('x-synkro-latency');
+      const latencyHeader = response.headers?.get('x-synkro-latency');
       if (latencyHeader) {
         console.log(`[LATENCY_TRACE] ${latencyHeader} | Client Roundtrip: ${clientRoundtrip}ms`);
       } else {
@@ -127,12 +127,14 @@ export class ProductionAIGateway implements AIGateway {
       }
       
       // We can only clone the response to read the body safely without breaking the stream reader
-      const clone = response.clone();
-      try {
-        const responseText = await clone.text();
-        console.log(`[HTTP_TRACE] HTTP Body Preview: ${responseText.substring(0, 500)}`);
-      } catch (e) {
-        console.log(`[HTTP_TRACE] HTTP Body Preview Failed: ${e}`);
+      if (typeof response.clone === 'function') {
+        const clone = response.clone();
+        try {
+          const responseText = await clone.text();
+          console.log(`[HTTP_TRACE] HTTP Body Preview: ${responseText.substring(0, 500)}`);
+        } catch (e) {
+          console.log(`[HTTP_TRACE] HTTP Body Preview Failed: ${e}`);
+        }
       }
     } catch (e: any) {
       if (e.name === 'AbortError') {

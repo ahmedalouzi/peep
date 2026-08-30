@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Peep desktop application",
+  "author": "Peep",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -11,6 +12,8 @@
     "package": "electron-vite build && electron-builder",
     "publish:app": "electron-vite build && electron-builder --publish always",
     "build:win": "electron-vite build && electron-builder --win",
+    "build:mac": "electron-vite build && electron-builder --mac",
+    "build:linux": "electron-vite build && electron-builder --linux",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
   },
   "dependencies": {

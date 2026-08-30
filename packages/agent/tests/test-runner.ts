@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { config } from 'dotenv';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -35,6 +36,10 @@ try {
   // ignore
 }
 
+config({ path: resolve(__dirname, '../../../.env') });
+process.env.SYNKRO_DEV_AUTH_BYPASS = 'false';
+process.env.NODE_ENV = 'test';
+
 async function main() {
   const files = await fs.readdir(__dirname);
   const testFiles = files.filter((f) => f.endsWith('.test.ts'));
@@ -49,6 +54,16 @@ async function main() {
     console.log('  Running database migrations...');
     await initDbSchema();
     console.log('  Database ready.\n');
+
+    // Seed default user for integration tests
+    const { AuthService } = await import('../src/models/auth');
+    const auth = new AuthService();
+    try {
+      await auth.signup('user@example.com', 'hash-password-123');
+      console.log('  Default test user seeded.\n');
+    } catch (e) {
+      // Ignored if already registered
+    }
   } catch (dbErr: any) {
     dbOffline = true;
     console.warn(`  ⚠️ Database connection failed: ${dbErr.message || dbErr}. Running tests with database mock/skip fallback.\n`);

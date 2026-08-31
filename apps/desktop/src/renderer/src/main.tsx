@@ -3,10 +3,10 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './styles/global.css';
 import * as Sentry from '@sentry/electron/renderer';
-import { IPC_CHANNELS } from '@peep/shared';
+
 
 // Initialize Sentry only if telemetry is opted-in
-window.api.invoke(IPC_CHANNELS.TELEMETRY_GET).then((enabled: unknown) => {
+window.peep.getTelemetryEnabled().then((enabled: unknown) => {
   if (enabled) {
     Sentry.init({
       beforeSend(event: any) {

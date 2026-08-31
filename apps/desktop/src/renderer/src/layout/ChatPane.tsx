@@ -6,7 +6,6 @@ import { useWorkspaceStore } from '../stores/workspace-store';
 import { useDiagnosticsStore, usePreviewStore } from '../stores/preview-store';
 import { AgentTimeline } from './AgentTimeline';
 import { ThreadSidebar } from './ThreadSidebar';
-import { usePeepEvents } from './hooks/usePeepEvents';
 import { Virtuoso } from 'react-virtuoso';
 
 interface ChatPaneProps {

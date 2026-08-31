@@ -187,10 +187,10 @@ export class AgentService {
     const signal = this.abortController.signal;
 
     // ── State machine for this send() invocation ──────────────────────────
-    const sm = new AgentStateMachine((phase: AgentPhase, phaseThreadId?: string) => {
-      this.mainWindow?.webContents.send(IPC_EVENTS.AGENT_PHASE_CHANGED, { phase, threadId: phaseThreadId });
+    const sm = new AgentStateMachine((phase: AgentPhase) => {
+      this.mainWindow?.webContents.send(IPC_EVENTS.AGENT_PHASE_CHANGED, { phase, threadId: options.threadId });
     });
-    sm.transition('initializing', options.threadId);
+    sm.transition('initializing');
 
     // ── Platform-aware context ──────────────────────────────────────────────
     let isReactNative = false;
@@ -1055,7 +1055,7 @@ export class AgentService {
                console.log(`[E2E_VERIFICATION] 8. Final stream completed.`);
                this.emitStream({ type: 'done', content: '' }, options.threadId)
             },
-            onPhaseChange: (phase: AgentPhase, phaseThreadId?: string) => sm.transition(phase, phaseThreadId),
+            onPhaseChange: (phase: AgentPhase) => sm.transition(phase),
             onTimelineActivity: (activity) => {
                this.mainWindow?.webContents.send(IPC_EVENTS.AGENT_TIMELINE, { ...activity, threadId: options.threadId });
             }

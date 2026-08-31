@@ -76,7 +76,7 @@ export function TerminalPanel() {
         // Ensure bottom panel is open and on the terminal tab
         const wsState = useWorkspaceStore.getState();
         if (wsState.bottomPanelTab !== 'terminal') wsState.setBottomPanelTab('terminal');
-        if (!wsState.isBottomPanelOpen) wsState.toggleBottomPanel();
+        if (!wsState.bottomPanelOpen) wsState.toggleBottomPanel();
       }
       return agentTerm;
     };

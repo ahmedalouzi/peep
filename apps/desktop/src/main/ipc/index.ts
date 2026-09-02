@@ -1,3 +1,4 @@
+// QA Edit Injection Test - Concurrent Modification Triggered!
 import { ipcMain, dialog, app, BrowserWindow } from 'electron';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
@@ -105,6 +106,9 @@ async function onProjectOpened(
     for (const ev of events) {
       if (ev.type === 'add' || ev.type === 'change' || ev.type === 'unlink') {
         agentSvc.onFileChanged(projectPath, ev.type, ev.path);
+      }
+      if (ev.type === 'change') {
+        mainWindow?.webContents.send(IPC_EVENTS.FILE_CHANGED, ev.path);
       }
     }
     

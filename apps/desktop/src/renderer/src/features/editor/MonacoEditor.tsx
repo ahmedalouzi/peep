@@ -13,6 +13,9 @@ interface MonacoEditorProps {
   value: string;
   onChange: (value: string) => void;
   onSave?: () => void;
+  externallyModified?: boolean;
+  onKeepLocal?: () => void;
+  onReloadFromDisk?: () => void;
 }
 
 function languageForPath(filePath: string): string {
@@ -87,7 +90,7 @@ function languageForPath(filePath: string): string {
   return map[ext] ?? 'plaintext';
 }
 
-export function MonacoEditor({ path, value, onChange, onSave }: MonacoEditorProps) {
+export function MonacoEditor({ path, value, onChange, onSave, externallyModified, onKeepLocal, onReloadFromDisk }: MonacoEditorProps) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
 
   const handleMount: OnMount = useCallback(
@@ -273,7 +276,29 @@ export function MonacoEditor({ path, value, onChange, onSave }: MonacoEditorProp
   }, []);
 
   return (
-    <div className="monaco-editor-host">
+    <div className="monaco-editor-host" style={{ position: 'relative', width: '100%', height: '100%' }}>
+      {externallyModified && (
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10,
+          background: 'rgba(216, 56, 56, 0.9)', color: 'white', padding: '8px 16px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          fontSize: '13px', fontWeight: 500, backdropFilter: 'blur(4px)'
+        }}>
+          <div>
+            ⚠️ This file was modified on disk while you had unsaved changes.
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={onReloadFromDisk} style={{
+              background: 'white', color: '#d83838', border: 'none', padding: '4px 10px',
+              borderRadius: '4px', cursor: 'pointer', fontWeight: 600
+            }}>Reload from Disk</button>
+            <button onClick={onKeepLocal} style={{
+              background: 'transparent', color: 'white', border: '1px solid white', padding: '4px 10px',
+              borderRadius: '4px', cursor: 'pointer', fontWeight: 600
+            }}>Keep Local</button>
+          </div>
+        </div>
+      )}
       <Editor
         path={path}
         language={languageForPath(path)}

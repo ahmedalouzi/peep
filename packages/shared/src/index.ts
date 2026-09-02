@@ -481,6 +481,7 @@ export const IPC_CHANNELS = {
   WORKSPACE_GET_PROJECT: 'workspace:getProject',
   WORKSPACE_SEARCH_FILES: 'workspace:searchFiles',
   WORKSPACE_SEARCH_CONTENT: 'workspace:searchContent',
+  WORKSPACE_SET_FILE_DIRTY: 'workspace:setFileDirty',
   CHAT_LOAD_HISTORY: 'chat:loadHistory',
   CHAT_SAVE_HISTORY: 'chat:saveHistory',
   CHAT_LIST_THREADS: 'chat:listThreads',
@@ -669,6 +670,7 @@ export const IPC_EVENTS = {
   AUTH_SESSION_EXPIRED: 'auth:sessionExpired',
   AGENT_TIMELINE: 'agent:timeline',
   AGENT_PHASE_CHANGED: 'agent:phaseChanged',
+  FILE_CHANGED: 'file:changed',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

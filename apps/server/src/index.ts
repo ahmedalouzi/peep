@@ -1,7 +1,6 @@
 import * as path from 'node:path';
 import { config } from 'dotenv';
 import pino from 'pino';
-import pinoHttp from 'pino-http';
 import { ipRateLimiter } from './rate-limiter';
 
 // Load env from root workspace

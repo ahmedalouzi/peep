@@ -97,14 +97,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     });
   },
 
-  setFileExternallyModified: (path, modified) => {
-    set({
-      openFiles: get().openFiles.map((f) =>
-        f.path === path ? { ...f, externallyModified: modified } : f,
-      ),
-    });
-  },
-
   syncFileContent: (path, content) => {
     set({
       openFiles: get().openFiles.map((f) =>

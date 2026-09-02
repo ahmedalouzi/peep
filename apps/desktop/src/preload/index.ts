@@ -153,6 +153,7 @@ const api: IpcApi = {
   onPublishStatus: (callback: (status: import('@peep/shared').PublishStatus) => void) => subscribe<import('@peep/shared').PublishStatus>(IPC_EVENTS.PUBLISH_STATUS, callback),
   onPublishLog: (callback: (line: string) => void) => subscribe<string>(IPC_EVENTS.PUBLISH_LOG, callback),
   onOpenFile: (callback: (payload: { path: string; name: string; content: string; dirty: boolean }) => void) => subscribe<{ path: string; name: string; content: string; dirty: boolean }>('open:file', callback),
+  onFileChanged: (callback: (path: string) => void) => subscribe<string>(IPC_EVENTS.FILE_CHANGED, callback),
   onAuthSessionExpired: (callback: () => void) => subscribe<void>(IPC_EVENTS.AUTH_SESSION_EXPIRED, callback),
   onPlanUpdated: (callback: (plan: any) => void) => subscribe<any>('workspace:plan-updated', callback),
   // PoC

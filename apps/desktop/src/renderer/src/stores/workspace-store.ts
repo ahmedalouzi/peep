@@ -36,6 +36,7 @@ interface WorkspaceState {
   setActiveFile: (path: string | null) => void;
   setActiveSelection: (selection: { text: string; startLine: number; endLine: number; filePath: string } | null) => void;
   setFileExternallyModified: (path: string, modified: boolean) => void;
+  syncFileContent: (path: string, content: string) => void;
   closeFile: (path: string) => void;
   toggleBottomPanel: () => void;
   toggleSidebar: () => void;
@@ -91,7 +92,23 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   updateFileContent: (path, content) => {
     set({
       openFiles: get().openFiles.map((f) =>
-        f.path === path ? { ...f, content, dirty: true } : f,
+        f.path === path ? { ...f, content, dirty: true, externallyModified: false } : f,
+      ),
+    });
+  },
+
+  setFileExternallyModified: (path, modified) => {
+    set({
+      openFiles: get().openFiles.map((f) =>
+        f.path === path ? { ...f, externallyModified: modified } : f,
+      ),
+    });
+  },
+
+  syncFileContent: (path, content) => {
+    set({
+      openFiles: get().openFiles.map((f) =>
+        f.path === path ? { ...f, content, dirty: false, externallyModified: false } : f,
       ),
     });
   },

@@ -18,6 +18,7 @@
   "dependencies": {
     "@peep/platform-core": "workspace:*",
     "@peep/shared": "workspace:*",
+    "@sentry/node": "^10.69.0",
     "dotenv": "^16.4.5",
     "pg": "^8.22.0"
   },

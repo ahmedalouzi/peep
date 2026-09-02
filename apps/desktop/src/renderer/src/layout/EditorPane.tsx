@@ -199,8 +199,17 @@ export function EditorPane() {
               key={activeFile.path}
               path={activeFile.path}
               value={activeFile.content}
+              externallyModified={activeFile.externallyModified}
               onChange={(content) => updateFileContent(activeFile.path, content)}
               onSave={() => void saveActiveFile()}
+              onKeepLocal={() => {
+                useWorkspaceStore.getState().setFileExternallyModified(activeFile.path, false);
+              }}
+              onReloadFromDisk={() => {
+                void window.peep.readFile(activeFile.path).then((newContent) => {
+                  useWorkspaceStore.getState().syncFileContent(activeFile.path, newContent);
+                });
+              }}
             />
           </div>
         )}

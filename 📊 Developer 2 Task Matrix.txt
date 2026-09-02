@@ -1,0 +1,27 @@
+📊 Developer 2 (Desktop/Editor) Task Matrix & Domain
+
+Current Roadmap Tasks (Weeks 1 to 5)
+
+Week 1 (UI Foundations):
+Task 2 — Timeline (UI + stable IDs) [Shared]
+Task 7 — Live Monaco Sync (Start)
+
+Week 2 (Editor & Diffing):
+Task 8 — Concurrent Mod Protection (Continuation from Task 7)
+Task 9 — Diff Accept/Reject (Start)
+
+Week 3 (Resilience & Chat):
+Task 9 — Diff Accept/Reject (Finish)
+Task 10 — Change Recovery (Harden)
+Task 12 — Chat Threads (Start)
+
+Week 4 (History & Desktop Production):
+Task 12 — Chat Threads (Finish)
+Task 13 — Run History
+Task 24 — Electron Build [Shared]
+
+Week 5 (Desktop Production):
+Task 25 — Auto Update [Shared]
+Task 26 — Code Signing [Shared]
+Task 27 — Sentry/Crash Reporting [Shared]
+Buffer / Code Review

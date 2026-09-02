@@ -1,0 +1,139 @@
+ما الذي يجب أن نضيفه إلى الخطة؟
+PHASE 8 — Remote Build & SDK Infrastructure
+هدفها أن المستخدم لا يحتاج إلى تثبيت Flutter SDK / Xcode / CocoaPods / Android SDK وغيرها على جهازه حتى يستطيع بناء ونشر التطبيق.
+البنية التي نريد الوصول إليها:
+User
+  ↓
+Synkro Desktop
+  ↓
+Synkro Cloud / Build API
+  ↓
+Remote Build Worker
+  ├── Flutter SDK
+  ├── Dart SDK
+  ├── Android SDK
+  ├── Xcode / macOS environment
+  ├── CocoaPods
+  └── required dependencies
+  ↓
+Build / Test / Archive
+  ↓
+Artifacts
+  ↓
+Synkro
+  ↓
+User
+والأهم أن هذا يجب أن يكون خارج جهاز المستخدم بقدر الإمكان، وهي الفكرة التي ذكرتها سابقًا: بدل أن يدخل المستخدم في مشاكل SDK والـenvironment، Synkro يتولى البيئة.
+المهام التي يجب إضافتها
+Task 39 — Remote Build Architecture
+تحديد:
+API بين Desktop وCloud. 
+Build Job model. 
+Job IDs. 
+queue. 
+worker lifecycle. 
+logs. 
+artifacts. 
+cancellation. 
+retry. 
+Task 40 — Flutter Cloud Build Worker
+Worker جاهز يحتوي:
+Flutter SDK 
+Dart 
+Android SDK 
+Gradle 
+required build dependencies. 
+ويجب أن يقدر على:
+flutter pub get
+flutter analyze
+flutter test
+flutter build apk
+flutter build appbundle
+بدون اعتماد على SDK في جهاز المستخدم.
+Task 41 — iOS/macOS Build Infrastructure
+هذه مهمة منفصلة لأن Apple builds تحتاج بيئة macOS.
+نحتاج:
+macOS workers. 
+Xcode version management. 
+CocoaPods. 
+signing configuration. 
+provisioning profiles. 
+certificates. 
+archive/export pipeline. 
+والـAgent لا ينبغي أن يحتفظ بشهادات Apple أو الأسرار داخل Desktop.
+Task 42 — Remote Preview
+بدل الاعتماد دائمًا على Preview محلي:
+Synkro
+→ cloud worker
+→ build/run
+→ remote preview
+→ user sees result
+خصوصًا للأجهزة التي لا تحتوي SDKs.
+Task 43 — Artifact Storage
+نتائج الـbuild:
+.apk
+.aab
+.ipa
+.app
+.web
+تُرفع إلى storage آمن، مع:
+expiration 
+download authorization 
+checksum 
+version 
+build metadata. 
+Task 44 — Build Logs / Live Progress
+مثل Agent Timeline لكن للـbuild:
+Preparing environment
+✓ Flutter SDK ready
+
+Installing dependencies
+✓ pub get
+
+Running tests
+✓ 42 tests passed
+
+Building Android
+● Gradle 67%
+
+✓ APK generated
+Task 45 — Build Cancellation & Recovery
+المستخدم يستطيع:
+Cancel Build
+ويتم إيقاف worker وتنظيف الموارد.
+مع retry للـinfra failures.
+Task 46 — Environment / SDK Version Management
+مثلاً المستخدم يحدد:
+Flutter 3.x
+Dart x
+Android SDK x
+Xcode x
+أو Synkro يختار version متوافق تلقائيًا.
+Task 47 — App Signing & Publishing
+هذه مرحلة لاحقة بعد نجاح build:
+Android signing 
+Play Store integration 
+Apple signing 
+App Store Connect 
+certificates/secrets management 
+secure server-side publishing. 
+
+وهناك شيء مهم جدًا
+هذه المرحلة مرتبطة مباشرة بالـProduction backend التي ذكرناها سابقًا.
+يعني بدل أن يكون:
+apps/server
+مجرد Gateway لـGemini، سيصبح عندكم لاحقًا:
+Synkro Cloud
+├── Auth
+├── AI Gateway
+├── Usage/Billing
+├── Project/Build API
+├── Build Queue
+├── Flutter Workers
+├── macOS/iOS Workers
+├── Artifact Storage
+└── Publishing Services
+وهنا يبدأ Synkro يتحول من Desktop AI IDE إلى AI development platform.
+وبذلك تصبح الخطة النهائية عندنا:
+Agent Core → Cursor UX → Editor/Terminal → Persistence → Production Backend → Desktop Release → Remote SDK/Build Infrastructure → Publishing → Production Release
+وهذه المرحلة التي ذكرتها أنت لا يجب أن ننسى إدخالها في الـmaster roadmap.

@@ -1,0 +1,17 @@
+📊 Developer 3 (Your) Task Matrix & Domain
+Current Roadmap Tasks (Weeks 1 to 5)
+Week 1 (Terminal & Execution):
+Task 5 — Terminal streaming: stdout/stderr streaming, live IPC, command duration, exit code.
+Task 6 — Agent Terminal Integration: Connecting agent commands to TerminalService instead of running isolated child processes.
+Week 2 (Data Persistence):
+Task 19 — Production Database: PostgreSQL schema, migrations, backup strategy, and models.
+Task 20 — Production Auth (Start): Signup, login, token refresh, and account isolation.
+Week 3 (Backend Operations & Security):
+Task 20 (Finish)
+Task 21 — Usage / Credits: Token tracking, quotas, rate limits, and billing hooks.
+Task 23 — Backend Security: Path boundaries, command execution sandbox, rate limiting, and IPC validation.
+Week 4 & 5 (Desktop Production - Shared):
+Task 24 — Electron Build (Shared)
+Task 25 — Auto Update (Shared)
+Task 26 — Code Signing (Shared)
+Task 27 — Sentry/Crash Reporting (Shared)

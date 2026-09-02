@@ -11,7 +11,7 @@
     "@aws-sdk/client-secrets-manager": "^3.1097.0",
     "@peep/agent": "workspace:*",
     "@peep/shared": "workspace:*",
-    "@sentry/node": "^10.68.0",
+    "@sentry/node": "^10.69.0",
     "@sentry/profiling-node": "^10.68.0",
     "dotenv": "^17.4.2",
     "express": "^4.21.0",

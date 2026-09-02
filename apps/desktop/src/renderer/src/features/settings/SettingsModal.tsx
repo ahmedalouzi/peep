@@ -27,6 +27,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [telemetryEnabled, setTelemetryEnabled] = useState<boolean | null>(null);
   const [version, setVersion] = useState<string>('');
   const [perfInfo, setPerfInfo] = useState<{ heapUsedMB: number; rssMemMB: number } | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<any>({ status: 'idle' });
 
   // Account state — session auth only, never provider API keys
   const [account, setAccount] = useState<AccountInfo | null>(null);
@@ -94,8 +95,17 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   useEffect(() => {
     if (tab === 'about') {
       void (window.peep as any).getPerformanceInfo?.()?.then((info: any) => setPerfInfo(info));
+      void window.peep.getUpdateStatus?.().then((info) => setUpdateInfo(info || { status: 'idle' }));
     }
   }, [tab]);
+
+  useEffect(() => {
+    if (!open) return;
+    const unsubUpdate = window.peep.onUpdateStatus?.((info) => setUpdateInfo(info));
+    return () => {
+      unsubUpdate?.();
+    };
+  }, [open]);
 
   if (!open) return null;
 
@@ -531,7 +541,40 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 )}
               </div>
 
-              <div className="settings-about__links">
+              {/* ── Auto Update Section ── */}
+              <div className="settings-about__links" style={{ marginTop: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--bg-card)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: '600' }}>Software Update</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                      {updateInfo.status === 'idle' && 'Check for the latest version.'}
+                      {updateInfo.status === 'checking' && 'Checking for updates...'}
+                      {updateInfo.status === 'available' && `Update v${updateInfo.version} is available! Downloading...`}
+                      {updateInfo.status === 'not-available' && 'You are up to date!'}
+                      {updateInfo.status === 'downloading' && `Downloading update... ${updateInfo.percent}%`}
+                      {updateInfo.status === 'ready' && `Update v${updateInfo.version} is ready to install.`}
+                      {updateInfo.status === 'error' && <span style={{ color: 'var(--color-error)' }}>Error: {updateInfo.error}</span>}
+                    </div>
+                  </div>
+                  <div>
+                    {(updateInfo.status === 'idle' || updateInfo.status === 'not-available' || updateInfo.status === 'error') && (
+                      <button className="btn btn-outline" style={{ fontSize: '12px', padding: '4px 12px' }} onClick={() => window.peep.checkForUpdates?.()}>
+                        Check for Updates
+                      </button>
+                    )}
+                    {updateInfo.status === 'ready' && (
+                      <button className="btn btn-primary" style={{ fontSize: '12px', padding: '4px 12px' }} onClick={() => window.peep.downloadAndInstall?.()}>
+                        Restart to Install
+                      </button>
+                    )}
+                    {(updateInfo.status === 'checking' || updateInfo.status === 'available' || updateInfo.status === 'downloading') && (
+                      <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontStyle: 'italic' }}>Working...</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="settings-about__links" style={{ marginTop: '16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--bg-card)', borderRadius: '10px', border: '1px solid var(--border-color)', marginBottom: '16px' }}>
                   <div>
                     <div style={{ fontSize: '13px', fontWeight: '600' }}>Developer Mode</div>

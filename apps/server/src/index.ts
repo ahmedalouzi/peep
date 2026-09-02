@@ -11,11 +11,20 @@ config({ path: path.join(__dirname, '../../.env') });
 config({ path: path.join(__dirname, '../../../.env') });
 
 import express from 'express';
+import * as Sentry from '@sentry/node';
 import { BackendAIGateway, initDbSchema } from '@peep/agent/server';
 import { fetchProductionSecrets } from './secrets';
 import { execSync } from 'node:child_process';
 
 async function bootstrap() {
+  if (process.env.SENTRY_DSN) {
+    Sentry.init({
+      dsn: process.env.SENTRY_DSN,
+      tracesSampleRate: 1.0,
+      debug: false,
+    });
+  }
+
   let commitHash = '168e73a';
   try {
     commitHash = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();

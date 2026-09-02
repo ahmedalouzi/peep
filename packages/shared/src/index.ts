@@ -687,6 +687,7 @@ export interface IpcApi {
   saveFileAs: (defaultPath?: string, content?: string) => Promise<string | null>;
   newWindow: () => Promise<void>;
   exitApp: () => Promise<void>;
+  onFileChanged: (callback: (path: string) => void) => () => void;
   minimizeWindow: () => Promise<void>;
   maximizeWindow: () => Promise<void>;
   openProjectByPath: (path: string) => Promise<ProjectInfo>;

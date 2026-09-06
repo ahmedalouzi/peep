@@ -4,6 +4,8 @@ import { usePreviewStore } from '../stores/preview-store';
 import { useWorkspace } from '../hooks/useWorkspace';
 import { useAuthStore } from '../stores/auth-store';
 import { DEVICES } from './PreviewPane';
+import { buildApi } from '../services/build-api';
+import { useBuildStore } from '../stores/build-store';
 import './TitleBar.css';
 
 interface TitleBarProps {
@@ -13,6 +15,7 @@ interface TitleBarProps {
 export function TitleBar({ onNewProject }: TitleBarProps) {
   const { project } = useWorkspace();
   const { user, settings, logout } = useAuthStore();
+  const currentBuild = useBuildStore((s) => s.currentBuild);
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -197,6 +200,37 @@ export function TitleBar({ onNewProject }: TitleBarProps) {
         <div style={{ flex: 1, WebkitAppRegion: 'drag' } as any}></div>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '2px', paddingRight: '8px', WebkitAppRegion: 'no-drag' } as any}>
+          {project && (project.platform === 'flutter' || project.platform === 'react-native') && (() => {
+            const isBuildActive = currentBuild?.status === 'queued' || currentBuild?.status === 'running';
+            return (
+              <button
+                id="build-apk-btn"
+                className="layout-btn"
+                disabled={isBuildActive}
+                style={{
+                  background: isBuildActive ? 'rgba(74, 222, 128, 0.06)' : 'rgba(74, 222, 128, 0.15)',
+                  color: isBuildActive ? '#4ade8088' : '#4ade80',
+                  padding: '0 8px',
+                  fontWeight: 'bold',
+                  fontSize: '11px',
+                  marginRight: '8px',
+                  borderRadius: '4px',
+                  cursor: isBuildActive ? 'not-allowed' : 'pointer'
+                }}
+                onClick={async () => {
+                  if (isBuildActive) return;
+                  const state = useWorkspaceStore.getState();
+                  state.setBottomPanelTab('build');
+                  if (!state.bottomPanelOpen) state.toggleBottomPanel();
+                  const build = await buildApi.startBuild(project.path, project.platform as 'flutter' | 'react-native', 'apk');
+                  useBuildStore.getState().setCurrentBuild(build);
+                }}
+                title={isBuildActive ? 'Build already in progress' : 'Build Android APK'}
+              >
+                🚀 BUILD APK
+              </button>
+            );
+          })()}
           <button className="layout-btn" onClick={toggleBottomPanel} title="Toggle Terminal">
             <svg viewBox="0 0 16 16" fill="currentColor">
               <path d="M1 3.5A1.5 1.5 0 0 1 2.5 2h11A1.5 1.5 0 0 1 15 3.5v9a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 12.5v-9zm1.5-.5a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h11a.5.5 0 0 0 .5-.5v-9a.5.5 0 0 0-.5-.5h-11z"/>

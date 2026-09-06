@@ -4,6 +4,8 @@ import { useWorkspaceStore } from '../stores/workspace-store';
 import { useWorkspace } from '../hooks/useWorkspace';
 import { TerminalPanel } from '../features/terminal/TerminalPanel';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import { BuildPanel } from '../features/build/BuildPanel';
+import { useBuildStore } from '../stores/build-store';
 
 function LogsTabContent({ logs }: { logs: string[] }) {
   const parentRef = useRef<HTMLDivElement>(null);
@@ -140,6 +142,7 @@ function ProblemsTabContent({ diagnostics, loadFile, errorCount, warningCount }:
 export function BottomPanel() {
   const tab = useWorkspaceStore((s) => s.bottomPanelTab);
   const setTab = useWorkspaceStore((s) => s.setBottomPanelTab);
+  const currentBuild = useBuildStore((s) => s.currentBuild);
   const diagnostics = useDiagnosticsStore((s) => s.items);
   const logs = usePreviewStore((s) => s.logs);
   const { loadFile } = useWorkspace();
@@ -165,6 +168,16 @@ export function BottomPanel() {
           {warningCount > 0 && <span style={{marginLeft: 4, color: 'var(--yellow)'}}>{warningCount}</span>}
         </div>
         
+        <div id="bottom-panel-build-tab" className={`terminal-tab ${tab === 'build' ? 'active' : ''}`} onClick={() => setTab('build')}>
+          <div className="terminal-tab-dot td-green"></div>
+          Build
+          {currentBuild && (
+            <span style={{marginLeft: 6, fontSize: '10px', background: 'rgba(255,255,255,0.1)', padding: '2px 6px', borderRadius: '10px', textTransform: 'uppercase'}}>
+              {currentBuild.status}
+            </span>
+          )}
+        </div>
+        
         <div className="terminal-controls">
           <button className="terminal-btn">+</button>
           <button className="terminal-btn">^</button>
@@ -172,8 +185,9 @@ export function BottomPanel() {
         </div>
       </div>
       
-      <div className="terminal-body" style={{ padding: tab === 'terminal' ? 0 : '12px 16px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div className="terminal-body" style={{ padding: (tab === 'terminal' || tab === 'build') ? 0 : '12px 16px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {tab === 'terminal' && <TerminalPanel />}
+        {tab === 'build' && <BuildPanel />}
         
         {tab === 'logs' && <LogsTabContent logs={logs} />}
         

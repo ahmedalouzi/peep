@@ -22,7 +22,7 @@ interface WorkspaceState {
   agentPaneOpen: boolean;
   previewPaneOpen: boolean;
   sidebarView: 'explorer' | 'extensions' | 'search' | 'git';
-  bottomPanelTab: 'problems' | 'logs' | 'terminal' | 'git';
+  bottomPanelTab: 'problems' | 'logs' | 'terminal' | 'git' | 'build';
   isLoading: boolean;
   creatingItem: { type: 'file' | 'folder', baseDir: string } | null;
   renamingItem: FileEntry | null;
@@ -43,7 +43,7 @@ interface WorkspaceState {
   setSidebarView: (view: 'explorer' | 'extensions' | 'search' | 'git') => void;
   toggleAgentPane: () => void;
   setPreviewPaneOpen: (open: boolean) => void;
-  setBottomPanelTab: (tab: 'problems' | 'logs' | 'terminal' | 'git') => void;
+  setBottomPanelTab: (tab: 'problems' | 'logs' | 'terminal' | 'git' | 'build') => void;
   setLoading: (loading: boolean) => void;
   setCreatingItem: (item: { type: 'file' | 'folder', baseDir: string } | null) => void;
   setRenamingItem: (item: FileEntry | null) => void;

@@ -19,6 +19,7 @@
     "@peep/platform-core": "workspace:*",
     "@peep/shared": "workspace:*",
     "@sentry/node": "^10.69.0",
+    "adm-zip": "^0.6.0",
     "dotenv": "^16.4.5",
     "pg": "^8.22.0"
   },
@@ -27,6 +28,7 @@
     "@sentry/electron": "^7.16.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
+    "@types/adm-zip": "^0.5.8",
     "@types/node": "^20.0.0",
     "@types/pg": "^8.20.0",
     "jsdom": "^30.0.1",

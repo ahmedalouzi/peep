@@ -141,6 +141,22 @@ export async function initDbSchema() {
       CREATE INDEX IF NOT EXISTS idx_chat_runs_thread ON chat_runs(thread_id);
     `);
 
+    // Cloud Build Jobs
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS build_jobs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        project_id VARCHAR(255) NOT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'queued',
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        artifact_path TEXT,
+        logs TEXT DEFAULT ''
+      );
+      CREATE INDEX IF NOT EXISTS idx_build_jobs_status ON build_jobs(status);
+      CREATE INDEX IF NOT EXISTS idx_build_jobs_user ON build_jobs(user_id);
+    `);
+
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');

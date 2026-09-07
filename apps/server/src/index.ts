@@ -11,9 +11,10 @@ config({ path: path.join(__dirname, '../../../.env') });
 
 import express from 'express';
 import * as Sentry from '@sentry/node';
-import { BackendAIGateway, initDbSchema } from '@peep/agent/server';
+import { BackendAIGateway, initDbSchema, startBuildWorker } from '@peep/agent/server';
 import { fetchProductionSecrets } from './secrets';
 import { execSync } from 'node:child_process';
+import { buildRouter } from './build-router';
 
 async function bootstrap() {
   if (process.env.SENTRY_DSN) {
@@ -46,6 +47,9 @@ async function bootstrap() {
   try {
     await initDbSchema();
     console.log('[DATABASE_BOOT] Database initialized successfully!');
+    
+    // Start build queue polling
+    startBuildWorker();
   } catch (dbErr: any) {
     console.error('[DATABASE_BOOT] Database initialization failed:', dbErr.message);
   }
@@ -108,6 +112,9 @@ async function bootstrap() {
   app.get('/health', (_req, res) => {
     res.status(200).json({ status: 'ok' });
   });
+
+  // Attach Android Cloud Build Router
+  app.use('/api/build', buildRouter);
 
   // Signup Endpoint
   app.post('/v1/auth/signup', async (req, res) => {

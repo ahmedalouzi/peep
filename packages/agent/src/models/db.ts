@@ -143,18 +143,70 @@ export async function initDbSchema() {
 
     // Cloud Build Jobs
     await client.query(`
+      DO $$ BEGIN
+        CREATE TYPE build_framework AS ENUM ('flutter', 'react-native');
+      EXCEPTION WHEN duplicate_object THEN null; END $$;
+      
+      DO $$ BEGIN
+        CREATE TYPE build_status AS ENUM ('queued', 'running', 'success', 'failed', 'cancelled');
+      EXCEPTION WHEN duplicate_object THEN null; END $$;
+    `);
+
+    await client.query(`
       CREATE TABLE IF NOT EXISTS build_jobs (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-        project_id VARCHAR(255) NOT NULL,
-        status VARCHAR(50) NOT NULL DEFAULT 'queued',
-        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-        artifact_path TEXT,
-        logs TEXT DEFAULT ''
+        id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id             UUID        NOT NULL,
+        project_id          TEXT        NOT NULL,
+        framework           build_framework NOT NULL DEFAULT 'flutter',
+        target              TEXT        NOT NULL DEFAULT 'apk',
+        status              build_status NOT NULL DEFAULT 'queued',
+        created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+        started_at          TIMESTAMPTZ,
+        completed_at        TIMESTAMPTZ,
+        build_duration_ms   INTEGER,
+        source_path         TEXT,
+        artifact_url        TEXT,
+        artifact_size_bytes BIGINT,
+        error_log           TEXT,
+        worker_id           TEXT,
+        container_id        TEXT,
+        version_name        TEXT        NOT NULL DEFAULT '1.0.0',
+        version_code        INTEGER     NOT NULL DEFAULT 1,
+        keystore_secret_id  TEXT
       );
-      CREATE INDEX IF NOT EXISTS idx_build_jobs_status ON build_jobs(status);
-      CREATE INDEX IF NOT EXISTS idx_build_jobs_user ON build_jobs(user_id);
+      CREATE INDEX IF NOT EXISTS idx_build_jobs_user_id    ON build_jobs(user_id);
+      CREATE INDEX IF NOT EXISTS idx_build_jobs_status     ON build_jobs(status) WHERE status IN ('queued', 'running');
+      CREATE INDEX IF NOT EXISTS idx_build_jobs_created_at ON build_jobs(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_build_jobs_stuck      ON build_jobs(started_at) WHERE status = 'running';
+    `);
+
+    // Enable Row-Level Security
+    await client.query(`
+      ALTER TABLE build_jobs ENABLE ROW LEVEL SECURITY;
+      
+      DO $$ BEGIN
+        CREATE POLICY build_jobs_user_isolation ON build_jobs
+          USING (user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID);
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
+    `);
+
+    // Create Roles and Grants
+    await client.query(`
+      DO $$ BEGIN
+        CREATE ROLE api_user NOLOGIN;
+      EXCEPTION WHEN duplicate_object THEN null; END $$;
+      
+      GRANT SELECT, INSERT ON build_jobs TO api_user;
+      GRANT UPDATE (status) ON build_jobs TO api_user;
+
+      DO $$ BEGIN
+        CREATE ROLE worker_user BYPASSRLS NOLOGIN;
+      EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+      GRANT SELECT, UPDATE ON build_jobs TO worker_user;
     `);
 
     await client.query('COMMIT');

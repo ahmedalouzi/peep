@@ -32,9 +32,9 @@ async function runE2E() {
   const tmpPath = path.join(os.tmpdir(), `dummy_project_${Date.now()}.zip`);
   await fs.writeFile(tmpPath, zipBuffer);
 
+  // We must execute queries as the api_user or worker_user. For simplicity in tests, we can just use the db pool but set the context.
   // 4. Inject into the database (simulating the POST /upload endpoint)
   console.log('[TEST] Injecting job into build_jobs table...');
-  // We need a dummy user_id
   const userId = crypto.randomUUID();
   await db.query(`
     INSERT INTO users (id, email, password_hash)
@@ -42,13 +42,29 @@ async function runE2E() {
     ON CONFLICT DO NOTHING
   `, [userId, `e2e_${Date.now()}@test.com`]);
 
-  const result = await db.query(`
-    INSERT INTO build_jobs (user_id, project_id, status, artifact_path)
-    VALUES ($1, 'e2e_test_project', 'queued', $2)
-    RETURNING id
-  `, [userId, tmpPath]);
+  const dbClient = await db.connect();
+  let jobId: string;
+  try {
+    await dbClient.query('BEGIN');
+    // SECURITY CRITICAL: The base connection authenticates as the postgres superuser.
+    // RLS protection depends ENTIRELY on this line being present. If forgotten, 
+    // the endpoint silently loses all tenant isolation and fails open.
+    await dbClient.query('SET LOCAL ROLE api_user');
+    await dbClient.query('SELECT set_config($1, $2, true)', ['app.current_user_id', userId]);
+    const result = await dbClient.query(`
+      INSERT INTO build_jobs (user_id, project_id, status, source_path)
+      VALUES ($1, 'e2e_test_project', 'queued', $2)
+      RETURNING id
+    `, [userId, tmpPath]);
+    jobId = result.rows[0].id;
+    await dbClient.query('COMMIT');
+  } catch (e) {
+    await dbClient.query('ROLLBACK');
+    throw e;
+  } finally {
+    dbClient.release();
+  }
 
-  const jobId = result.rows[0].id;
   console.log(`[TEST] Job injected with ID: ${jobId}`);
 
   // 5. Poll the database to monitor state transitions
@@ -56,7 +72,9 @@ async function runE2E() {
   let currentStatus = 'queued';
   
   const pollInterval = setInterval(async () => {
-    const jobRes = await db.query(`SELECT status, logs, artifact_path FROM build_jobs WHERE id = $1`, [jobId]);
+    // Poll as worker (BYPASSRLS) or user (requires SET LOCAL)
+    // Here we query as admin/worker so we just bypass
+    const jobRes = await db.query(`SELECT status, error_log, artifact_url FROM build_jobs WHERE id = $1`, [jobId]);
     if (jobRes.rows.length === 0) return;
     
     const job = jobRes.rows[0];
@@ -69,8 +87,8 @@ async function runE2E() {
       clearInterval(pollInterval);
       console.log('--- E2E Test Finished ---');
       console.log(`Final Status: ${currentStatus}`);
-      console.log(`Artifact Path: ${job.artifact_path}`);
-      console.log(`\n--- Docker Logs ---\n${job.logs}`);
+      console.log(`Artifact URL: ${job.artifact_url}`);
+      console.log(`\n--- Error Logs ---\n${job.error_log}`);
       
       console.log('\n[TEST] Cleaning up test data...');
       await db.query(`DELETE FROM build_jobs WHERE id = $1`, [jobId]);

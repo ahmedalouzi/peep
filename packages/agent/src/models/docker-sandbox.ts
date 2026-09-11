@@ -1,9 +1,44 @@
 import { spawn } from 'node:child_process';
 import { promisify } from 'node:util';
+
+export type BuildFramework = 'flutter' | 'react-native';
+
 export interface SandboxConfig {
   jobId: string;
-  projectPath: string; // Path to the extracted project on the host
+  projectPath: string;
   timeoutMs?: number; // Default: 15 minutes
+  framework?: BuildFramework; // Default: 'flutter'
+  keystorePath?: string; // Optional: path to .jks keystore on host
+  keystorePassword?: string;
+  keyAlias?: string;
+  keyPassword?: string;
+}
+
+// Docker images per framework
+const FRAMEWORK_IMAGES: Record<BuildFramework, string> = {
+  'flutter': 'ghcr.io/cirruslabs/flutter@sha256:d82e88a313627bfd8d6411f18ed82f3a4666f772591605335e69e061b4028405',
+  'react-native': 'reactnativecommunity/react-native-android:latest',
+};
+
+// Build commands per framework
+function getBuildCommand(framework: BuildFramework, hasKeystore: boolean): string {
+  if (framework === 'flutter') {
+    return 'flutter build apk --release';
+  }
+
+  // React Native
+  if (hasKeystore) {
+    return 'cd android && ./gradlew assembleRelease';
+  }
+  return 'npx react-native build-android --mode=release';
+}
+
+// Expected output artifact path inside the container
+function getArtifactPath(framework: BuildFramework): string {
+  if (framework === 'flutter') {
+    return '/workspace/build/app/outputs/flutter-apk/app-release.apk';
+  }
+  return '/workspace/android/app/build/outputs/apk/release/app-release.apk';
 }
 
 export class DockerSandbox {
@@ -16,13 +51,11 @@ export class DockerSandbox {
     this.containerName = `build_sandbox_${config.jobId}`;
   }
 
-  // Set up dnsmasq isolation network
   private async setupNetwork(): Promise<string> {
     const netName = 'build_sandbox_net';
     try {
       const { exec } = await import('node:child_process');
       const execAsync = promisify(exec);
-      // Attempt to create network (ignore error if exists)
       await execAsync(`docker network create --driver bridge ${netName}`).catch(() => {});
     } catch (e) {}
     return netName;
@@ -33,12 +66,14 @@ export class DockerSandbox {
    */
   async runBuild(onLog: (chunk: string) => void): Promise<boolean> {
     const timeoutMs = this.config.timeoutMs || 15 * 60 * 1000;
-    const image = 'ghcr.io/cirruslabs/flutter@sha256:d82e88a313627bfd8d6411f18ed82f3a4666f772591605335e69e061b4028405';
-    
-    // Ensure network exists
+    const framework = this.config.framework || 'flutter';
+    const image = FRAMEWORK_IMAGES[framework];
+    const hasKeystore = !!this.config.keystorePath;
+    const buildCommand = getBuildCommand(framework, hasKeystore);
+
     const netName = await this.setupNetwork();
 
-    // 1. Create the container (do not start yet)
+    // Build the create args
     const createArgs = [
       'create',
       '--name', this.containerName,
@@ -50,18 +85,46 @@ export class DockerSandbox {
       '--cap-drop=ALL',
       '--security-opt', 'no-new-privileges',
       '--network', netName,
-      '--dns', '172.30.0.1',  // Assume dnsmasq is on gateway
+      '--dns', '172.30.0.1',
       '--user=1000:1000',
       '-w', '/workspace',
       image,
-      'sh', '-c', 'flutter build apk --release'
     ];
 
-    onLog(`[SYSTEM] Creating sandbox with security constraints...\n`);
-    
+    // Build the actual shell command to run inside the container
+    let shellScript = buildCommand;
+
+    // If keystore is provided, set up signing config before building
+    if (hasKeystore && this.config.keystorePassword && this.config.keyAlias) {
+      const keyPassword = this.config.keyPassword || this.config.keystorePassword;
+      if (framework === 'flutter') {
+        // Flutter reads key.properties for signing
+        shellScript = [
+          `echo "storeFile=/signing/release.jks" > /workspace/android/key.properties`,
+          `echo "storePassword=${this.config.keystorePassword}" >> /workspace/android/key.properties`,
+          `echo "keyAlias=${this.config.keyAlias}" >> /workspace/android/key.properties`,
+          `echo "keyPassword=${keyPassword}" >> /workspace/android/key.properties`,
+          buildCommand,
+        ].join(' && ');
+      } else {
+        // React Native uses gradle.properties
+        shellScript = [
+          `echo "MYAPP_UPLOAD_STORE_FILE=/signing/release.jks" >> /workspace/android/gradle.properties`,
+          `echo "MYAPP_UPLOAD_STORE_PASSWORD=${this.config.keystorePassword}" >> /workspace/android/gradle.properties`,
+          `echo "MYAPP_UPLOAD_KEY_ALIAS=${this.config.keyAlias}" >> /workspace/android/gradle.properties`,
+          `echo "MYAPP_UPLOAD_KEY_PASSWORD=${keyPassword}" >> /workspace/android/gradle.properties`,
+          buildCommand,
+        ].join(' && ');
+      }
+    }
+
+    createArgs.push('sh', '-c', shellScript);
+
+    onLog(`[SYSTEM] Creating ${framework} sandbox with security constraints...\n`);
+
     const { exec } = await import('node:child_process');
     const execAsync = promisify(exec);
-    
+
     try {
       await execAsync(`docker ${createArgs.join(' ')}`);
     } catch (err: any) {
@@ -69,7 +132,7 @@ export class DockerSandbox {
       return false;
     }
 
-    // 2. Inject source code using docker cp (isolated from host kernel mounts)
+    // Inject source code
     onLog(`[SYSTEM] Injecting source files...\n`);
     try {
       await execAsync(`docker cp ${this.config.projectPath}/. ${this.containerName}:/workspace`);
@@ -78,8 +141,20 @@ export class DockerSandbox {
       return false;
     }
 
-    // 3. Start the container and stream logs
-    onLog(`[SYSTEM] Starting build process...\n`);
+    // Inject keystore file if provided
+    if (hasKeystore) {
+      onLog(`[SYSTEM] Injecting signing keystore...\n`);
+      try {
+        await execAsync(`docker exec ${this.containerName} mkdir -p /signing`);
+        await execAsync(`docker cp ${this.config.keystorePath} ${this.containerName}:/signing/release.jks`);
+      } catch (err: any) {
+        onLog(`[SYSTEM] Keystore injection failed: ${err.message}\n`);
+        return false;
+      }
+    }
+
+    // Start container and stream logs
+    onLog(`[SYSTEM] Starting ${framework} build process...\n`);
     return new Promise((resolve) => {
       let isResolved = false;
       this.childProcess = spawn('docker', ['start', '-a', this.containerName]);
@@ -117,7 +192,26 @@ export class DockerSandbox {
   }
 
   /**
-   * Forcefully kills the container if it exceeds limits or is cancelled.
+   * Extracts the built artifact from the container to a local path.
+   */
+  async extractArtifact(localDestPath: string): Promise<boolean> {
+    const framework = this.config.framework || 'flutter';
+    const artifactPath = getArtifactPath(framework);
+
+    const { exec } = await import('node:child_process');
+    const execAsync = promisify(exec);
+
+    try {
+      await execAsync(`docker cp ${this.containerName}:${artifactPath} ${localDestPath}`);
+      return true;
+    } catch (err: any) {
+      console.error(`[DOCKER] Artifact extraction failed: ${err.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Forcefully kills the container.
    */
   forceKill() {
     try {

@@ -5,3 +5,4 @@ export * from './models/budget-guard';
 export * from './models/usage-store';
 export * from './models/db';
 export * from './models/build-worker';
+export * from './models/artifact-store';

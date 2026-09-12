@@ -3,11 +3,10 @@ import { Terminal } from '@xterm/xterm';
 import { useBuildStore } from '../../stores/build-store';
 import { buildApi } from '../../services/build-api';
 import { CloudBuildJob } from '@peep/shared';
-// CSS imports are bundled by Vite at build time; Node.js test runner skips them via the
-// tsconfig paths resolution — these are safe to keep here.
-/* eslint-disable import/no-unresolved */
-try { require('./BuildPanel.css'); } catch { /* ignored in node test context */ }
-try { require('@xterm/xterm/css/xterm.css'); } catch { /* ignored in node test context */ }
+// CSS imports — bundled by Vite at build time via ?inline static imports.
+// This is the correct Vite/Electron renderer pattern; no require() needed.
+import _buildPanelCss from './BuildPanel.css?inline';
+import _xtermCss from '@xterm/xterm/css/xterm.css?inline';
 
 export function BuildPanel() {
   const currentBuild = useBuildStore((s) => s.currentBuild);

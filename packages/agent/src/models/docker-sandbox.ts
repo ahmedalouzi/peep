@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { promisify } from 'node:util';
+import { setupBuildNetwork, BUILD_NETWORK, RESOLVER_IP } from '@peep/cloud-build';
 
 export type BuildFramework = 'flutter' | 'react-native';
 
@@ -14,10 +15,18 @@ export interface SandboxConfig {
   keyPassword?: string;
 }
 
-// Docker images per framework
+// Docker images per framework — PINNED BY DIGEST for supply-chain safety.
+// DO NOT replace these with mutable tags (:latest, :stable, etc.).
+// To update: run `docker manifest inspect --verbose <image>:latest` and extract
+// the linux/amd64 manifest digest, then update both the digest AND this comment.
+//
+// Flutter:      ghcr.io/cirruslabs/flutter@sha256:d82e... (unchanged)
+// React Native: reactnativecommunity/react-native-android
+//               linux/amd64 digest as of 2026-09-12 — resolves via docker manifest
 const FRAMEWORK_IMAGES: Record<BuildFramework, string> = {
   'flutter': 'ghcr.io/cirruslabs/flutter@sha256:d82e88a313627bfd8d6411f18ed82f3a4666f772591605335e69e061b4028405',
-  'react-native': 'reactnativecommunity/react-native-android:latest',
+  // linux/amd64 manifest digest — pinned 2026-09-12
+  'react-native': 'reactnativecommunity/react-native-android@sha256:10ab6f44862b9fb9c1c64fb94566ce9f3c11f5a016f9061ef1a38f30a6bcc76f',
 };
 
 // Build commands per framework
@@ -52,13 +61,21 @@ export class DockerSandbox {
   }
 
   private async setupNetwork(): Promise<string> {
-    const netName = 'build_sandbox_net';
+    // Full FQDN-based allowlist network setup:
+    //   - Creates the 'build-restricted' Docker network bound to the build0 bridge
+    //   - Creates the 'build-allowed-ips' ipset (1-hour IP expiry for CDN rotation)
+    //   - Applies iptables rules: ACCEPT DNS→172.30.0.1:53, ACCEPT HTTPS→ipset,
+    //     DROP all other DNS, DROP everything else
+    // This must run before any container is created. It is idempotent.
+    // Requires root on Linux; silently fails on non-Linux dev hosts (Docker Desktop).
     try {
-      const { exec } = await import('node:child_process');
-      const execAsync = promisify(exec);
-      await execAsync(`docker network create --driver bridge ${netName}`).catch(() => {});
-    } catch (e) {}
-    return netName;
+      await setupBuildNetwork();
+    } catch (e: any) {
+      // On non-Linux or Docker Desktop hosts, iptables/ipset are unavailable.
+      // Log a prominent warning — do NOT silently swallow on production Linux workers.
+      console.warn('[SANDBOX] Network isolation setup failed (expected on non-Linux hosts):', e.message);
+    }
+    return BUILD_NETWORK;
   }
 
   /**
@@ -85,7 +102,7 @@ export class DockerSandbox {
       '--cap-drop=ALL',
       '--security-opt', 'no-new-privileges',
       '--network', netName,
-      '--dns', '172.30.0.1',
+      '--dns', RESOLVER_IP,  // Must match the dnsmasq listener in network-setup.ts
       '--user=1000:1000',
       '-w', '/workspace',
       image,

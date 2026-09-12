@@ -20,11 +20,11 @@
   "dependencies": {
     "@expo/metro-runtime": "^57.0.7",
     "expo": "^57.0.8",
-    "react-dom": "^19.2.3",
+    "react-dom": "^18.3.1",
     "react-native-web": "^0.21.2"
   },
   "devDependencies": {
-    "@types/react": "~19.2.4",
+    "@types/react": "~18.3.18",
     "typescript": "~6.0.3"
   }
 }

@@ -5,10 +5,37 @@ import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 import AdmZip from 'adm-zip';
 
+// ---------------------------------------------------------------------------
+// RLS helper
+// ---------------------------------------------------------------------------
+// SECURITY CRITICAL: The base pool authenticates as the postgres superuser.
+// worker_user has BYPASSRLS — it can see all build_jobs rows for worker ops
+// (claim, update, reconcile). All build_jobs queries MUST use this wrapper.
+// Any future code that touches build_jobs without this wrapper silently
+// regresses to superuser and loses role accountability.
+async function withWorkerRole<T>(fn: (c: { query: Function }) => Promise<T>): Promise<T> {
+  const c = await db.connect();
+  try {
+    await c.query('BEGIN');
+    // RLS protection depends ENTIRELY on this line being present.
+    await c.query('SET LOCAL ROLE worker_user');
+    const result = await fn(c);
+    await c.query('COMMIT');
+    return result;
+  } catch (err) {
+    await c.query('ROLLBACK');
+    throw err;
+  } finally {
+    (c as any).release();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Reconciler: Recovers orphaned running jobs that the worker failed to complete
+// ---------------------------------------------------------------------------
 async function reconcileOrphanedJobs() {
   try {
-    const res = await db.query(`
+    const res = await withWorkerRole(async (c) => c.query(`
       UPDATE build_jobs
       SET status = 'failed',
           error_log = COALESCE(error_log, '') || '[RECONCILER] Job abandoned. Worker crashed or timed out.',
@@ -16,7 +43,7 @@ async function reconcileOrphanedJobs() {
       WHERE status = 'running' 
         AND updated_at < NOW() - INTERVAL '12 minutes'
       RETURNING id
-    `);
+    `));
     if (res.rows.length > 0) {
       console.log(`[RECONCILER] Recovered ${res.rows.length} orphaned jobs: ${res.rows.map((r: any) => r.id).join(', ')}`);
     }
@@ -25,7 +52,9 @@ async function reconcileOrphanedJobs() {
   }
 }
 
+// ---------------------------------------------------------------------------
 // Reaper: Force kills orphaned containers older than 15 minutes
+// ---------------------------------------------------------------------------
 async function reapOrphanedContainers() {
   const { exec } = await import('node:child_process');
   exec('docker ps -aq --filter name=build_sandbox_', (err, stdout) => {
@@ -37,6 +66,9 @@ async function reapOrphanedContainers() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Worker entrypoint
+// ---------------------------------------------------------------------------
 export async function startBuildWorker() {
   console.log('[BUILD_WORKER] Starting worker, reconciler, and reaper...');
   
@@ -60,22 +92,26 @@ export async function startBuildWorker() {
   // Simple recursive polling loop
   const poll = async () => {
     try {
-      const result = await db.query(`
+      // Claim next queued job as worker_user (BYPASSRLS, no app.current_user_id needed)
+      const result = await withWorkerRole(async (c) => c.query(`
         SELECT id, user_id, project_id, status, source_path, framework, keystore_secret_id
         FROM build_jobs 
         WHERE status = 'queued' 
         ORDER BY created_at ASC 
         LIMIT 1 
         FOR UPDATE SKIP LOCKED
-      `);
+      `));
 
       if (result.rows.length > 0) {
         const job = result.rows[0];
         const framework: BuildFramework = job.framework || 'flutter';
         console.log(`[BUILD_WORKER] Picked up ${framework} job ${job.id} for project ${job.project_id}`);
         
-        // Mark as running
-        await db.query(`UPDATE build_jobs SET status = 'running', started_at = NOW(), updated_at = NOW() WHERE id = $1`, [job.id]);
+        // Mark as running — still inside worker_user role via wrapper
+        await withWorkerRole(async (c) => c.query(
+          `UPDATE build_jobs SET status = 'running', started_at = NOW(), updated_at = NOW() WHERE id = $1`,
+          [job.id]
+        ));
         
         // Extract the ZIP
         const extractPath = path.join('/tmp/builds', `${job.id}_extracted`);
@@ -89,7 +125,10 @@ export async function startBuildWorker() {
           }
         } catch (err: any) {
           console.error(`[BUILD_WORKER] Extraction failed for job ${job.id}:`, err);
-          await db.query(`UPDATE build_jobs SET status = 'failed', error_log = COALESCE(error_log, '') || $1, updated_at = NOW() WHERE id = $2`, [`Extraction Failed: ${err.message}\n`, job.id]);
+          await withWorkerRole(async (c) => c.query(
+            `UPDATE build_jobs SET status = 'failed', error_log = COALESCE(error_log, '') || $1, updated_at = NOW() WHERE id = $2`,
+            [`Extraction Failed: ${err.message}\n`, job.id]
+          ));
           return setImmediate(poll);
         }
 
@@ -138,8 +177,11 @@ export async function startBuildWorker() {
           
           const buildDuration = Date.now() - buildStartTime;
 
-          // Append logs to database
-          await db.query(`UPDATE build_jobs SET error_log = COALESCE(error_log, '') || $1, build_duration_ms = $2 WHERE id = $3`, [logsBuffer, buildDuration, job.id]);
+          // Append logs to database (worker_user can update any row)
+          await withWorkerRole(async (c) => c.query(
+            `UPDATE build_jobs SET error_log = COALESCE(error_log, '') || $1, build_duration_ms = $2 WHERE id = $3`,
+            [logsBuffer, buildDuration, job.id]
+          ));
 
           if (success) {
             console.log(`[BUILD_WORKER] Job ${job.id} completed successfully in ${buildDuration}ms.`);
@@ -152,24 +194,36 @@ export async function startBuildWorker() {
             if (extracted) {
               try {
                 const { url, sizeBytes } = await uploadArtifact(job.id, localApkPath, 'app-release.apk');
-                await db.query(
+                await withWorkerRole(async (c) => c.query(
                   `UPDATE build_jobs SET status = 'success', completed_at = NOW(), artifact_url = $1, artifact_size_bytes = $2, updated_at = NOW() WHERE id = $3`,
                   [url, sizeBytes, job.id]
-                );
+                ));
               } catch (uploadErr: any) {
+                // SECURITY FIX: Never store a local filesystem path as artifact_url.
+                // A local /tmp path is not a valid download URL for clients. Instead,
+                // we mark the job failed so the user sees an honest error state.
                 console.error(`[BUILD_WORKER] MinIO upload failed for job ${job.id}:`, uploadErr);
-                // Fallback: store local path if MinIO is unavailable
-                await db.query(
-                  `UPDATE build_jobs SET status = 'success', completed_at = NOW(), artifact_url = $1, updated_at = NOW() WHERE id = $2`,
-                  [localApkPath, job.id]
-                );
+                await withWorkerRole(async (c) => c.query(
+                  `UPDATE build_jobs SET status = 'failed', completed_at = NOW(),
+                    error_log = COALESCE(error_log, '') || $1, updated_at = NOW() WHERE id = $2`,
+                  [
+                    `[STORAGE] Artifact storage unavailable — build succeeded but could not be delivered. Error: ${uploadErr.message}\n`,
+                    job.id,
+                  ]
+                ));
               }
             } else {
-              await db.query(`UPDATE build_jobs SET status = 'failed', completed_at = NOW(), error_log = COALESCE(error_log, '') || '[SYSTEM] Artifact extraction failed.\n', updated_at = NOW() WHERE id = $1`, [job.id]);
+              await withWorkerRole(async (c) => c.query(
+                `UPDATE build_jobs SET status = 'failed', completed_at = NOW(), error_log = COALESCE(error_log, '') || '[SYSTEM] Artifact extraction failed.\n', updated_at = NOW() WHERE id = $1`,
+                [job.id]
+              ));
             }
           } else {
             console.log(`[BUILD_WORKER] Job ${job.id} failed after ${buildDuration}ms.`);
-            await db.query(`UPDATE build_jobs SET status = 'failed', completed_at = NOW(), updated_at = NOW() WHERE id = $1`, [job.id]);
+            await withWorkerRole(async (c) => c.query(
+              `UPDATE build_jobs SET status = 'failed', completed_at = NOW(), updated_at = NOW() WHERE id = $1`,
+              [job.id]
+            ));
           }
         } finally {
           sandbox.forceKill();

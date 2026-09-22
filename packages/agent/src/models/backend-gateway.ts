@@ -242,8 +242,21 @@ import { ServerBudgetGuard } from './budget-guard';
 import { GoogleGeminiAdapter } from './google-adapter';
 import type { AgentLogger } from '../orchestrator';
 
-let Sentry: any;
-try { Sentry = await import('@sentry/electron/main'); } catch { Sentry = null; }
+export let Sentry: any = null;
+export let sentryLoadPromise: Promise<void> | null = null;
+export function ensureSentryLoaded() {
+  if (!sentryLoadPromise) {
+    sentryLoadPromise = import('@sentry/electron/main')
+      .then(m => { Sentry = m; })
+      .catch(() => { Sentry = null; });
+  }
+  return sentryLoadPromise;
+}
+
+export function _resetSentryLoaderForTest() {
+  Sentry = null;
+  sentryLoadPromise = null;
+}
 
 export class BackendAIGateway {
   private adapters = new Map<string, ProviderAdapter>();
@@ -620,8 +633,9 @@ export class BackendAIGateway {
                   totalTokens: finalUsage?.totalTokens || finalUsage?.total_tokens || (iTokens + oTokens),
                   estimatedCost: estCost,
                   status: options?.signal?.aborted ? 'cancelled' : finalStatus
-                }).catch((usageErr: any) => {
+                }).catch(async (usageErr: any) => {
                   self.logger.error('Failed to record streaming usage — financial data loss risk', { requestId, error: usageErr?.message });
+                  await ensureSentryLoaded();
                   if (Sentry?.captureException) Sentry.captureException(usageErr, { tags: { requestId, path: '/v1/ai/stream' } });
                 });
 
@@ -645,8 +659,9 @@ export class BackendAIGateway {
             totalTokens: 0,
             estimatedCost: 0,
             status: options?.signal?.aborted ? 'cancelled' : 'failed'
-          }).catch((usageErr: any) => {
+          }).catch(async (usageErr: any) => {
             this.logger.error('Failed to record stream error usage — financial data loss risk', { requestId, error: usageErr?.message });
+            await ensureSentryLoaded();
             if (Sentry?.captureException) Sentry.captureException(usageErr, { tags: { requestId, path: '/v1/ai/stream' } });
           });
           this.budgetGuard.releaseLock(session.userId);

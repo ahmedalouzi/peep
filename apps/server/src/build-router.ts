@@ -1,8 +1,8 @@
-import express from 'express';
+import express, { Router } from 'express';
 import multer from 'multer';
-import { client } from '@peep/agent/server';
+import { db as client } from '@peep/agent/server';
 
-export const buildRouter = express.Router();
+export const buildRouter: Router = express.Router();
 
 // Configure multer for zip uploads (max 50MB limit)
 const upload = multer({

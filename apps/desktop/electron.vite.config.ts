@@ -32,6 +32,7 @@ export default defineConfig({
     },
   },
   renderer: {
+    envDir: resolve(__dirname, '../../../'),
     resolve: {
       alias: {
         '@renderer': resolve(__dirname, 'src/renderer/src'),

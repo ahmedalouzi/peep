@@ -169,21 +169,50 @@ export async function startBuildWorker() {
         
         const buildStartTime = Date.now();
         let logsBuffer = '';
+        let logsFlushed = 0;
+        let jobCancelled = false;
+
+        // Periodic cancel check and log flush while build is running
+        const cancelInterval = setInterval(async () => {
+          try {
+            const res = await withWorkerRole(async (c) => c.query(
+              `SELECT status FROM build_jobs WHERE id = $1`, [job.id]
+            ));
+            if (res.rows[0]?.status === 'cancelled') {
+              console.log(`[BUILD_WORKER] Job ${job.id} cancelled by user. Terminating sandbox...`);
+              jobCancelled = true;
+              sandbox.forceKill();
+            } else if (logsBuffer.length > logsFlushed) {
+              const toFlush = logsBuffer.substring(logsFlushed);
+              logsFlushed = logsBuffer.length;
+              await withWorkerRole(async (c) => c.query(
+                `UPDATE build_jobs SET error_log = COALESCE(error_log, '') || $1 WHERE id = $2`,
+                [toFlush, job.id]
+              ));
+            }
+          } catch (err) {
+            console.error(`[BUILD_WORKER] Error in periodic check for job ${job.id}:`, err);
+          }
+        }, 5000);
+
         try {
           const success = await sandbox.runBuild((logChunk) => {
             process.stdout.write(`[SANDBOX ${job.id}] ${logChunk}`);
             logsBuffer += logChunk + '\n';
           });
           
+          clearInterval(cancelInterval);
+          
           const buildDuration = Date.now() - buildStartTime;
 
-          // Append logs to database (worker_user can update any row)
+          // Flush any remaining logs that weren't caught by the interval
+          const remainingLogs = logsBuffer.substring(logsFlushed);
           await withWorkerRole(async (c) => c.query(
             `UPDATE build_jobs SET error_log = COALESCE(error_log, '') || $1, build_duration_ms = $2 WHERE id = $3`,
-            [logsBuffer, buildDuration, job.id]
+            [remainingLogs, buildDuration, job.id]
           ));
 
-          if (success) {
+          if (success && !jobCancelled) {
             console.log(`[BUILD_WORKER] Job ${job.id} completed successfully in ${buildDuration}ms.`);
             
             // Extract artifact from container and upload to MinIO
@@ -195,7 +224,7 @@ export async function startBuildWorker() {
               try {
                 const { url, sizeBytes } = await uploadArtifact(job.id, localApkPath, 'app-release.apk');
                 await withWorkerRole(async (c) => c.query(
-                  `UPDATE build_jobs SET status = 'success', completed_at = NOW(), artifact_url = $1, artifact_size_bytes = $2, updated_at = NOW() WHERE id = $3`,
+                  `UPDATE build_jobs SET status = 'success', completed_at = NOW(), artifact_url = $1, artifact_size_bytes = $2, updated_at = NOW() WHERE id = $3 AND status != 'cancelled'`,
                   [url, sizeBytes, job.id]
                 ));
               } catch (uploadErr: any) {
@@ -205,7 +234,7 @@ export async function startBuildWorker() {
                 console.error(`[BUILD_WORKER] MinIO upload failed for job ${job.id}:`, uploadErr);
                 await withWorkerRole(async (c) => c.query(
                   `UPDATE build_jobs SET status = 'failed', completed_at = NOW(),
-                    error_log = COALESCE(error_log, '') || $1, updated_at = NOW() WHERE id = $2`,
+                    error_log = COALESCE(error_log, '') || $1, updated_at = NOW() WHERE id = $2 AND status != 'cancelled'`,
                   [
                     `[STORAGE] Artifact storage unavailable — build succeeded but could not be delivered. Error: ${uploadErr.message}\n`,
                     job.id,
@@ -214,18 +243,21 @@ export async function startBuildWorker() {
               }
             } else {
               await withWorkerRole(async (c) => c.query(
-                `UPDATE build_jobs SET status = 'failed', completed_at = NOW(), error_log = COALESCE(error_log, '') || '[SYSTEM] Artifact extraction failed.\n', updated_at = NOW() WHERE id = $1`,
+                `UPDATE build_jobs SET status = 'failed', completed_at = NOW(), error_log = COALESCE(error_log, '') || '[SYSTEM] Artifact extraction failed.\n', updated_at = NOW() WHERE id = $1 AND status != 'cancelled'`,
                 [job.id]
               ));
             }
-          } else {
+          } else if (!jobCancelled) {
             console.log(`[BUILD_WORKER] Job ${job.id} failed after ${buildDuration}ms.`);
             await withWorkerRole(async (c) => c.query(
-              `UPDATE build_jobs SET status = 'failed', completed_at = NOW(), updated_at = NOW() WHERE id = $1`,
+              `UPDATE build_jobs SET status = 'failed', completed_at = NOW(), updated_at = NOW() WHERE id = $1 AND status != 'cancelled'`,
               [job.id]
             ));
+          } else {
+            console.log(`[BUILD_WORKER] Job ${job.id} exited due to user cancellation after ${buildDuration}ms.`);
           }
         } finally {
+          clearInterval(cancelInterval);
           sandbox.forceKill();
           try {
             await fs.rm(extractPath, { recursive: true, force: true });

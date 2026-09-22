@@ -577,6 +577,11 @@ export const IPC_CHANNELS = {
   PUBLISH_LIST_BUILDS: 'publish:listBuilds',
   PUBLISH_OPEN_FOLDER: 'publish:openFolder',
   PUBLISH_EXPORT_PROJECT: 'publish:exportProject',
+  // Cloud Build
+  CLOUD_BUILD_START: 'cloudBuild:start',
+  CLOUD_BUILD_GET: 'cloudBuild:get',
+  CLOUD_BUILD_HISTORY: 'cloudBuild:history',
+  CLOUD_BUILD_CANCEL: 'cloudBuild:cancel',
 } as const;
 
 export interface ConnectedDevice {
@@ -671,6 +676,8 @@ export const IPC_EVENTS = {
   AGENT_TIMELINE: 'agent:timeline',
   AGENT_PHASE_CHANGED: 'agent:phaseChanged',
   FILE_CHANGED: 'file:changed',
+  // Cloud Build
+  BUILD_LOG_CHUNK: 'build:logChunk',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
@@ -806,6 +813,12 @@ export interface IpcApi {
   onWorkspaceChangedBatch?: (callback: (payload: { events: WorkspaceChangeEvent[] }) => void) => () => void;
   pocToggle?: (visible: boolean) => Promise<void>;
   pocBounds?: (bounds: any) => void;
+  // Cloud Build
+  startCloudBuild?: (workspacePath: string, framework: string, target: string) => Promise<any>;
+  getCloudBuild?: (id: string) => Promise<any>;
+  cancelCloudBuild?: (id: string) => Promise<any>;
+  getCloudBuildHistory?: () => Promise<any[]>;
+  onBuildLogChunk?: (callback: (payload: { id: string; chunk: string }) => void) => () => void;
 }
 
 declare global {

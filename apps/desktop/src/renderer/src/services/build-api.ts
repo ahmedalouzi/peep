@@ -176,6 +176,10 @@ class RealBuildApi implements IBuildApi {
   }
 }
 
-export const buildApi: IBuildApi = (import.meta as any).env?.VITE_USE_REAL_BUILD_API
+export function shouldUseRealBuildApi(envValue: string | undefined | boolean): boolean {
+  return envValue === 'true' || envValue === true;
+}
+
+export const buildApi: IBuildApi = shouldUseRealBuildApi((import.meta as any).env?.VITE_USE_REAL_BUILD_API)
   ? new RealBuildApi()
   : new MockBuildApi();

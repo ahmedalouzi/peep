@@ -18,6 +18,7 @@ import { TerminalService } from '../services/terminal-service';
 import { ProjectService } from '../services/project-service';
 import { TelemetryService } from '../services/telemetry-service';
 import { AutoUpdateService } from '../services/auto-update-service';
+import { cloudBuildService } from '../services/cloud-build-service';
 import { ReactNativeService } from '../services/react-native-service';
 import { ReactNativeManagedProvider } from '../services/providers/react-native-managed';
 import { PlatformRegistry } from '../services/platform-registry';
@@ -953,6 +954,26 @@ export async function registerIpcHandlers(): Promise<{
   ipcMain.handle(IPC_CHANNELS.PUBLISH_DEPLOY, async (_event, projectPath: string, _platform: 'flutter' | 'react-native', target: 'vercel' | 'netlify', token?: string) => {
     if (!publishService) throw new Error('Publish service not initialized');
     return publishService.buildAndDeploy(projectPath, target, token);
+  });
+
+  // ── Cloud Build ────────────────────────────────────────────────────────────
+
+  ipcMain.handle(IPC_CHANNELS.CLOUD_BUILD_START, async (_event, workspacePath: string, framework: string, target: string) => {
+    const build = await cloudBuildService.startBuild(workspacePath, framework, target);
+    cloudBuildService.startLogStream(build.id, mainWindow!);
+    return build;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.CLOUD_BUILD_GET, async (_event, id: string) => {
+    return cloudBuildService.getBuild(id);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.CLOUD_BUILD_HISTORY, async () => {
+    return cloudBuildService.getHistory();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.CLOUD_BUILD_CANCEL, async (_event, id: string) => {
+    return cloudBuildService.cancelBuild(id);
   });
 
   return { db, workspace, flutter, processManager, previewManager, agentService, gitService, terminalService, telemetryService, autoUpdateService: autoUpdateService! };

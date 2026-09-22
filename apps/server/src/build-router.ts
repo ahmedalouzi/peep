@@ -37,13 +37,25 @@ const buildRateLimiter = async (req: express.Request, res: express.Response, nex
   try {
     const userId = (req as any).user.userId;
 
-    // Check today's builds
-    const result = await client.query(`
-      SELECT COUNT(*) as count 
-      FROM build_jobs 
-      WHERE user_id = $1 
-        AND created_at >= NOW() - INTERVAL '1 day'
-    `, [userId]);
+    const dbClient = await client.connect();
+    let result;
+    try {
+      await dbClient.query('BEGIN');
+      await dbClient.query('SET LOCAL ROLE api_user');
+      await dbClient.query('SELECT set_config($1, $2, true)', ['app.current_user_id', userId]);
+      result = await dbClient.query(`
+        SELECT COUNT(*) as count 
+        FROM build_jobs 
+        WHERE user_id = $1 
+          AND created_at >= NOW() - INTERVAL '1 day'
+      `, [userId]);
+      await dbClient.query('COMMIT');
+    } catch (e) {
+      await dbClient.query('ROLLBACK');
+      throw e;
+    } finally {
+      dbClient.release();
+    }
 
     const count = parseInt(result.rows[0].count, 10);
     if (count >= 10) {
@@ -102,5 +114,182 @@ buildRouter.post('/upload', requireAuth, buildRateLimiter, upload.single('projec
   } catch (err) {
     console.error('[Build Upload Error]', err);
     res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+buildRouter.get('/history', requireAuth, async (req, res) => {
+  try {
+    const userId = (req as any).user.userId;
+
+    const dbClient = await client.connect();
+    try {
+      await dbClient.query('BEGIN');
+      await dbClient.query('SET LOCAL ROLE api_user');
+      await dbClient.query('SELECT set_config($1, $2, true)', ['app.current_user_id', userId]);
+      
+      const result = await dbClient.query(`
+        SELECT id, project_id, status, framework, created_at, started_at, completed_at, artifact_url
+        FROM build_jobs
+        WHERE user_id = $1
+        ORDER BY created_at DESC
+        LIMIT 50
+      `, [userId]);
+      
+      await dbClient.query('COMMIT');
+      res.json(result.rows);
+    } catch (e) {
+      await dbClient.query('ROLLBACK');
+      throw e;
+    } finally {
+      dbClient.release();
+    }
+  } catch (err) {
+    console.error('[GET /build/history]', err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+buildRouter.get('/:jobId', requireAuth, async (req, res) => {
+  try {
+    const userId = (req as any).user.userId;
+    const jobId = req.params.jobId;
+
+    const dbClient = await client.connect();
+    try {
+      await dbClient.query('BEGIN');
+      await dbClient.query('SET LOCAL ROLE api_user');
+      await dbClient.query('SELECT set_config($1, $2, true)', ['app.current_user_id', userId]);
+      
+      const result = await dbClient.query(`
+        SELECT id, project_id, status, framework, created_at, started_at, completed_at, error_log, artifact_url
+        FROM build_jobs
+        WHERE id = $1
+      `, [jobId]);
+      
+      await dbClient.query('COMMIT');
+
+      if (result.rows.length === 0) {
+        res.status(404).json({ error: 'Build job not found' });
+        return;
+      }
+      res.json(result.rows[0]);
+    } catch (e) {
+      await dbClient.query('ROLLBACK');
+      throw e;
+    } finally {
+      dbClient.release();
+    }
+  } catch (err) {
+    console.error('[GET /build/:jobId]', err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+buildRouter.post('/:jobId/cancel', requireAuth, async (req, res) => {
+  try {
+    const userId = (req as any).user.userId;
+    const jobId = req.params.jobId;
+
+    const dbClient = await client.connect();
+    try {
+      await dbClient.query('BEGIN');
+      await dbClient.query('SET LOCAL ROLE api_user');
+      await dbClient.query('SELECT set_config($1, $2, true)', ['app.current_user_id', userId]);
+      
+      const result = await dbClient.query(`
+        UPDATE build_jobs
+        SET status = 'cancelled', updated_at = NOW()
+        WHERE id = $1 AND status IN ('queued', 'running')
+        RETURNING id
+      `, [jobId]);
+      
+      await dbClient.query('COMMIT');
+
+      if (result.rows.length === 0) {
+        res.status(404).json({ error: 'Job not found, or cannot be cancelled' });
+        return;
+      }
+      res.json({ success: true, message: 'Job cancelled' });
+    } catch (e) {
+      await dbClient.query('ROLLBACK');
+      throw e;
+    } finally {
+      dbClient.release();
+    }
+  } catch (err) {
+    console.error('[POST /build/:jobId/cancel]', err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+buildRouter.get('/:jobId/stream', requireAuth, async (req, res) => {
+  try {
+    const userId = (req as any).user.userId;
+    const jobId = req.params.jobId;
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    const dbClient = await client.connect();
+    
+    // Send an initial chunk to establish connection
+    res.write(`data: ${JSON.stringify({ status: 'connected', chunk: 'Connected to log stream\\r\\n' })}\n\n`);
+
+    // For MVP, we'll just poll the error_log column every 2 seconds
+    // In production, this should use LISTEN/NOTIFY or Redis PubSub
+    let lastLength = 0;
+    
+    const interval = setInterval(async () => {
+      try {
+        await dbClient.query('BEGIN');
+        await dbClient.query('SET LOCAL ROLE api_user');
+        await dbClient.query('SELECT set_config($1, $2, true)', ['app.current_user_id', userId]);
+        
+        const result = await dbClient.query(`
+          SELECT status, error_log
+          FROM build_jobs
+          WHERE id = $1
+        `, [jobId]);
+        
+        await dbClient.query('COMMIT');
+        
+        if (result.rows.length > 0) {
+          const row = result.rows[0];
+          const logStr = row.error_log || '';
+          
+          if (logStr.length > lastLength) {
+            const newChunk = logStr.slice(lastLength);
+            lastLength = logStr.length;
+            res.write(`data: ${JSON.stringify({ chunk: newChunk })}\n\n`);
+          }
+          
+          if (row.status === 'success' || row.status === 'failed' || row.status === 'cancelled') {
+            res.write(`data: ${JSON.stringify({ chunk: '\\r\\n[Stream Terminated: Job ' + row.status + ']' })}\n\n`);
+            clearInterval(interval);
+            dbClient.release();
+            res.end();
+          }
+        } else {
+          clearInterval(interval);
+          dbClient.release();
+          res.end();
+        }
+      } catch (err) {
+        await dbClient.query('ROLLBACK');
+        console.error('[GET /build/:jobId/stream poll error]', err);
+        clearInterval(interval);
+        dbClient.release();
+        res.end();
+      }
+    }, 2000);
+
+    req.on('close', () => {
+      clearInterval(interval);
+      try { dbClient.release(); } catch (e) {}
+    });
+  } catch (err) {
+    console.error('[GET /build/:jobId/stream]', err);
+    res.status(500).end();
   }
 });

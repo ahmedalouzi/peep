@@ -159,6 +159,12 @@ const api: IpcApi = {
   // PoC
   pocToggle: (visible: boolean) => ipcRenderer.invoke('peep:poc-toggle', { visible }),
   pocBounds: (bounds: any) => ipcRenderer.send('peep:poc-bounds', bounds),
+  // Cloud Build
+  startCloudBuild: (workspacePath: string, framework: string, target: string) => ipcRenderer.invoke(IPC_CHANNELS.CLOUD_BUILD_START, workspacePath, framework, target),
+  getCloudBuild: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.CLOUD_BUILD_GET, id),
+  cancelCloudBuild: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.CLOUD_BUILD_CANCEL, id),
+  getCloudBuildHistory: () => ipcRenderer.invoke(IPC_CHANNELS.CLOUD_BUILD_HISTORY),
+  onBuildLogChunk: (callback: (payload: { id: string; chunk: string }) => void) => subscribe<{ id: string; chunk: string }>(IPC_EVENTS.BUILD_LOG_CHUNK, callback),
 };
 
 contextBridge.exposeInMainWorld('peep', {

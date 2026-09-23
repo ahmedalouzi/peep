@@ -46,7 +46,7 @@ async function main() {
 
   console.log(`\n🚀 Running Synkro Unit Tests (${testFiles.length} suites)...\n`);
 
-  process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgres://testuser:testpass@localhost:5432/peep_test';
+  process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/peep_test';
   
   let dbOffline = false;
   try {

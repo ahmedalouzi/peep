@@ -23,7 +23,8 @@ import { Pool } from 'pg';
 
 const DB_URL =
   process.env.DATABASE_URL_WORKER ??
-  'postgres://postgres:postgres@localhost:5432/peep';
+  process.env.DATABASE_URL ??
+  'postgres://postgres:postgres@localhost:5432/peep_test';
 
 export async function run() {
   console.log('\n--- Worker RLS Identity Regression Test ---');
@@ -49,10 +50,12 @@ export async function run() {
       'worker_user',
       `REGRESSION: current_user is '${current_user}' — SET LOCAL ROLE worker_user is missing or broken`
     );
+    // session_user = the actual login role; on the test Docker container this is 'testuser'
+    const expectedSessionUser = new URL(DB_URL).username;
     assert.equal(
       session_user,
-      'postgres',
-      `Unexpected session_user: '${session_user}'`
+      expectedSessionUser,
+      `Unexpected session_user: '${session_user}' (expected '${expectedSessionUser}')`
     );
 
     await client.query('ROLLBACK');
@@ -66,8 +69,8 @@ export async function run() {
 
     assert.equal(
       current_without_role,
-      'postgres',
-      `Unexpected baseline: without role switch current_user is '${current_without_role}' instead of 'postgres'`
+      expectedSessionUser,
+      `Unexpected baseline: without role switch current_user is '${current_without_role}' instead of '${expectedSessionUser}'`
     );
     console.log(`  baseline (no role): current_user = '${current_without_role}' ✓`);
 

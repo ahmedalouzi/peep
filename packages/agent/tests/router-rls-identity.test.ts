@@ -22,7 +22,8 @@ import { randomUUID } from 'node:crypto';
 
 const DB_URL =
   process.env.DATABASE_URL_API ??
-  'postgres://postgres:postgres@localhost:5432/peep';
+  process.env.DATABASE_URL ??
+  'postgres://postgres:postgres@localhost:5432/peep_test';
 
 export async function run() {
   console.log('\n--- Router RLS Identity Regression Test ---');

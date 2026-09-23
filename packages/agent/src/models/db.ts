@@ -207,6 +207,13 @@ export async function initDbSchema() {
       EXCEPTION WHEN duplicate_object THEN null; END $$;
 
       GRANT SELECT, UPDATE ON build_jobs TO worker_user;
+
+      -- Allow the session login role to switch into api_user / worker_user.
+      -- SESSION_USER is the actual login credential (e.g. 'testuser' in test,
+      -- 'postgres' in prod). Without this GRANT, SET LOCAL ROLE fails with
+      -- "permission denied to set role".
+      GRANT api_user TO SESSION_USER;
+      GRANT worker_user TO SESSION_USER;
     `);
 
     await client.query('COMMIT');

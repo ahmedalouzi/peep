@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { promisify } from 'node:util';
-import { setupBuildNetwork, BUILD_NETWORK, RESOLVER_IP } from '@peep/cloud-build';
+import { setupBuildNetwork, BUILD_NETWORK, RESOLVER_IP } from './network-setup.js';
 
 export type BuildFramework = 'flutter' | 'react-native';
 
@@ -115,18 +115,18 @@ export class DockerSandbox {
     if (hasKeystore && this.config.keystorePassword && this.config.keyAlias) {
       const keyPassword = this.config.keyPassword || this.config.keystorePassword;
       if (framework === 'flutter') {
-        // Flutter reads key.properties for signing
         shellScript = [
-          `echo "storeFile=/signing/release.jks" > /workspace/android/key.properties`,
+          `mkdir -p /workspace/android`,
+          `echo "storeFile=/workspace/release.jks" > /workspace/android/key.properties`,
           `echo "storePassword=${this.config.keystorePassword}" >> /workspace/android/key.properties`,
           `echo "keyAlias=${this.config.keyAlias}" >> /workspace/android/key.properties`,
           `echo "keyPassword=${keyPassword}" >> /workspace/android/key.properties`,
           buildCommand,
         ].join(' && ');
       } else {
-        // React Native uses gradle.properties
         shellScript = [
-          `echo "MYAPP_UPLOAD_STORE_FILE=/signing/release.jks" >> /workspace/android/gradle.properties`,
+          `mkdir -p /workspace/android`,
+          `echo "MYAPP_UPLOAD_STORE_FILE=/workspace/release.jks" >> /workspace/android/gradle.properties`,
           `echo "MYAPP_UPLOAD_STORE_PASSWORD=${this.config.keystorePassword}" >> /workspace/android/gradle.properties`,
           `echo "MYAPP_UPLOAD_KEY_ALIAS=${this.config.keyAlias}" >> /workspace/android/gradle.properties`,
           `echo "MYAPP_UPLOAD_KEY_PASSWORD=${keyPassword}" >> /workspace/android/gradle.properties`,
@@ -139,20 +139,29 @@ export class DockerSandbox {
 
     onLog(`[SYSTEM] Creating ${framework} sandbox with security constraints...\n`);
 
-    const { exec } = await import('node:child_process');
-    const execAsync = promisify(exec);
+    const { execFile } = await import('node:child_process');
+    const execFileAsync = promisify(execFile);
 
     try {
-      await execAsync(`docker ${createArgs.join(' ')}`);
+      await execFileAsync('docker', createArgs);
     } catch (err: any) {
       onLog(`[SYSTEM] Container creation failed: ${err.message}\n`);
+      return false;
+    }
+
+    // Fix ownership on the host BEFORE injecting, so docker cp preserves 1000:1000
+    onLog(`[SYSTEM] Setting source ownership to unprivileged user...\n`);
+    try {
+      await execFileAsync('chown', ['-R', '1000:1000', this.config.projectPath]);
+    } catch (err: any) {
+      onLog(`[SYSTEM] Host source chown failed: ${err.message}\n`);
       return false;
     }
 
     // Inject source code
     onLog(`[SYSTEM] Injecting source files...\n`);
     try {
-      await execAsync(`docker cp ${this.config.projectPath}/. ${this.containerName}:/workspace`);
+      await execFileAsync('docker', ['cp', `${this.config.projectPath}/.`, `${this.containerName}:/workspace`]);
     } catch (err: any) {
       onLog(`[SYSTEM] Source injection failed: ${err.message}\n`);
       return false;
@@ -162,8 +171,8 @@ export class DockerSandbox {
     if (hasKeystore) {
       onLog(`[SYSTEM] Injecting signing keystore...\n`);
       try {
-        await execAsync(`docker exec ${this.containerName} mkdir -p /signing`);
-        await execAsync(`docker cp ${this.config.keystorePath} ${this.containerName}:/signing/release.jks`);
+        await execFileAsync('chown', ['1000:1000', this.config.keystorePath!]);
+        await execFileAsync('docker', ['cp', this.config.keystorePath!, `${this.containerName}:/workspace/release.jks`]);
       } catch (err: any) {
         onLog(`[SYSTEM] Keystore injection failed: ${err.message}\n`);
         return false;
@@ -174,6 +183,7 @@ export class DockerSandbox {
     onLog(`[SYSTEM] Starting ${framework} build process...\n`);
     return new Promise((resolve) => {
       let isResolved = false;
+
       this.childProcess = spawn('docker', ['start', '-a', this.containerName]);
 
       const timeoutTimer = setTimeout(() => {
@@ -200,7 +210,7 @@ export class DockerSandbox {
           if (code === 0) {
             resolve(true);
           } else {
-            onLog(`[SYSTEM] Container exited with code ${code}`);
+            onLog(`[SYSTEM] Build exited with code ${code}`);
             resolve(false);
           }
         }
@@ -215,11 +225,11 @@ export class DockerSandbox {
     const framework = this.config.framework || 'flutter';
     const artifactPath = getArtifactPath(framework);
 
-    const { exec } = await import('node:child_process');
-    const execAsync = promisify(exec);
+    const { execFile } = await import('node:child_process');
+    const execFileAsync = promisify(execFile);
 
     try {
-      await execAsync(`docker cp ${this.containerName}:${artifactPath} ${localDestPath}`);
+      await execFileAsync('docker', ['cp', `${this.containerName}:${artifactPath}`, localDestPath]);
       return true;
     } catch (err: any) {
       console.error(`[DOCKER] Artifact extraction failed: ${err.message}`);

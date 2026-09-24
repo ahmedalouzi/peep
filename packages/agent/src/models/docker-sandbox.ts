@@ -229,8 +229,38 @@ export class DockerSandbox {
     const execFileAsync = promisify(execFile);
 
     try {
-      await execFileAsync('docker', ['cp', `${this.containerName}:${artifactPath}`, localDestPath]);
-      return true;
+      // 1. SECURITY: Defend against symlink attacks
+      try {
+        await execFileAsync('docker', ['exec', this.containerName, 'test', '-L', artifactPath]);
+        // If test -L returns 0, it IS a symlink. Reject immediately.
+        console.error(`[SECURITY] Critical: Symlink detected at artifact path. Extraction rejected.`);
+        return false;
+      } catch (err: any) {
+        // test -L exits with code 1 if the file is NOT a symlink. This is expected.
+      }
+
+      // 2. SECURITY: Extract via container namespace instead of host (bypasses docker cp vulnerabilities)
+      const { createWriteStream } = await import('node:fs');
+      return new Promise((resolve) => {
+        const child = spawn('docker', ['exec', this.containerName, 'cat', artifactPath]);
+        const destStream = createWriteStream(localDestPath);
+        
+        child.stdout.pipe(destStream);
+        
+        child.on('close', (code) => {
+          if (code === 0) {
+            resolve(true);
+          } else {
+            console.error(`[DOCKER] Artifact extraction (cat) failed with code ${code}`);
+            resolve(false);
+          }
+        });
+        
+        child.on('error', (err) => {
+          console.error(`[DOCKER] Artifact stream spawn error: ${err.message}`);
+          resolve(false);
+        });
+      });
     } catch (err: any) {
       console.error(`[DOCKER] Artifact extraction failed: ${err.message}`);
       return false;

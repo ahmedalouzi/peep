@@ -186,11 +186,11 @@ export class DockerSandbox {
 
       this.childProcess = spawn('docker', ['start', '-a', this.containerName]);
 
-      const timeoutTimer = setTimeout(() => {
+      const timeoutTimer = setTimeout(async () => {
         if (!isResolved) {
           isResolved = true;
-          onLog('[SYSTEM] Build timed out after 15 minutes. Terminating container...');
-          this.forceKill();
+          onLog(`[SYSTEM] Build timed out after ${Math.round(timeoutMs / 1000)}s. Terminating container...`);
+          await this.forceKill();
           resolve(false);
         }
       }, timeoutMs);
@@ -270,11 +270,14 @@ export class DockerSandbox {
   /**
    * Forcefully kills the container.
    */
-  forceKill() {
+  async forceKill(): Promise<void> {
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const execFileAsync = promisify(execFile);
     try {
-      spawn('docker', ['rm', '-f', this.containerName]);
-    } catch (e) {
-      console.error(`[DOCKER] Failed to kill container ${this.containerName}`, e);
+      await execFileAsync('docker', ['rm', '-f', this.containerName]);
+    } catch (e: any) {
+      console.error(`[DOCKER] Failed to kill container ${this.containerName}:`, e.message);
     }
   }
 }

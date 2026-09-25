@@ -16,7 +16,6 @@
     "test": "npx tsx tests/test-runner.ts"
   },
   "dependencies": {
-    "@peep/cloud-build": "workspace:*",
     "@peep/platform-core": "workspace:*",
     "@peep/shared": "workspace:*",
     "@sentry/node": "^10.69.0",

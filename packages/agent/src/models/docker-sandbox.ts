@@ -203,10 +203,11 @@ export class DockerSandbox {
         onLog(`[ERROR] ${data.toString()}`);
       });
 
-      this.childProcess.on('close', (code) => {
+      this.childProcess.on('close', async (code) => {
         if (!isResolved) {
           isResolved = true;
           clearTimeout(timeoutTimer);
+          await this.forceKill();
           if (code === 0) {
             resolve(true);
           } else {

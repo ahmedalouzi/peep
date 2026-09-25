@@ -93,18 +93,14 @@ done
   const containerName = sandbox['containerName']; // bypass private for test inspection
   console.log(`  [ASSERT] Checking for lingering container: ${containerName}`);
   
-  try {
-    const { stdout } = await execFileAsync('docker', ['ps', '-a', '--filter', `name=${containerName}`, '--format', '{{.Names}}']);
-    const lingering = stdout.trim();
-    
-    if (lingering === containerName) {
-      console.error('\n❌ FAIL: Zombie container survived forceKill()! Docker rm -f failed or was bypassed.');
-      assert.fail('Container still exists on the host.');
-    } else {
-      console.log('✅ PASS: Container successfully eradicated from host.');
-    }
-  } catch (err: any) {
-    console.error(`Failed to verify container deletion: ${err.message}`);
+  const { stdout } = await execFileAsync('docker', ['ps', '-a', '--filter', `name=${containerName}`, '--format', '{{.Names}}']);
+  const lingering = stdout.trim();
+  
+  if (lingering === containerName) {
+    console.error('\n❌ FAIL: Zombie container survived forceKill()! Docker rm -f failed or was bypassed.');
+    assert.fail('Container still exists on the host.');
+  } else {
+    console.log('✅ PASS: Container successfully eradicated from host.');
   }
 
   const fullLog = logs.join('\n');
@@ -114,6 +110,9 @@ done
 }
 
 if (import.meta.url === \`file://\${process.argv[1]}\` || process.argv[1].endsWith('timeout-zombie.test.ts')) {
-    run().catch(console.error);
+    run().catch(err => {
+      console.error(err);
+      process.exit(1);
+    });
 }
 export default run;

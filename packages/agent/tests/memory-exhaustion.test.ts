@@ -54,8 +54,13 @@ async function run() {
   '  a.push(b);\\n' +
   '}\\n' +
   'JSEOF\\n' +
-  'node /tmp/oom.js || echo "[OOM_EXIT] node exited with code $?"\\n' +
-  'echo "[OOM_FAILED] If you see this, the OOM killer failed to stop the process!"\\n';
+  'node /tmp/oom.js\\n' +
+  'NODE_EXIT=$?\\n' +
+  'echo "[OOM_EXIT] node exited with code $NODE_EXIT"\\n' +
+  'if [ $NODE_EXIT -eq 0 ]; then\\n' +
+  '  echo "[OOM_FAILED] If you see this, the OOM killer failed to stop the process!"\\n' +
+  'fi\\n' +
+  'exit $NODE_EXIT\\n';
   await fs.writeFile(gradlewPath, attackScript, { mode: 0o777 });
   await fs.writeFile(path.join(androidDir, 'gradle.properties'), '');
 

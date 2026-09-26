@@ -2,21 +2,23 @@ import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
-import { db } from './db';
+import type { DatabaseService } from './db';
 import { BrowserWindow } from 'electron';
 import { IPC_EVENTS } from '@peep/shared';
-const EventSource = require('eventsource');
+
 
 const execAsync = promisify(exec);
 
 export class CloudBuildService {
+  constructor(private db: DatabaseService) {}
+
   private getGatewayUrl() {
-    const settings = db.getSettingsRaw();
+    const settings = this.db.getSettingsRaw();
     return settings.gatewayUrl || process.env.SYNKRO_GATEWAY_URL || 'https://api.synkro.com';
   }
 
   private async getAuthHeaders(): Promise<Record<string, string>> {
-    const settings = await db.getSettings();
+    const settings = this.db.getSettingsRaw();
     if (!settings.sessionToken) {
       throw new Error('Not authenticated. Please sign in to use Cloud Build.');
     }
@@ -30,13 +32,17 @@ export class CloudBuildService {
     
     // Zip the project directory. Exclude node_modules, build, etc if possible, but for MVP just zip all.
     // On Windows 10+, tar -a -c -f creates a zip. On macOS/Linux, zip works.
+    console.log(`[CLOUD_BUILD] Zipping ${workspacePath} to ${zipPath}`);
     try {
       if (process.platform === 'win32') {
-        await execAsync(`tar.exe -a -c -f "${zipPath}" *`, { cwd: workspacePath });
+        await execAsync(`tar.exe -a -c -f "${zipPath}" --exclude=node_modules --exclude=.git --exclude=android/build --exclude=android/.gradle --exclude=ios/Pods *`, { cwd: workspacePath, timeout: 120000 });
       } else {
-        await execAsync(`zip -r "${zipPath}" . -x "node_modules/*" ".git/*" "build/*"`, { cwd: workspacePath });
+        await execAsync(`zip -r "${zipPath}" . -x "node_modules/*" ".git/*" "build/*" "android/build/*" "android/.gradle/*" "ios/Pods/*"`, { cwd: workspacePath, timeout: 120000 });
       }
+      const stat = await fs.stat(zipPath);
+      console.log(`[CLOUD_BUILD] Zip complete, size: ${stat.size} bytes`);
     } catch (err: any) {
+      console.error('[CLOUD_BUILD] Zip failed:', err);
       throw new Error(`Failed to zip project: ${err.message}`);
     }
 
@@ -45,6 +51,8 @@ export class CloudBuildService {
     const blob = new Blob([fileBuffer], { type: 'application/zip' });
     formData.append('project', blob, 'project.zip');
     formData.append('projectId', path.basename(workspacePath));
+    formData.append('framework', framework);
+    formData.append('target', target);
 
     const headers = await this.getAuthHeaders();
     
@@ -105,36 +113,47 @@ export class CloudBuildService {
     return this.getBuild(id);
   }
 
-  startLogStream(id: string, mainWindow: BrowserWindow) {
-    const settings = db.getSettingsRaw();
-    if (!settings.sessionToken) return;
+  async startLogStream(id: string, mainWindow: BrowserWindow) {
+    try {
+      const settings = this.db.getSettingsRaw();
+      if (!settings.sessionToken) return;
 
-    const url = `${this.getGatewayUrl()}/api/build/${id}/stream`;
-    const es = new EventSource(url, {
-      headers: {
-        'Authorization': `Bearer ${settings.sessionToken}`,
-      }
-    });
-
-    es.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.chunk) {
-          mainWindow.webContents.send(IPC_EVENTS.BUILD_LOG_CHUNK, { id, chunk: data.chunk });
+      const url = `${this.getGatewayUrl()}/api/build/${id}/stream?token=${encodeURIComponent(settings.sessionToken)}`;
+      const EventSourceModule = await import('eventsource') as any;
+      const EventSource = EventSourceModule.EventSource || EventSourceModule.default || EventSourceModule;
+      const es = new EventSource(url, {
+        fetchParameters: {
+          headers: {
+            'Authorization': `Bearer ${settings.sessionToken}`,
+          }
+        },
+        // Fallback for older eventsource package versions just in case
+        headers: {
+          'Authorization': `Bearer ${settings.sessionToken}`,
         }
-        if (data.chunk && data.chunk.includes('[Stream Terminated')) {
-          es.close();
-        }
-      } catch (e) {
-        console.error('Error parsing SSE data', e);
-      }
-    };
+      });
 
-    es.onerror = (err) => {
-      console.error('SSE Error', err);
-      es.close();
-    };
+      es.onmessage = (event: any) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.chunk) {
+            mainWindow.webContents.send(IPC_EVENTS.BUILD_LOG_CHUNK, { id, chunk: data.chunk });
+          }
+          if (data.chunk && data.chunk.includes('[Stream Terminated')) {
+            es.close();
+          }
+        } catch (e) {
+          console.error('Error parsing SSE data', e);
+        }
+      };
+
+      es.onerror = (err: any) => {
+        console.error('SSE Error', err);
+        es.close();
+      };
+    } catch (err) {
+      console.error('[CLOUD_BUILD] Failed to start log stream:', err);
+    }
   }
 }
 
-export const cloudBuildService = new CloudBuildService();

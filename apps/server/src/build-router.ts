@@ -19,7 +19,7 @@ const authService = new AuthenticationRouter();
 // Middleware for true authentication
 const requireAuth = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
   try {
-    const token = (req.headers['authorization'] || '').replace('Bearer ', '') || (req.headers['session'] as string);
+    const token = (req.headers['authorization'] || '').replace('Bearer ', '') || (req.headers['session'] as string) || (req.query.token as string);
     if (!token) {
       res.status(401).json({ error: 'Unauthorized: Missing session token' });
       return;
@@ -74,6 +74,8 @@ buildRouter.post('/upload', requireAuth, buildRateLimiter, upload.single('projec
   try {
     const userId = (req as any).user.userId;
     const projectId = req.body.projectId || 'unknown';
+    const framework = req.body.framework || 'flutter';
+    const target = req.body.target || 'apk';
 
     if (!req.file) {
       res.status(400).json({ error: 'No project file uploaded' });
@@ -96,10 +98,10 @@ buildRouter.post('/upload', requireAuth, buildRateLimiter, upload.single('projec
       await dbClient.query('SET LOCAL ROLE api_user');
       await dbClient.query('SELECT set_config($1, $2, true)', ['app.current_user_id', userId]);
       const result = await dbClient.query(`
-        INSERT INTO build_jobs (user_id, project_id, status, source_path)
-        VALUES ($1, $2, 'queued', $3)
+        INSERT INTO build_jobs (user_id, project_id, status, source_path, framework)
+        VALUES ($1, $2, 'queued', $3, $4)
         RETURNING id, status
-      `, [userId, projectId, artifactPath]);
+      `, [userId, projectId, artifactPath, framework]);
       job = result.rows[0];
       await dbClient.query('COMMIT');
     } catch (e) {

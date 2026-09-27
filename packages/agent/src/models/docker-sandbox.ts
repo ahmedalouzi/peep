@@ -25,9 +25,9 @@ function getBuildCommand(framework: BuildFramework, hasKeystore: boolean): strin
     return 'flutter build apk --release';
   }
   if (hasKeystore) {
-    return 'cd android && ./gradlew assembleRelease';
+    return 'mkdir -p /workspace/.npm-cache && cd android && ./gradlew assembleRelease';
   }
-  return 'npx react-native build-android --mode=release';
+  return 'mkdir -p /workspace/.npm-cache && npx react-native build-android --mode=release';
 }
 
 function getArtifactPath(framework: BuildFramework): string {

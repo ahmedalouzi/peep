@@ -7,6 +7,7 @@ import { useDiagnosticsStore, usePreviewStore } from '../stores/preview-store';
 import { AgentTimeline } from './AgentTimeline';
 import { ThreadSidebar } from './ThreadSidebar';
 import { Virtuoso } from 'react-virtuoso';
+import './ChatPane.css';
 
 interface ChatPaneProps {
   onOpenSettings: () => void;
@@ -295,9 +296,9 @@ export function ChatPane({ onOpenSettings: _onOpenSettings }: ChatPaneProps) {
         </div>
       </div>
 
-      <div className="agent-messages">
+      <div className="chat-pane__messages">
         {messages.length === 0 ? (
-          <div className="msg-system">
+          <div className="chat-empty-state">
             <div className="msg-avatar">Ag</div>
             <div className="msg-body">
               <div className="msg-sender">Antigravity AI</div>
@@ -429,49 +430,56 @@ export function ChatPane({ onOpenSettings: _onOpenSettings }: ChatPaneProps) {
       {isStreaming && <AgentTimeline />}
 
       <div className="chat-pane__input-wrapper">
-        <div className="chat-pane__input">
-          <div className="chat-pane__input-toolbar">
-            <button type="button" className="icon-btn" title="Attach context">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-            </button>
-            <div className="spacer" />
-            <button type="button" className="icon-btn" title="Voice input">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="22" /><line x1="8" y1="22" x2="16" y2="22" /></svg>
+        <form className="chat-pane__input-box" onSubmit={handleSubmit}>
+          <textarea
+            ref={textareaRef}
+            className="chat-pane__textarea"
+            placeholder="Ask the agent..."
+            value={input}
+            rows={1}
+            onChange={(e) => {
+              setInput(e.target.value);
+              e.target.style.height = 'auto';
+              e.target.style.height = `${Math.min(e.target.scrollHeight, 250)}px`;
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSubmit(e);
+              }
+            }}
+          ></textarea>
+
+          <div className="chat-pane__input-bottom">
+            <div className="chat-pane__input-toolbar">
+              <button type="button" className="icon-btn" title="Attach context">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+              </button>
+              <button type="button" className="icon-btn" title="Voice input">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="22" /><line x1="8" y1="22" x2="16" y2="22" /></svg>
+              </button>
+              
+              <div className="context-pills">
+                {activeFile && (
+                  <span className="context-pill">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>
+                    {activeFile.name}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <button type="submit" className="chat-submit-btn" disabled={!input.trim() || isStreaming}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13 M22 2l-7 20-4-9-9-4 20-7z" /></svg>
             </button>
           </div>
-
-          <form className="chat-pane__input-form" onSubmit={handleSubmit}>
-            <div className="chat-pane__textarea-wrap">
-              <textarea
-                ref={textareaRef}
-                className="chat-pane__textarea"
-                placeholder="Ask the agent..."
-                value={input}
-                rows={1}
-                onChange={(e) => {
-                  setInput(e.target.value);
-                  e.target.style.height = 'auto';
-                  e.target.style.height = `${e.target.scrollHeight}px`;
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSubmit(e);
-                  }
-                }}
-              ></textarea>
-              <button type="submit" className="chat-submit-btn" disabled={!input.trim() || isStreaming}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13 M22 2l-7 20-4-9-9-4 20-7z" /></svg>
-              </button>
-            </div>
-            <div className="chat-pane__footer-text">
-              <span className="footer-model">{selectedModel}</span>
-              <span className="footer-dot">•</span>
-              <span className="footer-context">Context: {activeFile?.name ?? 'None'}</span>
-            </div>
-          </form>
+        </form>
+        
+        <div className="chat-pane__footer-text">
+          <span className="footer-model">{selectedModel}</span>
+          <span className="footer-dot">•</span>
+          <span className="footer-context">Powered by Gemini AI</span>
         </div>
-      </div>
       </div>
     </div>
   );

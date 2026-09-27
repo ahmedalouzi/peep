@@ -78,6 +78,7 @@ export class DockerSandbox {
       '--network', netName,
       '--dns', RESOLVER_IP,
       '--user=1000:1000',
+      '-e', 'NPM_CONFIG_CACHE=/workspace/.npm-cache',
       '-w', '/workspace',
       image,
     ];

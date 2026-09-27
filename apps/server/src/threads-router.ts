@@ -130,6 +130,7 @@ threadsRouter.post('/:id', requireAuth, express.json(), async (req, res) => {
         ON CONFLICT (id) DO UPDATE SET 
           title = EXCLUDED.title,
           updated_at = EXCLUDED.updated_at
+        WHERE chat_threads.user_id = $2
       `, [threadId, userId, title]);
 
       // Wipe old messages and runs for this thread (safe due to transaction + RLS)

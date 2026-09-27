@@ -200,7 +200,7 @@ export function TitleBar({ onNewProject }: TitleBarProps) {
         <div style={{ flex: 1, WebkitAppRegion: 'drag' } as any}></div>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '2px', paddingRight: '8px', WebkitAppRegion: 'no-drag' } as any}>
-          {project && (project.platform === 'flutter' || project.platform === 'react-native' || project.platform === 'react-native-local' || project.platform === 'expo') && (() => {
+          {project && ((project.platform as string) === 'flutter' || (project.platform as string) === 'react-native' || (project.platform as string) === 'react-native-local' || (project.platform as string) === 'expo') && (() => {
             const isBuildActive = currentBuild?.status === 'queued' || currentBuild?.status === 'running';
             return (
               <button

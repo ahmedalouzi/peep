@@ -32,9 +32,7 @@ export class MockBuildApi implements IBuildApi {
       framework,
       target,
       status: 'queued',
-      createdAt: new Date().toISOString(),
-      versionName: '1.0.0',
-      versionCode: 1,
+      createdAt: new Date(),
     };
 
     const willFail = this.simulateFailure;
@@ -43,7 +41,7 @@ export class MockBuildApi implements IBuildApi {
     this.statusTimeout = setTimeout(() => {
       if (this.currentJob && this.currentJob.status === 'queued') {
         this.currentJob.status = 'running';
-        this.currentJob.startedAt = new Date().toISOString();
+        this.currentJob.startedAt = new Date();
         if (willFail) {
           this.startFailureSimulation();
         } else {
@@ -65,7 +63,7 @@ export class MockBuildApi implements IBuildApi {
   async cancelBuild(id: string): Promise<CloudBuildJob> {
     if (this.currentJob && this.currentJob.id === id) {
       this.currentJob.status = 'cancelled';
-      this.currentJob.completedAt = new Date().toISOString();
+      this.currentJob.completedAt = new Date();
       this.cleanup();
       return { ...this.currentJob };
     }
@@ -118,7 +116,7 @@ export class MockBuildApi implements IBuildApi {
         // Transition to success
         if (this.currentJob) {
           this.currentJob.status = 'success';
-          this.currentJob.completedAt = new Date().toISOString();
+          this.currentJob.completedAt = new Date();
           this.currentJob.artifactUrl = 'https://example.com/mock-artifact.apk';
         }
         this.cleanup();
@@ -132,7 +130,7 @@ export class MockBuildApi implements IBuildApi {
       this.logListeners.forEach(l => l('ERROR: Gradle build failed — check above for details\r\n'));
       if (this.currentJob) {
         this.currentJob.status = 'failed';
-        this.currentJob.completedAt = new Date().toISOString();
+        this.currentJob.completedAt = new Date();
         this.currentJob.errorLog = 'Gradle build failed with exit code 1\n> Task :app:compileDebugJavaWithJavac FAILED\nError: package does not exist';
       }
       this.cleanup();

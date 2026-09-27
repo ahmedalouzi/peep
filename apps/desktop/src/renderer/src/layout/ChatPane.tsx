@@ -445,7 +445,7 @@ export function ChatPane({ onOpenSettings: _onOpenSettings }: ChatPaneProps) {
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                handleSubmit(e);
+                handleSubmit(e as unknown as FormEvent);
               }
             }}
           ></textarea>
@@ -479,6 +479,7 @@ export function ChatPane({ onOpenSettings: _onOpenSettings }: ChatPaneProps) {
           <span className="footer-model">{selectedModel}</span>
           <span className="footer-dot">•</span>
           <span className="footer-context">Powered by Gemini AI</span>
+        </div>
         </div>
       </div>
     </div>

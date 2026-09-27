@@ -591,6 +591,27 @@ export interface ConnectedDevice {
   type: 'physical' | 'emulator';
 }
 
+// ── Cloud Build Types ────────────────────────────────────────────────────────
+export type CloudBuildFramework = 'flutter' | 'react-native';
+export type CloudBuildStatus = 'queued' | 'running' | 'success' | 'failed' | 'cancelled';
+export type CloudBuildTarget = 'apk' | 'aab' | 'both';
+
+export interface CloudBuildJob {
+  id: string;
+  userId: string;
+  projectId: string;
+  framework: CloudBuildFramework;
+  target: CloudBuildTarget;
+  status: CloudBuildStatus;
+  createdAt: Date;
+  startedAt?: Date;
+  completedAt?: Date;
+  buildDurationMs?: number;
+  errorLog?: string;
+  artifactUrl?: string;
+  artifactSizeBytes?: number;
+}
+
 // ── Publish / Build types ─────────────────────────────────────────────────────
 
 export interface PublishStatus {

@@ -89,6 +89,9 @@
 .chat-pane__messages {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   gap: 12px;
   padding: 16px;
 }

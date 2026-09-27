@@ -5,6 +5,6 @@
     "autoSave": true,
     "sessionToken": "dev-mode-token",
     "apiProvider": "google",
-    "gatewayUrl": "http://127.0.0.1:3000"
+    "gatewayUrl": "http://134.122.79.19:8080"
   }
 }

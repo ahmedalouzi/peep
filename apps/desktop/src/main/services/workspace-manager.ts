@@ -7,13 +7,15 @@ import { shell } from 'electron';
 
 const IGNORED = new Set(['.git', 'node_modules', '.dart_tool', 'build', '.peep', 'dist', '.next', '.expo', 'Pods', '.idea', '.vscode', '.keep', '.gitkeep']);
 
-async function detectPlatformRecursively(dir: string, depth = 0): Promise<'flutter' | 'react-native' | 'expo' | 'unknown'> {
-  if (depth > 3) return 'unknown';
+type PlatformType = 'flutter' | 'react-native' | 'expo' | 'unknown';
+
+async function detectPlatformRecursively(dir: string, depth = 0): Promise<{ platform: PlatformType; path: string }> {
+  if (depth > 3) return { platform: 'unknown', path: dir };
 
   // 1. Check Flutter pubspec.yaml
   try {
     await stat(join(dir, 'pubspec.yaml'));
-    return 'flutter';
+    return { platform: 'flutter', path: dir };
   } catch {}
 
   // 2. Check React Native / Expo in package.json
@@ -25,9 +27,9 @@ async function detectPlatformRecursively(dir: string, depth = 0): Promise<'flutt
       ...(pkg.devDependencies ?? {}),
     };
     if ('expo' in deps) {
-      return 'expo';
+      return { platform: 'expo', path: dir };
     } else if ('react-native' in deps) {
-      return 'react-native';
+      return { platform: 'react-native', path: dir };
     }
   } catch {}
 
@@ -40,15 +42,15 @@ async function detectPlatformRecursively(dir: string, depth = 0): Promise<'flutt
         if (name === 'node_modules' || name === '.git' || name === '.expo' || name === 'build' || name === 'dist' || name === '.peep' || name === '.next' || name === 'Pods' || name === '.idea' || name === '.vscode') {
           continue;
         }
-        const subPlat = await detectPlatformRecursively(join(dir, name), depth + 1);
-        if (subPlat !== 'unknown') {
-          return subPlat;
+        const subResult = await detectPlatformRecursively(join(dir, name), depth + 1);
+        if (subResult.platform !== 'unknown') {
+          return subResult;
         }
       }
     }
   } catch {}
 
-  return 'unknown';
+  return { platform: 'unknown', path: dir };
 }
 
 export class WorkspaceManager {
@@ -61,13 +63,13 @@ export class WorkspaceManager {
   }
 
   async openFolder(folderPath: string): Promise<ProjectInfo> {
-    const platform = await detectPlatformRecursively(folderPath);
-    const normalizedPath = folderPath.replace(/\\/g, '/');
+    const { platform, path: resolvedPath } = await detectPlatformRecursively(folderPath);
+    const normalizedPath = resolvedPath.replace(/\\/g, '/');
 
     const project: ProjectInfo = {
       id: randomUUID(),
       path: normalizedPath,
-      name: basename(folderPath),
+      name: basename(resolvedPath),
       lastOpened: new Date().toISOString(),
       platform,
     };

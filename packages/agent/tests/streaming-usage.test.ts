@@ -1,25 +1,11 @@
 import assert from 'node:assert';
-import { newDb } from 'pg-mem';
 import { db } from '../src/models/db';
 import { BackendAIGateway } from '../src/models/backend-gateway';
 import { ServerUsageStore } from '../src/models/usage-store';
-import { initDbSchema, setDbPool } from '../src/models/db';
+import { randomUUID } from 'node:crypto';
 
 export default async function runTests() {
-  console.log('  Running Streaming Usage (pg-mem) unit tests...');
-
-  // Setup pg-mem
-  const memoryDb = newDb();
-  
-  // Create a pg pool mock
-  const memPg = memoryDb.adapters.createPg();
-  const pool = new memPg.Pool();
-  
-  // Set the pool in db.ts
-  setDbPool(pool as any);
-
-  // Initialize schema
-  await initDbSchema();
+  console.log('  Running Streaming Usage unit tests...');
 
   // Create Gateway
   const gateway = new BackendAIGateway();
@@ -29,12 +15,17 @@ export default async function runTests() {
   gateway.budgetGuard.acquireLock = async () => {};
   let lockReleased = false;
   gateway.budgetGuard.releaseLock = () => { lockReleased = true; };
-  gateway.authService.validateSession = async () => ({ userId: '00000000-0000-0000-0000-000000000001', email: 'test@example.com' });
+  const testUserId = randomUUID();
+  gateway.authService.validateSession = async () => ({ userId: testUserId, email: 'test@example.com' });
 
   // Insert a test user
-  await db.query(`INSERT INTO users (id, email, password_hash) VALUES ('00000000-0000-0000-0000-000000000001', 'test@example.com', 'hash')`);
+  await db.query(`INSERT INTO users (id, email, password_hash) VALUES ($1, 'test@example.com', 'hash') ON CONFLICT DO NOTHING`, [testUserId]);
 
-  const reqId = 'req-123';
+  const reqId = 'req-' + randomUUID();
+  const reqId2 = 'req-' + randomUUID();
+  const reqId3 = 'req-' + randomUUID();
+  const reqId4 = 'req-' + randomUUID();
+  const reqId5 = 'req-' + randomUUID();
 
   console.log('  [Test 1] Stream usage accumulation and lock release via wrapped iterator');
   {
@@ -79,7 +70,7 @@ export default async function runTests() {
   {
     // Try to record usage again with same request_id
     await gateway.usageStore.recordUsage({
-      userId: '00000000-0000-0000-0000-000000000001',
+      userId: testUserId,
       requestId: reqId,
       modelTier: 'fast',
       resolvedModel: 'test-model',
@@ -98,7 +89,6 @@ export default async function runTests() {
   console.log('  [Test 3] Estimated-fallback path when done.usage is absent');
   {
     lockReleased = false;
-    const reqId2 = 'req-456';
     const dummyAdapter = {
       stream: () => ({
         async *[Symbol.asyncIterator]() {
@@ -132,7 +122,6 @@ export default async function runTests() {
 
   console.log('  [Test 4] Mid-stream abort logs correctly');
   {
-    const reqId3 = 'req-789';
     const dummyAdapter = {
       stream: () => ({
         async *[Symbol.asyncIterator]() {
@@ -166,7 +155,6 @@ export default async function runTests() {
 
   console.log('  [Test 5] Zero chunks received before abort — fallback estimate computes cleanly');
   {
-    const reqId4 = 'req-000';
     let loggedErrors: string[] = [];
     // Override logger to capture error calls
     (gateway as any).logger = {
@@ -217,7 +205,6 @@ export default async function runTests() {
 
   console.log('  [Test 6] Partial-stream abort — output token estimate scales with received content');
   {
-    const reqId5 = 'req-partial';
     // 400-char delta chunks × 3 = 1200 chars → Math.ceil(1200/4) = 300 output tokens
     const DELTA_CHARS = 400;
     const DELTA_COUNT = 3;

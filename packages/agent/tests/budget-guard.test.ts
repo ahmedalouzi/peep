@@ -38,7 +38,7 @@ export default async function runTests() {
   // Test 3: Daily budget exceeded
   await store.recordUsage({
     userId: testUserId,
-    requestId: 'req-large-1',
+    requestId: `req-large-${Math.random().toString(36).substring(7)}`,
     modelTier: 'premium',
     resolvedModel: 'claude-3-5-sonnet',
     inputTokens: 100,

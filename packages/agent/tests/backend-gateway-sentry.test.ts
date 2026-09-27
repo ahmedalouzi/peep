@@ -15,4 +15,5 @@ export default async function runTest() {
   assert.strictEqual(p1, p2, 'Concurrent calls should return the exact same Promise instance (p1 === p2)');
   assert.strictEqual(p1, p3, 'Concurrent calls should return the exact same Promise instance (p1 === p3)');
 
-
+  console.log('  🟢 Passed');
+}

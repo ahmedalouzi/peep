@@ -51,6 +51,7 @@ function assertThrows(fn: () => void, contains: string): void {
 console.log('\nRunning AgentStateMachine unit tests...');
 console.log('-------------------------------------------');
 
+export default async function runTests() {
 // Test 1 — Valid full lifecycle (no tools)
 runTest('Valid lifecycle: idle → initializing → thinking → done → idle', () => {
   const phases: string[] = [];
@@ -198,3 +199,4 @@ runTest('After reset() from done, further reset() is a no-op', () => {
 
 console.log('-------------------------------------------');
 console.log('🟢 All AgentStateMachine unit tests complete.\n');
+}

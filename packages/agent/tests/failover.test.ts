@@ -1,16 +1,9 @@
 import assert from 'node:assert';
 import { BackendAIGateway } from '../src/models/backend-gateway';
 import { ProviderError } from '@peep/shared';
-import { setDbPool } from '../src/models/db';
-import { newDb } from 'pg-mem';
 
 export default async function runTests() {
   console.log('  Running isRetryable() + Failover unit tests...');
-
-  // Setup pg-mem so the gateway can initialise without a real DB
-  const memDb = newDb();
-  const pg = memDb.adapters.createPg();
-  setDbPool(new pg.Pool() as any);
 
   const gateway = new BackendAIGateway();
   gateway.authService.validateSession = async () => ({ userId: '00000000-0000-0000-0000-000000000001', email: 't@t.com' });

@@ -200,7 +200,7 @@ export function TitleBar({ onNewProject }: TitleBarProps) {
         <div style={{ flex: 1, WebkitAppRegion: 'drag' } as any}></div>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '2px', paddingRight: '8px', WebkitAppRegion: 'no-drag' } as any}>
-          {project && (project.platform === 'flutter' || project.platform === 'react-native') && (() => {
+          {project && (project.platform === 'flutter' || project.platform === 'react-native' || project.platform === 'react-native-local' || project.platform === 'expo') && (() => {
             const isBuildActive = currentBuild?.status === 'queued' || currentBuild?.status === 'running';
             return (
               <button
@@ -218,12 +218,22 @@ export function TitleBar({ onNewProject }: TitleBarProps) {
                   cursor: isBuildActive ? 'not-allowed' : 'pointer'
                 }}
                 onClick={async () => {
-                  if (isBuildActive) return;
+                  console.log('BUILD BUTTON CLICKED');
+                  if (isBuildActive) { console.log('BLOCKED: isBuildActive is true'); return; }
+                  console.log('Proceeding past isBuildActive check');
                   const state = useWorkspaceStore.getState();
                   state.setBottomPanelTab('build');
                   if (!state.bottomPanelOpen) state.toggleBottomPanel();
-                  const build = await buildApi.startBuild(project.path, project.platform as 'flutter' | 'react-native', 'apk');
-                  useBuildStore.getState().setCurrentBuild(build);
+                  console.log('About to call startBuild, platform:', project.platform, 'path:', project.path);
+                  try {
+                    const normalizedPlatform = (project.platform === 'expo' || project.platform.startsWith('react-native')) ? 'react-native' : 'flutter';
+                    const build = await buildApi.startBuild(project.path, normalizedPlatform, 'apk');
+                    console.log('startBuild returned:', build);
+                    useBuildStore.getState().setCurrentBuild(build);
+                    console.log('setCurrentBuild called successfully');
+                  } catch (err) {
+                    console.error('BUILD START FAILED:', err);
+                  }
                 }}
                 title={isBuildActive ? 'Build already in progress' : 'Build Android APK'}
               >

@@ -193,9 +193,9 @@ export function ChatPane({ onOpenSettings: _onOpenSettings }: ChatPaneProps) {
   };
 
   return (
-    <div style={{ display: 'flex', height: '100%' }}>
+    <div className="agent-panel" style={{ display: 'flex', height: '100%' }}>
       <ThreadSidebar />
-      <div className="agent-panel" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         {ipcError && (
           <div style={{
             background: 'rgba(248, 81, 73, 0.1)',

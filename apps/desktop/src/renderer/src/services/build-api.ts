@@ -180,6 +180,10 @@ export function shouldUseRealBuildApi(envValue: string | undefined | boolean): b
   return envValue === 'true' || envValue === true;
 }
 
-export const buildApi: IBuildApi = shouldUseRealBuildApi((import.meta as any).env?.VITE_USE_REAL_BUILD_API)
-  ? new RealBuildApi()
-  : new MockBuildApi();
+export const buildApi: IBuildApi = (() => {
+  const envVal = (import.meta as any).env?.VITE_USE_REAL_BUILD_API;
+  const useReal = shouldUseRealBuildApi(envVal);
+  console.log('[BUILD API] VITE_USE_REAL_BUILD_API raw env value:', envVal);
+  console.log('[BUILD API] Resolved shouldUseRealBuildApi:', useReal);
+  return useReal ? new RealBuildApi() : new MockBuildApi();
+})();

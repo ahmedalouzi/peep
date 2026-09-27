@@ -18,7 +18,7 @@ import { TerminalService } from '../services/terminal-service';
 import { ProjectService } from '../services/project-service';
 import { TelemetryService } from '../services/telemetry-service';
 import { AutoUpdateService } from '../services/auto-update-service';
-import { cloudBuildService } from '../services/cloud-build-service';
+import { CloudBuildService } from '../services/cloud-build-service';
 import { ReactNativeService } from '../services/react-native-service';
 import { ReactNativeManagedProvider } from '../services/providers/react-native-managed';
 import { PlatformRegistry } from '../services/platform-registry';
@@ -33,6 +33,7 @@ let mainWindow: BrowserWindow | null = null;
 let previewWindow: BrowserWindow | null = null;
 let agentService: AgentService | null = null;
 let publishService: PublishService | null = null;
+let cloudBuildService: CloudBuildService | null = null;
 
 const previewManager = new PreviewManager();
 const fileWatcher = new FileWatcherService();
@@ -157,6 +158,7 @@ export async function registerIpcHandlers(): Promise<{
 
   db = new DatabaseService();
   await db.init();
+  cloudBuildService = new CloudBuildService(db);
 
   await telemetryService.init();
   autoUpdateService = new AutoUpdateService(telemetryService);
@@ -370,6 +372,81 @@ export async function registerIpcHandlers(): Promise<{
       await workspace.atomicWriteFile(chatJsonPath, JSON.stringify(state, null, 2));
     } catch (err) {
       console.error('Failed to save chat history:', err);
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.CHAT_LIST_THREADS, async (_event, projectPath?: string) => {
+    const settings = db!.getSettingsRaw();
+    const gatewayUrl = settings.gatewayUrl || process.env.SYNKRO_GATEWAY_URL || 'https://api.synkro.com';
+    try {
+      const res = await fetch(`${gatewayUrl}/v1/threads`, {
+        headers: { Authorization: `Bearer ${settings.sessionToken}` }
+      });
+      if (!res.ok) throw new Error('Failed to list threads');
+      const data = await res.json();
+      let threads = data.threads || [];
+      if (projectPath) {
+        const { performThreadMigration } = await import('./thread-migration');
+        threads = await performThreadMigration(projectPath, settings, gatewayUrl, threads);
+      }
+      return threads;
+    } catch (err: any) {
+      console.error('List threads error:', err);
+      return [];
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.CHAT_LOAD_THREAD, async (_event, threadId: string) => {
+    const settings = db!.getSettingsRaw();
+    const gatewayUrl = settings.gatewayUrl || process.env.SYNKRO_GATEWAY_URL || 'https://api.synkro.com';
+    try {
+      const res = await fetch(`${gatewayUrl}/v1/threads/${threadId}`, {
+        headers: { Authorization: `Bearer ${settings.sessionToken}` }
+      });
+      if (!res.ok) throw new Error('Failed to load thread');
+      return await res.json();
+    } catch (err: any) {
+      console.error('Load thread error:', err);
+      return null;
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.CHAT_SAVE_THREAD, async (_event, threadId: string, messages: any[], title: string, runs?: any[]) => {
+    const settings = db!.getSettingsRaw();
+    const gatewayUrl = settings.gatewayUrl || process.env.SYNKRO_GATEWAY_URL || 'https://api.synkro.com';
+    try {
+      const res = await fetch(`${gatewayUrl}/v1/threads/${threadId}`, {
+        method: 'POST',
+        headers: { 
+          Authorization: `Bearer ${settings.sessionToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ messages, title, runs })
+      });
+      if (!res.ok) {
+        console.warn(`Thread save returned ${res.status}, ignoring for now.`);
+        return null;
+      }
+      return await res.json();
+    } catch (err: any) {
+      console.warn('Save thread error (ignored):', err.message);
+      return null;
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.CHAT_DELETE_THREAD, async (_event, threadId: string) => {
+    const settings = db!.getSettingsRaw();
+    const gatewayUrl = settings.gatewayUrl || process.env.SYNKRO_GATEWAY_URL || 'https://api.synkro.com';
+    try {
+      const res = await fetch(`${gatewayUrl}/v1/threads/${threadId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${settings.sessionToken}` }
+      });
+      if (!res.ok) throw new Error('Failed to delete thread');
+      return true;
+    } catch (err: any) {
+      console.error('Delete thread error:', err);
+      return false;
     }
   });
 
@@ -760,6 +837,12 @@ export async function registerIpcHandlers(): Promise<{
       });
       return { success: true };
     } catch (err: any) {
+      console.error('[AUTH_SIGN_IN] Fetch failed:', {
+        message: err.message,
+        cause: err.cause,
+        code: err.code,
+        url: `${gatewayUrl}/v1/auth/signin`
+      });
       return { success: false, error: err.message };
     }
   });
@@ -789,6 +872,12 @@ export async function registerIpcHandlers(): Promise<{
       });
       return { success: true };
     } catch (err: any) {
+      console.error('[AUTH_SIGN_UP] Fetch failed:', {
+        message: err.message,
+        cause: err.cause,
+        code: err.code,
+        url: `${gatewayUrl}/v1/auth/signup`
+      });
       return { success: false, error: err.message };
     }
   });
@@ -959,20 +1048,24 @@ export async function registerIpcHandlers(): Promise<{
   // ── Cloud Build ────────────────────────────────────────────────────────────
 
   ipcMain.handle(IPC_CHANNELS.CLOUD_BUILD_START, async (_event, workspacePath: string, framework: string, target: string) => {
+    if (!cloudBuildService) throw new Error('Cloud build service not initialized');
     const build = await cloudBuildService.startBuild(workspacePath, framework, target);
     cloudBuildService.startLogStream(build.id, mainWindow!);
     return build;
   });
 
   ipcMain.handle(IPC_CHANNELS.CLOUD_BUILD_GET, async (_event, id: string) => {
+    if (!cloudBuildService) throw new Error('Cloud build service not initialized');
     return cloudBuildService.getBuild(id);
   });
 
   ipcMain.handle(IPC_CHANNELS.CLOUD_BUILD_HISTORY, async () => {
+    if (!cloudBuildService) throw new Error('Cloud build service not initialized');
     return cloudBuildService.getHistory();
   });
 
   ipcMain.handle(IPC_CHANNELS.CLOUD_BUILD_CANCEL, async (_event, id: string) => {
+    if (!cloudBuildService) throw new Error('Cloud build service not initialized');
     return cloudBuildService.cancelBuild(id);
   });
 

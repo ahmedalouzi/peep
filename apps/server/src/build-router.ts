@@ -75,7 +75,6 @@ buildRouter.post('/upload', requireAuth, buildRateLimiter, upload.single('projec
     const userId = (req as any).user.userId;
     const projectId = req.body.projectId || 'unknown';
     const framework = req.body.framework || 'flutter';
-    const target = req.body.target || 'apk';
 
     if (!req.file) {
       res.status(400).json({ error: 'No project file uploaded' });

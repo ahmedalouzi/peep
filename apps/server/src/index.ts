@@ -15,6 +15,7 @@ import { BackendAIGateway, initDbSchema, startBuildWorker } from '@peep/agent/se
 import { fetchProductionSecrets } from './secrets';
 import { execSync } from 'node:child_process';
 import { buildRouter } from './build-router';
+import { threadsRouter } from './threads-router';
 
 async function bootstrap() {
   if (process.env.SENTRY_DSN) {
@@ -115,6 +116,9 @@ async function bootstrap() {
 
   // Attach Android Cloud Build Router
   app.use('/api/build', buildRouter);
+
+  // Attach Chat Threads Router
+  app.use('/v1/threads', threadsRouter);
 
   // Signup Endpoint
   app.post('/v1/auth/signup', async (req, res) => {

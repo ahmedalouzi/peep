@@ -191,6 +191,41 @@ export async function initDbSchema() {
       EXCEPTION
         WHEN duplicate_object THEN null;
       END $$;
+
+      ALTER TABLE chat_threads ENABLE ROW LEVEL SECURITY;
+      
+      DO $$ BEGIN
+        CREATE POLICY chat_threads_user_isolation ON chat_threads
+          USING (user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID);
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
+
+      ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
+      
+      DO $$ BEGIN
+        CREATE POLICY chat_messages_user_isolation ON chat_messages
+          USING (EXISTS (
+            SELECT 1 FROM chat_threads 
+            WHERE id = chat_messages.thread_id 
+            AND user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID
+          ));
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
+
+      ALTER TABLE chat_runs ENABLE ROW LEVEL SECURITY;
+      
+      DO $$ BEGIN
+        CREATE POLICY chat_runs_user_isolation ON chat_runs
+          USING (EXISTS (
+            SELECT 1 FROM chat_threads 
+            WHERE id = chat_runs.thread_id 
+            AND user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID
+          ));
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
     `);
 
     // Create Roles and Grants

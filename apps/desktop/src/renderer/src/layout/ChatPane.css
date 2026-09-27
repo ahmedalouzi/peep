@@ -4,85 +4,128 @@
 
 /* ── Agent panel header branding ─────────────────────────────────── */
 .chat-agent-header {
-  padding: 10px 12px 8px;
-  border-bottom: 1px solid var(--border);
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   background: var(--bg-surface);
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .chat-agent-header__title {
   display: flex;
   align-items: center;
-  gap: 7px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--accent);
-  margin-bottom: 2px;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
 .chat-agent-header__avatar {
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  background: var(--accent);
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #4f6ef7, #845ef7);
+  box-shadow: 0 2px 8px rgba(79, 110, 247, 0.3);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 11px;
   color: #fff;
   font-weight: 800;
   flex-shrink: 0;
 }
 
-.chat-agent-header__sub {
-  font-size: 10.5px;
-  color: var(--text-muted);
-  padding-left: 2px;
+/* ── Model select button ──────────────────────────────────────────── */
+.model-select-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  user-select: none;
+}
+
+.model-select-btn svg {
+  width: 10px;
+  height: 10px;
+  opacity: 0.6;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  transition: transform 0.2s ease;
+}
+
+.model-select-btn.active svg {
+  transform: rotate(180deg);
+}
+
+.model-select-btn:hover, .model-select-btn.active {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: var(--text-primary);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.agent-ai-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3fb950;
+  box-shadow: 0 0 6px #3fb950;
+  margin-right: 2px;
 }
 
 /* ── Messages ─────────────────────────────────────────────────────── */
 .chat-pane__messages {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: 12px;
+  padding: 16px;
 }
 
 .chat-message {
-  padding: 8px 10px;
-  border-radius: 6px;
+  padding: 12px 14px;
+  border-radius: 10px;
   border: 1px solid var(--border);
-  background: var(--bg-elevated);
-  font-size: 12.5px;
+  background: rgba(255, 255, 255, 0.02);
+  font-size: 13px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.05);
 }
 
 .chat-message--user {
-  background: rgba(79, 110, 247, 0.09);
-  border-color: rgba(79, 110, 247, 0.25);
+  background: rgba(79, 110, 247, 0.04);
+  border-color: rgba(79, 110, 247, 0.15);
 }
 
 .chat-message__role {
   display: block;
-  margin-bottom: 4px;
-  font-size: 10px;
+  margin-bottom: 6px;
+  font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--accent);
 }
 
 .chat-message--user .chat-message__role {
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .chat-message p {
   margin: 0;
-  line-height: 1.55;
+  line-height: 1.6;
   color: var(--text-primary);
   white-space: pre-wrap;
-  font-size: 12.5px;
 }
 
 .chat-message__typing {
@@ -114,45 +157,35 @@
   text-align: center;
   height: 100%;
   color: var(--text-muted);
-  font-size: 12.5px;
+  font-size: 13px;
   padding: 24px;
-  gap: 6px;
+  gap: 8px;
   line-height: 1.6;
 }
 
 /* ── Input wrapper ────────────────────────────────────────────────── */
 .chat-pane__input-wrapper {
-  position: relative;
   display: flex;
   flex-direction: column;
-  padding: 8px 10px;
-  border-top: 1px solid var(--border);
+  padding: 12px 16px;
   background: var(--bg-surface);
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
   flex-shrink: 0;
+  box-shadow: 0 -4px 12px rgba(0,0,0,0.1);
 }
 
 .chat-pane__input {
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--border);
+  background: transparent;
   border-radius: 8px;
-  background: var(--bg-base);
-  overflow: hidden;
-  transition: border-color 0.15s;
-}
-
-.chat-pane__input:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
 .chat-pane__input-toolbar {
   display: flex;
   align-items: center;
-  padding: 4px 6px;
-  background: rgba(255, 255, 255, 0.02);
-  border-bottom: 1px solid var(--border);
-  gap: 2px;
+  padding: 0 0 8px 0;
+  gap: 4px;
 }
 
 .chat-pane__input-toolbar .spacer {
@@ -164,16 +197,14 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 26px;
-  padding: 0 7px;
+  height: 28px;
+  width: 28px;
   background: transparent;
   border: none;
-  color: var(--text-muted);
-  border-radius: 4px;
+  color: var(--text-secondary);
+  border-radius: 6px;
   cursor: pointer;
-  font-size: 11.5px;
-  gap: 4px;
-  transition: color 0.12s, background 0.12s;
+  transition: all 0.2s;
 }
 
 .icon-btn svg {
@@ -183,77 +214,112 @@
 
 .icon-btn:hover {
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.06);
-}
-
-/* ── Model select button ──────────────────────────────────────────── */
-.model-select-btn {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid transparent;
-  color: var(--text-secondary);
-  font-size: 11.5px;
-  padding: 3px 8px;
-  border-radius: 5px;
-  cursor: pointer;
-  transition: all 0.12s;
-}
-
-.model-select-btn svg {
-  width: 12px;
-  height: 12px;
-  opacity: 0.6;
-}
-
-.model-select-btn:hover {
   background: rgba(255, 255, 255, 0.08);
-  color: var(--text-primary);
 }
 
-/* ── Textarea ─────────────────────────────────────────────────────── */
-.chat-pane__input textarea {
+/* ── Chat Input Area ──────────────────────────────────────────────── */
+.chat-pane__input-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-pane__textarea-wrap {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  transition: all 0.2s ease;
+  padding-right: 8px;
+}
+
+.chat-pane__textarea-wrap:focus-within {
+  border-color: rgba(79, 110, 247, 0.5);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: 0 0 0 2px rgba(79, 110, 247, 0.15);
+}
+
+.chat-pane__textarea {
+  flex: 1;
   width: 100%;
-  padding: 9px 12px;
+  padding: 12px 14px;
   border: none;
   background: transparent;
   color: var(--text-primary);
   resize: none;
   outline: none;
-  font-size: 13px;
+  font-size: 13.5px;
   line-height: 1.5;
   min-height: 44px;
   max-height: 250px;
   overflow-y: auto;
 }
 
-.chat-pane__input textarea::placeholder {
-  color: var(--text-muted);
-  font-size: 12.5px;
+.chat-pane__textarea::placeholder {
+  color: rgba(255, 255, 255, 0.3);
 }
 
-.chat-submit {
-  align-self: flex-end;
-  margin: 0 8px 7px 0;
-  padding: 4px 12px;
-  font-size: 12px;
-  border-radius: 5px;
-  background: var(--accent);
+.chat-submit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-bottom: 6px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #4f6ef7, #845ef7);
   border: none;
   color: #fff;
-  font-weight: 600;
   cursor: pointer;
-  transition: background 0.12s;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 8px rgba(79, 110, 247, 0.3);
 }
 
-.chat-submit:hover:not(:disabled) {
-  background: var(--accent-hover);
+.chat-submit-btn svg {
+  width: 15px;
+  height: 15px;
+  transform: translateX(-1px) translateY(1px); /* slight visual correction for paper plane */
 }
 
-.chat-submit:disabled {
-  opacity: 0.4;
+.chat-submit-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(79, 110, 247, 0.4);
+}
+
+.chat-submit-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.chat-submit-btn:disabled {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.3);
+  box-shadow: none;
   cursor: not-allowed;
+}
+
+.chat-pane__footer-text {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.footer-model {
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.footer-dot {
+  font-size: 8px;
+  opacity: 0.5;
+}
+
+.footer-context {
+  font-style: italic;
 }
 
 /* ── Model dropdown ───────────────────────────────────────────────── */

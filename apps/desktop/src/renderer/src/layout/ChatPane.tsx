@@ -221,19 +221,19 @@ export function ChatPane({ onOpenSettings: _onOpenSettings }: ChatPaneProps) {
             </button>
           </div>
         )}
-        <div className="agent-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingRight: '8px', flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span className="agent-title">Agent</span>
+        <div className="chat-agent-header">
+          <div className="chat-agent-header__title">
+            <div className="chat-agent-header__avatar">Ag</div>
+            <span>Agent</span>
           </div>
         <div style={{ position: 'relative' }} ref={dropdownRef}>
           <div
-            className="agent-model-badge"
+            className={`model-select-btn ${isModelDropdownOpen ? 'active' : ''}`}
             onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
-            style={{ cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center' }}
           >
             <div className="agent-ai-dot"></div>
             {selectedModel}
-            <svg style={{ width: '9px', height: '9px', stroke: 'currentColor', fill: 'none', strokeWidth: '2', marginLeft: '4px' }} viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" /></svg>
+            <svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" /></svg>
           </div>
           {isModelDropdownOpen && (
             <div style={{
@@ -440,11 +440,11 @@ export function ChatPane({ onOpenSettings: _onOpenSettings }: ChatPaneProps) {
             </button>
           </div>
 
-          <form className="agent-input-area" onSubmit={handleSubmit}>
-            <div className="agent-input-wrap">
+          <form className="chat-pane__input-form" onSubmit={handleSubmit}>
+            <div className="chat-pane__textarea-wrap">
               <textarea
                 ref={textareaRef}
-                className="agent-input"
+                className="chat-pane__textarea"
                 placeholder="Ask the agent..."
                 value={input}
                 rows={1}
@@ -460,11 +460,15 @@ export function ChatPane({ onOpenSettings: _onOpenSettings }: ChatPaneProps) {
                   }
                 }}
               ></textarea>
-              <button type="submit" className="agent-send" disabled={!input.trim() || isStreaming}>
-                <svg style={{ width: '14px', height: '14px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 2L11 13 M22 2l-7 20-4-9-9-4 20-7z" /></svg>
+              <button type="submit" className="chat-submit-btn" disabled={!input.trim() || isStreaming}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13 M22 2l-7 20-4-9-9-4 20-7z" /></svg>
               </button>
             </div>
-            <div className="agent-footer-text">{selectedModel} · Context: {activeFile?.name ?? 'None'}</div>
+            <div className="chat-pane__footer-text">
+              <span className="footer-model">{selectedModel}</span>
+              <span className="footer-dot">•</span>
+              <span className="footer-context">Context: {activeFile?.name ?? 'None'}</span>
+            </div>
           </form>
         </div>
       </div>

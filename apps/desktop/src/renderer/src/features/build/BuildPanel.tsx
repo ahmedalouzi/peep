@@ -112,11 +112,11 @@ export function BuildPanel() {
     <div id="build-panel" className="build-panel">
       <div className="build-header">
         <div className="build-info">
-          <span id="build-status-badge" className={`status-badge ${currentBuild.status}`}>
-            {currentBuild.status.toUpperCase()}
+          <span id="build-status-badge" className={`status-badge ${currentBuild.status || 'unknown'}`}>
+            {(currentBuild.status || 'unknown').toUpperCase()}
           </span>
           <span id="build-target-label" className="build-target">
-            {currentBuild.framework} • {currentBuild.target.toUpperCase()}
+            {currentBuild.framework || 'unknown'} • {(currentBuild.target || 'apk').toUpperCase()}
           </span>
           {(currentBuild.status === 'running' || elapsed > 0) && (
             <span id="build-elapsed" className="build-time">⏱ {timeStr}</span>

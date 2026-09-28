@@ -75,6 +75,7 @@ buildRouter.post('/upload', requireAuth, buildRateLimiter, upload.single('projec
     const userId = (req as any).user.userId;
     const projectId = req.body.projectId || 'unknown';
     const framework = req.body.framework || 'flutter';
+    const target = req.body.target || 'apk';
 
     if (!req.file) {
       res.status(400).json({ error: 'No project file uploaded' });
@@ -97,10 +98,10 @@ buildRouter.post('/upload', requireAuth, buildRateLimiter, upload.single('projec
       await dbClient.query('SET LOCAL ROLE api_user');
       await dbClient.query('SELECT set_config($1, $2, true)', ['app.current_user_id', userId]);
       const result = await dbClient.query(`
-        INSERT INTO build_jobs (user_id, project_id, status, source_path, framework)
-        VALUES ($1, $2, 'queued', $3, $4)
+        INSERT INTO build_jobs (user_id, project_id, status, source_path, framework, target)
+        VALUES ($1, $2, 'queued', $3, $4, $5)
         RETURNING id, status
-      `, [userId, projectId, artifactPath, framework]);
+      `, [userId, projectId, artifactPath, framework, target]);
       job = result.rows[0];
       await dbClient.query('COMMIT');
     } catch (e) {
@@ -129,7 +130,7 @@ buildRouter.get('/history', requireAuth, async (req, res) => {
       await dbClient.query('SELECT set_config($1, $2, true)', ['app.current_user_id', userId]);
       
       const result = await dbClient.query(`
-        SELECT id, project_id, status, framework, created_at, started_at, completed_at, artifact_url
+        SELECT id, project_id, status, framework, target, created_at, started_at, completed_at, artifact_url
         FROM build_jobs
         WHERE user_id = $1
         ORDER BY created_at DESC
@@ -162,7 +163,7 @@ buildRouter.get('/:jobId', requireAuth, async (req, res) => {
       await dbClient.query('SELECT set_config($1, $2, true)', ['app.current_user_id', userId]);
       
       const result = await dbClient.query(`
-        SELECT id, project_id, status, framework, created_at, started_at, completed_at, error_log, artifact_url
+        SELECT id, project_id, status, framework, target, created_at, started_at, completed_at, error_log, artifact_url
         FROM build_jobs
         WHERE id = $1
       `, [jobId]);

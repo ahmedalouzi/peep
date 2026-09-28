@@ -13,6 +13,11 @@ const execFileAsync = promisify(execFile);
 async function run() {
   console.log('\n--- ADVERSARIAL TEST: Concurrent User Isolation ---');
 
+  if (process.platform !== 'linux') {
+    console.log('  SKIPPED: This test must be run on a Linux host with Docker.');
+    return;
+  }
+
   
 
   const jobIdA = `adv-iso-A-${randomUUID().slice(0, 8)}`;
@@ -21,7 +26,9 @@ async function run() {
   const projectPathA = path.join(tmpDir, 'projectA');
   const projectPathB = path.join(tmpDir, 'projectB');
   await fs.mkdir(path.join(projectPathA, 'android'), { recursive: true });
+  await fs.writeFile(path.join(projectPathA, 'package.json'), JSON.stringify({ name: 'adv-test', version: '1.0.0', private: true }));
   await fs.mkdir(path.join(projectPathB, 'android'), { recursive: true });
+  await fs.writeFile(path.join(projectPathB, 'package.json'), JSON.stringify({ name: 'adv-test', version: '1.0.0', private: true }));
 
   const keystorePath = path.join(tmpDir, 'dummy.jks');
   await fs.writeFile(keystorePath, 'dummy keystore content');

@@ -13,6 +13,11 @@ const execFileAsync = promisify(execFile);
 async function run() {
   console.log('\n--- ADVERSARIAL TEST: Timeout & Zombie Process Isolation ---');
 
+  if (process.platform !== 'linux') {
+    console.log('  SKIPPED: This test must be run on a Linux host with Docker.');
+    return;
+  }
+
   
 
   const jobId = `adv-zombie-${randomUUID().slice(0, 8)}`;
@@ -20,6 +25,7 @@ async function run() {
   const projectPath = path.join(tmpDir, 'project');
   const androidDir = path.join(projectPath, 'android');
   await fs.mkdir(androidDir, { recursive: true });
+  await fs.writeFile(path.join(projectPath, 'package.json'), JSON.stringify({ name: 'adv-test', version: '1.0.0', private: true }));
 
   const gradlewPath = path.join(androidDir, 'gradlew');
   const attackScript = `#!/bin/sh

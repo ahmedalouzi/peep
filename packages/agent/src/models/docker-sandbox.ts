@@ -47,10 +47,14 @@ export class DockerSandbox {
     this.containerName = `build_sandbox_${config.jobId}`;
   }
 
-  private async setupNetwork(): Promise<string> {
+  private async setupNetwork(onLog: (chunk: string) => void): Promise<string | false> {
     try {
       await setupBuildNetwork();
     } catch (e: any) {
+      if (process.platform === 'linux') {
+        onLog(`[SYSTEM] Network isolation setup failed: ${e.message}\n`);
+        return false;
+      }
       console.warn('[SANDBOX] Network isolation setup failed (expected on non-Linux hosts):', e.message);
     }
     return BUILD_NETWORK;
@@ -63,7 +67,8 @@ export class DockerSandbox {
     const hasKeystore = !!this.config.keystorePath;
     const buildCommand = getBuildCommand(framework, hasKeystore);
 
-    const netName = await this.setupNetwork();
+    const netName = await this.setupNetwork(onLog);
+    if (!netName) return false;
 
     const createArgs = [
       'create',

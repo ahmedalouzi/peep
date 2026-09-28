@@ -63,12 +63,30 @@ export async function writeDnsmasqConfig(
 
 export async function setupBuildNetwork(): Promise<void> {
   try {
+    const { stdout } = await execFileAsync('docker', ['network', 'inspect', BUILD_NETWORK]);
+    const networkInfo = JSON.parse(stdout)[0];
+    const options = networkInfo.Options || {};
+    if (options['com.docker.network.bridge.enable_icc'] !== 'false') {
+      const containers = networkInfo.Containers || {};
+      if (Object.keys(containers).length === 0) {
+        console.log(`[network-setup] Recreating network ${BUILD_NETWORK} to add enable_icc=false`);
+        await execFileAsync('docker', ['network', 'rm', BUILD_NETWORK]);
+      } else {
+        console.log('[network-setup] WARNING: enable_icc not enforced (containers attached); relying on iptables only');
+      }
+    }
+  } catch (err) {
+    // Ignore error if network doesn't exist
+  }
+
+  try {
     await execFileAsync('docker', [
-      'network', 'create',
+'network', 'create',
       '--driver', 'bridge',
       '--subnet', '172.30.0.0/24',
       '--gateway', RESOLVER_IP,
       '--opt', `com.docker.network.bridge.name=build0`,
+      '--opt', `com.docker.network.bridge.enable_icc=false`,
       BUILD_NETWORK,
     ]);
     console.log(`[network-setup] Created Docker network: ${BUILD_NETWORK}`);
@@ -93,15 +111,35 @@ export async function setupBuildNetwork(): Promise<void> {
     }
   }
 
-  const rules: [string, string[]][] = [
+  const oldRules: [string, string[]][] = [
     ['FORWARD', ['-o', 'build0', '-m', 'state', '--state', 'ESTABLISHED,RELATED', '-j', 'ACCEPT']],
     ['FORWARD', ['-i', 'build0', '-p', 'udp', '--dport', '53', '-d', RESOLVER_IP, '-j', 'ACCEPT']],
     ['FORWARD', ['-i', 'build0', '-p', 'tcp', '--dport', '53', '-d', RESOLVER_IP, '-j', 'ACCEPT']],
-    ['FORWARD', ['-i', 'build0', '-p', 'tcp', '--dport', '443',
-      '-m', 'set', '--match-set', IPSET_NAME, 'dst', '-j', 'ACCEPT']],
+    ['FORWARD', ['-i', 'build0', '-p', 'tcp', '--dport', '443', '-m', 'set', '--match-set', IPSET_NAME, 'dst', '-j', 'ACCEPT']],
     ['FORWARD', ['-i', 'build0', '-p', 'udp', '--dport', '53', '-j', 'DROP']],
     ['FORWARD', ['-i', 'build0', '-p', 'tcp', '--dport', '53', '-j', 'DROP']],
     ['FORWARD', ['-i', 'build0', '-j', 'DROP']],
+  ];
+
+  for (const [chain, ruleArgs] of oldRules) {
+    let exists = true;
+    while (exists) {
+      try {
+        await execFileAsync('iptables', ['-C', chain, ...ruleArgs]);
+        await execFileAsync('iptables', ['-D', chain, ...ruleArgs]);
+      } catch {
+        exists = false;
+      }
+    }
+  }
+
+  const rules: [string, string[]][] = [
+    ['DOCKER-USER', ['-o', 'build0', '-m', 'conntrack', '--ctstate', 'RELATED,ESTABLISHED', '-j', 'ACCEPT']],
+    ['DOCKER-USER', ['-i', 'build0', '-o', 'build0', '-j', 'DROP']],
+    ['DOCKER-USER', ['-i', 'build0', '-p', 'udp', '--dport', '53', '-d', RESOLVER_IP, '-j', 'ACCEPT']],
+    ['DOCKER-USER', ['-i', 'build0', '-p', 'tcp', '--dport', '53', '-d', RESOLVER_IP, '-j', 'ACCEPT']],
+    ['DOCKER-USER', ['-i', 'build0', '-p', 'tcp', '--dport', '443', '-m', 'set', '--match-set', IPSET_NAME, 'dst', '-j', 'ACCEPT']],
+    ['DOCKER-USER', ['-i', 'build0', '-j', 'DROP']],
   ];
 
   for (const [chain, ruleArgs] of rules.reverse()) {
@@ -113,6 +151,13 @@ export async function setupBuildNetwork(): Promise<void> {
   }
 
   console.log('[network-setup] iptables rules applied to build0 interface');
+
+  const { stdout: iptablesOut } = await execFileAsync('iptables', ['-S', 'DOCKER-USER']);
+  const build0Rules = iptablesOut.trim().split('\n').filter(l => l.includes(' build0'));
+  const lastRule = build0Rules[build0Rules.length - 1];
+  if (!lastRule || !lastRule.includes('-i build0 -j DROP')) {
+    throw new Error('Verification failed: catch-all DROP is not the last build0 rule in DOCKER-USER chain: ' + lastRule);
+  }
 }
 
 export function getDnsmasqConfigForAudit(): string {

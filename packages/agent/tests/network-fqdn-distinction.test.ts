@@ -102,6 +102,8 @@ exit 0
   console.log(extractEvidence('[ADV_EVIDENCE_DNS_BAD]'));
   console.log(extractEvidence('[ADV_EVIDENCE_CURL_GOOD]'));
   console.log(extractEvidence('[ADV_EVIDENCE_CURL_BAD]'));
+  console.log(extractEvidence('[ADV_EVIDENCE_PING_BAD]'));
+  console.log(extractEvidence('[ADV_EVIDENCE_UDP_BAD]'));
 
   let pcapOutput = '';
   try {

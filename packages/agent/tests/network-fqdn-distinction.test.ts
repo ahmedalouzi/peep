@@ -46,6 +46,10 @@ HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 https://registr
 echo "[ADV_EVIDENCE_CURL_GOOD] HTTP $HTTP_CODE"
 HARDCODED_CODE=$(curl -s -o /dev/null -w "%{http_code} exit:%{exitcode}" --max-time 10 --resolve "attacker.workers.dev:443:${npmIp}" https://attacker.workers.dev/ || echo "exit:$?")
 echo "[ADV_EVIDENCE_CURL_BAD] $HARDCODED_CODE"
+PING_CODE=$(ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1; echo $?)
+echo "[ADV_EVIDENCE_PING_BAD] exit:$PING_CODE"
+UDP_CODE=$(nslookup google.com 8.8.8.8 >/dev/null 2>&1; echo $?)
+echo "[ADV_EVIDENCE_UDP_BAD] exit:$UDP_CODE"
 echo "[ADV_EVIDENCE_END]"
 exit 0
 `;
@@ -132,6 +136,12 @@ exit 0
 
   const curlBadLine = extractEvidence('[ADV_EVIDENCE_CURL_BAD]');
   assert.ok(!curlBadLine.includes(' 200'), 'CURL BAD unexpectedly succeeded and returned 200 OK');
+
+  const pingBadLine = extractEvidence('[ADV_EVIDENCE_PING_BAD]');
+  assert.ok(pingBadLine.includes('exit:') && !pingBadLine.includes('exit:0'), 'Container successfully pinged 8.8.8.8 (ICMP allowed)!');
+
+  const udpBadLine = extractEvidence('[ADV_EVIDENCE_UDP_BAD]');
+  assert.ok(udpBadLine.includes('exit:') && !udpBadLine.includes('exit:0'), 'Container successfully queried DNS via UDP to 8.8.8.8 (UDP allowed)!');
 
   console.log('✅ PASS: Network FQDN distinction enforced correctly.');
   console.log('✅ PASS: Real DockerSandbox encapsulation tested and proven secure.');

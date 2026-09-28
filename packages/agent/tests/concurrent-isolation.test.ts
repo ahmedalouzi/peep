@@ -43,8 +43,8 @@ async function run() {
   const scriptA = '#!/bin/sh\n' +
     'echo "[JOB_A] Starting attack..."\n' +
     'echo "[JOB_A] Waiting for target IP to be injected..."\n' +
-    'while [ ! -f /workspace/target_ip.txt ]; do sleep 0.5; done\n' +
-    'TARGET_IP=$(cat /workspace/target_ip.txt)\n' +
+    'while [ ! -f /build/target_ip.txt ]; do sleep 0.5; done\n' +
+    'TARGET_IP=$(cat /build/target_ip.txt)\n' +
     'echo "[JOB_A] Acquired target IP: $TARGET_IP"\n' +
     'echo "[JOB_A] Attempting network connection to $TARGET_IP:8000..."\n' +
     'curl -s -v -m 2 http://$TARGET_IP:8000/\n' +

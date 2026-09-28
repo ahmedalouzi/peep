@@ -236,6 +236,8 @@ export async function initDbSchema() {
       
       GRANT SELECT, INSERT ON build_jobs TO api_user;
       GRANT UPDATE (status) ON build_jobs TO api_user;
+      
+      GRANT SELECT, INSERT, UPDATE, DELETE ON chat_threads, chat_messages, chat_runs TO api_user;
 
       DO $$ BEGIN
         CREATE ROLE worker_user BYPASSRLS NOLOGIN;

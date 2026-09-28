@@ -32,9 +32,9 @@ function getBuildCommand(framework: BuildFramework, hasKeystore: boolean): strin
 
 function getArtifactPath(framework: BuildFramework): string {
   if (framework === 'flutter') {
-    return '/workspace/build/app/outputs/flutter-apk/app-release.apk';
+    return '/build/build/app/outputs/flutter-apk/app-release.apk';
   }
-  return '/workspace/android/app/build/outputs/apk/release/app-release.apk';
+  return '/build/android/app/build/outputs/apk/release/app-release.apk';
 }
 
 export class DockerSandbox {
@@ -81,31 +81,30 @@ export class DockerSandbox {
       '-e', 'NPM_CONFIG_CACHE=/tmp/.npm-cache',
       '-e', 'HOME=/tmp',
       '-e', 'GRADLE_USER_HOME=/tmp/.gradle',
-      '-w', '/workspace',
       image,
     ];
 
-    let shellScript = buildCommand;
+    let shellScript = `cd /build && ${buildCommand}`;
 
     if (hasKeystore && this.config.keystorePassword && this.config.keyAlias) {
       const keyPassword = this.config.keyPassword || this.config.keystorePassword;
       if (framework === 'flutter') {
         shellScript = [
-          `mkdir -p /workspace/android`,
-          `echo "storeFile=/workspace/release.jks" > /workspace/android/key.properties`,
-          `echo "storePassword=${this.config.keystorePassword}" >> /workspace/android/key.properties`,
-          `echo "keyAlias=${this.config.keyAlias}" >> /workspace/android/key.properties`,
-          `echo "keyPassword=${keyPassword}" >> /workspace/android/key.properties`,
-          buildCommand,
+          `mkdir -p /build/android`,
+          `echo "storeFile=/build/release.jks" > /build/android/key.properties`,
+          `echo "storePassword=${this.config.keystorePassword}" >> /build/android/key.properties`,
+          `echo "keyAlias=${this.config.keyAlias}" >> /build/android/key.properties`,
+          `echo "keyPassword=${keyPassword}" >> /build/android/key.properties`,
+          `cd /build && ${buildCommand}`,
         ].join(' && ');
       } else {
         shellScript = [
-          `mkdir -p /workspace/android`,
-          `echo "MYAPP_UPLOAD_STORE_FILE=/workspace/release.jks" >> /workspace/android/gradle.properties`,
-          `echo "MYAPP_UPLOAD_STORE_PASSWORD=${this.config.keystorePassword}" >> /workspace/android/gradle.properties`,
-          `echo "MYAPP_UPLOAD_KEY_ALIAS=${this.config.keyAlias}" >> /workspace/android/gradle.properties`,
-          `echo "MYAPP_UPLOAD_KEY_PASSWORD=${keyPassword}" >> /workspace/android/gradle.properties`,
-          buildCommand,
+          `mkdir -p /build/android`,
+          `echo "MYAPP_UPLOAD_STORE_FILE=/build/release.jks" >> /build/android/gradle.properties`,
+          `echo "MYAPP_UPLOAD_STORE_PASSWORD=${this.config.keystorePassword}" >> /build/android/gradle.properties`,
+          `echo "MYAPP_UPLOAD_KEY_ALIAS=${this.config.keyAlias}" >> /build/android/gradle.properties`,
+          `echo "MYAPP_UPLOAD_KEY_PASSWORD=${keyPassword}" >> /build/android/gradle.properties`,
+          `cd /build && ${buildCommand}`,
         ].join(' && ');
       }
     }
@@ -134,7 +133,7 @@ export class DockerSandbox {
 
     onLog(`[SYSTEM] Injecting source files...\n`);
     try {
-      await execFileAsync('docker', ['cp', `${this.config.projectPath}/.`, `${this.containerName}:/workspace`]);
+      await execFileAsync('docker', ['cp', `${this.config.projectPath}/.`, `${this.containerName}:/build`]);
     } catch (err: any) {
       onLog(`[SYSTEM] Source injection failed: ${err.message}\n`);
       return false;
@@ -144,7 +143,7 @@ export class DockerSandbox {
       onLog(`[SYSTEM] Injecting signing keystore...\n`);
       try {
         await execFileAsync('chown', ['1000:1000', this.config.keystorePath!]);
-        await execFileAsync('docker', ['cp', this.config.keystorePath!, `${this.containerName}:/workspace/release.jks`]);
+        await execFileAsync('docker', ['cp', this.config.keystorePath!, `${this.containerName}:/build/release.jks`]);
       } catch (err: any) {
         onLog(`[SYSTEM] Keystore injection failed: ${err.message}\n`);
         return false;

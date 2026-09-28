@@ -25,9 +25,9 @@ function getBuildCommand(framework: BuildFramework, hasKeystore: boolean): strin
     return 'flutter build apk --release';
   }
   if (hasKeystore) {
-    return 'cd android && ./gradlew assembleRelease';
+    return 'npm install --no-audit --no-fund && cd android && ./gradlew assembleRelease';
   }
-  return 'npx react-native build-android --mode=release';
+  return 'npm install --no-audit --no-fund && npx react-native build-android --mode=release';
 }
 
 function getArtifactPath(framework: BuildFramework): string {
@@ -79,6 +79,8 @@ export class DockerSandbox {
       '--dns', RESOLVER_IP,
       '--user=1000:1000',
       '-e', 'NPM_CONFIG_CACHE=/tmp/.npm-cache',
+      '-e', 'HOME=/tmp',
+      '-e', 'GRADLE_USER_HOME=/tmp/.gradle',
       '-w', '/workspace',
       image,
     ];

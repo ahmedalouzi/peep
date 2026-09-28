@@ -36,9 +36,19 @@ export async function initDbSchema() {
       CREATE TABLE IF NOT EXISTS users (
         id UUID PRIMARY KEY,
         email VARCHAR(255) UNIQUE NOT NULL,
-        password_hash VARCHAR(255) NOT NULL
+        password_hash VARCHAR(255) NOT NULL,
+        plan VARCHAR(50) DEFAULT 'free'
       );
     `);
+    
+    // Migration for existing tables
+    try {
+      await client.query(`ALTER TABLE users ADD COLUMN plan VARCHAR(50) DEFAULT 'free';`);
+    } catch (e: any) {
+      if (e.code !== '42701') { // 42701 is duplicate_column error in Postgres
+        throw e;
+      }
+    }
     
     await client.query(`
       CREATE TABLE IF NOT EXISTS sessions (

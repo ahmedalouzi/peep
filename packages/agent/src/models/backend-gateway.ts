@@ -412,7 +412,7 @@ export class BackendAIGateway {
         headers: responseHeaders,
         body: {
           email: session.email,
-          tier: 'pro',
+          tier: session.plan || 'free',
           usage,
           limit: 20.00
         }
@@ -456,7 +456,7 @@ export class BackendAIGateway {
         await this.budgetGuard.acquireLock(session.userId);
         try {
           // Enforce server-side budget limits before calling provider adapter
-          await this.budgetGuard.checkBudget(session.userId, 'pro', estimatedCost);
+          await this.budgetGuard.checkBudget(session.userId, session.plan || 'free', estimatedCost);
         } catch (err: any) {
           this.budgetGuard.releaseLock(session.userId);
           return { status: 403, headers: responseHeaders, body: err };
@@ -542,7 +542,7 @@ export class BackendAIGateway {
       if (!isDevBypass) {
         await this.budgetGuard.acquireLock(session.userId);
         try {
-          await this.budgetGuard.checkBudget(session.userId, 'pro', estimatedCost);
+          await this.budgetGuard.checkBudget(session.userId, session.plan || 'free', estimatedCost);
         } catch (err: any) {
           this.budgetGuard.releaseLock(session.userId);
           return { status: 403, headers: responseHeaders, body: err };

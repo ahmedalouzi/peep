@@ -14,7 +14,7 @@ export class AuthenticationRouter implements IAuthProvider {
     return this.productionProvider;
   }
 
-  async validateSession(sessionToken: string, requestId?: string): Promise<{ userId: string; email: string }> {
+  async validateSession(sessionToken: string, requestId?: string): Promise<{ userId: string; email: string; plan: string }> {
     const provider = this.getProvider();
     const reqId = requestId || 'UNKNOWN';
     console.log(`[REQ ${reqId}] AuthenticationRouter.validateSession entered`);

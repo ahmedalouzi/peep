@@ -187,11 +187,11 @@ export class AuthService implements IAuthProvider {
     };
   }
 
-  async validateSession(sessionToken: string, requestId?: string): Promise<{ userId: string; email: string }> {
+  async validateSession(sessionToken: string, requestId?: string): Promise<{ userId: string; email: string; plan: string }> {
     const reqId = requestId || 'UNKNOWN';
     console.log(`[REQ ${reqId}] AuthService.validateSession entered`);
     const res = await db.query(
-      `SELECT s.user_id, u.email, s.expires_at 
+      `SELECT s.user_id, u.email, u.plan, s.expires_at 
        FROM sessions s 
        JOIN users u ON s.user_id = u.id 
        WHERE s.session_token = $1`,
@@ -210,7 +210,8 @@ export class AuthService implements IAuthProvider {
 
     return {
       userId: session.user_id,
-      email: session.email
+      email: session.email,
+      plan: session.plan || 'free'
     };
   }
 

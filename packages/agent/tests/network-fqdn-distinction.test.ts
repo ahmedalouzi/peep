@@ -19,10 +19,7 @@ const execFileAsync = promisify(execFile);
 async function run() {
   console.log('\n--- ADVERSARIAL TEST: FQDN-Based Allowlist Distinction ---');
 
-  if (process.platform !== 'linux') {
-    console.log('  ⚠️  SKIPPED: This test must be run on a Linux host with Docker.');
-    return;
-  }
+  
 
   const jobId = `adv-net-${randomUUID().slice(0, 8)}`;
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'adv-net-'));

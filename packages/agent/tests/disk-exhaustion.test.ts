@@ -20,10 +20,7 @@ async function getHostFreeDiskMB() {
 async function run() {
   console.log('\n--- ADVERSARIAL TEST: Disk Exhaustion (Quota Verification) ---');
 
-  if (process.platform !== 'linux') {
-    console.log('  SKIPPED: This test must be run on a Linux host with Docker.');
-    return;
-  }
+  
 
   const diskBefore = await getHostFreeDiskMB();
   console.log(`  [HOST] System available disk space before attack: ${diskBefore} MB`);

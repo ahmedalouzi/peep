@@ -19,10 +19,7 @@ async function getHostFreeMemMB() {
 async function run() {
   console.log('\n--- ADVERSARIAL TEST: Memory Exhaustion (OOM) ---');
 
-  if (process.platform !== 'linux') {
-    console.log('  ⚠️  SKIPPED: This test must be run on a Linux host with Docker.');
-    return;
-  }
+  
 
   const memBefore = await getHostFreeMemMB();
   console.log(`  [HOST] System available memory before attack: ${memBefore} MB`);

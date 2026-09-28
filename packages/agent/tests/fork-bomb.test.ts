@@ -19,10 +19,7 @@ async function getHostLoad() {
 async function run() {
   console.log('\n--- ADVERSARIAL TEST: Fork Bomb (Process Exhaustion) ---');
 
-  if (process.platform !== 'linux') {
-    console.log('  ⚠️  SKIPPED: This test must be run on a Linux host with Docker.');
-    return;
-  }
+  
 
   const loadBefore = await getHostLoad();
   console.log(`  [HOST] System 1-minute load average before attack: ${loadBefore}`);

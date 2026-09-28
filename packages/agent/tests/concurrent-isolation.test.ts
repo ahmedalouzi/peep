@@ -13,10 +13,7 @@ const execFileAsync = promisify(execFile);
 async function run() {
   console.log('\n--- ADVERSARIAL TEST: Concurrent User Isolation ---');
 
-  if (process.platform !== 'linux') {
-    console.log('  SKIPPED: This test must be run on a Linux host with Docker.');
-    return;
-  }
+  
 
   const jobIdA = `adv-iso-A-${randomUUID().slice(0, 8)}`;
   const jobIdB = `adv-iso-B-${randomUUID().slice(0, 8)}`;

@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { writeFile } from 'node:fs/promises';
+import { writeFile, readFile } from 'node:fs/promises';
 
 const execFileAsync = promisify(execFile);
 
@@ -19,9 +19,14 @@ export const ALLOWLISTED_FQDNS = [
   'dl.google.com',
   'services.gradle.org',
   'jcenter.bintray.com',
+  // Note: github.com and release-assets.githubusercontent.com host arbitrary user content.
+  // This is an accepted MVP risk. Plan: pre-baked Gradle in the image or a filtering proxy.
+  // Additionally, the API server currently runs as root in PM2 (needed here for iptables/dnsmasq);
+  // splitting the build worker from the API process is a pre-launch item.
   'github.com',
   'objects.githubusercontent.com',
   'raw.githubusercontent.com',
+  'release-assets.githubusercontent.com',
 ];
 
 export function generateDnsmasqConfig(): string {
@@ -57,8 +62,26 @@ export function generateDnsmasqConfig(): string {
 export async function writeDnsmasqConfig(
   path = '/etc/dnsmasq.d/build-allowlist.conf',
 ): Promise<void> {
-  await writeFile(path, generateDnsmasqConfig(), 'utf-8');
-  console.log(`[network-setup] dnsmasq config written to ${path}`);
+  const newConfig = generateDnsmasqConfig();
+  let oldConfig = '';
+  try {
+    oldConfig = await readFile(path, 'utf-8');
+  } catch (err) {
+    // Ignore read error (file might not exist)
+  }
+
+  if (oldConfig !== newConfig) {
+    await writeFile(path, newConfig, 'utf-8');
+    console.log(`[network-setup] dnsmasq config written to ${path}`);
+    try {
+      await execFileAsync('systemctl', ['restart', 'dnsmasq']);
+      console.log(`[network-setup] dnsmasq restarted`);
+    } catch (err: any) {
+      console.error(`[network-setup] ERROR: Failed to restart dnsmasq. The running dnsmasq still has the OLD allowlist: ${err.message}`);
+    }
+  } else {
+    console.log(`[network-setup] dnsmasq config is up to date`);
+  }
 }
 
 export async function setupBuildNetwork(): Promise<void> {
@@ -158,6 +181,8 @@ export async function setupBuildNetwork(): Promise<void> {
   if (!lastRule || !lastRule.includes('-i build0 -j DROP')) {
     throw new Error('Verification failed: catch-all DROP is not the last build0 rule in DOCKER-USER chain: ' + lastRule);
   }
+
+  await writeDnsmasqConfig();
 }
 
 export function getDnsmasqConfigForAudit(): string {

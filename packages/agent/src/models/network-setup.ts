@@ -27,6 +27,7 @@ export const ALLOWLISTED_FQDNS = [
   'objects.githubusercontent.com',
   'raw.githubusercontent.com',
   'release-assets.githubusercontent.com',
+  'plugins-artifacts.gradle.org',
 ];
 
 export function generateDnsmasqConfig(): string {

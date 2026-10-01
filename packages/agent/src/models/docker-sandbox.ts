@@ -87,7 +87,7 @@ export class DockerSandbox {
       '--memory=4g',
       '--memory-swap=4g',
       '--cpus=2.0',
-      '--pids-limit=256',
+      '--pids-limit=384',
       '--storage-opt', 'size=5G',
       '--cap-drop=ALL',
       '--security-opt', 'no-new-privileges',

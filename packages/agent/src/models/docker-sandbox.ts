@@ -31,9 +31,9 @@ function getBuildCommand(framework: BuildFramework, hasKeystore: boolean): strin
   //                   costs an extra forked process plus a daemon-watcher process
   // Together these keep Gradle's peak PID count well under 200, letting us use pids-limit=256.
   const gradleConstraints = [
-    'echo "org.gradle.workers.max=2" >> android/gradle.properties',
-    'echo "org.gradle.parallel=false" >> android/gradle.properties',
-    'echo "org.gradle.daemon=false" >> android/gradle.properties',
+    'printf "\\norg.gradle.workers.max=2\\n" >> android/gradle.properties',
+    'printf "org.gradle.parallel=false\\n" >> android/gradle.properties',
+    'printf "org.gradle.daemon=false\\n" >> android/gradle.properties',
   ].join(' && ');
   if (hasKeystore) {
     return `npm install --no-audit --no-fund && chmod +x android/gradlew && ${gradleConstraints} && cd android && ./gradlew assembleRelease`;

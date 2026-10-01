@@ -24,10 +24,21 @@ function getBuildCommand(framework: BuildFramework, hasKeystore: boolean): strin
   if (framework === 'flutter') {
     return 'flutter build apk --release';
   }
+  // Append sandbox Gradle constraints to android/gradle.properties before invoking the wrapper:
+  //   - workers.max=2: cap JVM worker processes to our CPU budget (avoids spawning host-core-count workers)
+  //   - parallel=false: no inter-project parallel execution (irrelevant for single-app builds, but safe)
+  //   - daemon=false: skip the persistent daemon JVM — it is wasted inside a one-shot container and
+  //                   costs an extra forked process plus a daemon-watcher process
+  // Together these keep Gradle's peak PID count well under 200, letting us use pids-limit=256.
+  const gradleConstraints = [
+    'echo "org.gradle.workers.max=2" >> android/gradle.properties',
+    'echo "org.gradle.parallel=false" >> android/gradle.properties',
+    'echo "org.gradle.daemon=false" >> android/gradle.properties',
+  ].join(' && ');
   if (hasKeystore) {
-    return 'npm install --no-audit --no-fund && chmod +x android/gradlew && cd android && ./gradlew assembleRelease';
+    return `npm install --no-audit --no-fund && chmod +x android/gradlew && ${gradleConstraints} && cd android && ./gradlew assembleRelease`;
   }
-  return 'npm install --no-audit --no-fund && chmod +x android/gradlew && npx react-native build-android --mode=release';
+  return `npm install --no-audit --no-fund && chmod +x android/gradlew && ${gradleConstraints} && npx react-native build-android --mode=release`;
 }
 
 function getArtifactPath(framework: BuildFramework): string {
@@ -76,7 +87,7 @@ export class DockerSandbox {
       '--memory=4g',
       '--memory-swap=4g',
       '--cpus=2.0',
-      '--pids-limit=1024',
+      '--pids-limit=256',
       '--storage-opt', 'size=5G',
       '--cap-drop=ALL',
       '--security-opt', 'no-new-privileges',

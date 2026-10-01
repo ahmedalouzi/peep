@@ -29,11 +29,14 @@ function getBuildCommand(framework: BuildFramework, hasKeystore: boolean): strin
   //   - parallel=false: no inter-project parallel execution (irrelevant for single-app builds, but safe)
   //   - daemon=false: skip the persistent daemon JVM — it is wasted inside a one-shot container and
   //                   costs an extra forked process plus a daemon-watcher process
-  // Together these keep Gradle's peak PID count well under 200, letting us use pids-limit=256.
+  //   - jvmargs=-Xmx1g: cap build JVM heap explicitly (default would be ~25% of container memory;
+  //                      capping at 1g frees headroom for clang during native CMake compilation)
+  // Together these keep Gradle's peak PID count well under 200, letting us use pids-limit=384.
   const gradleConstraints = [
     'printf "\\norg.gradle.workers.max=2\\n" >> android/gradle.properties',
     'printf "org.gradle.parallel=false\\n" >> android/gradle.properties',
     'printf "org.gradle.daemon=false\\n" >> android/gradle.properties',
+    'printf "org.gradle.jvmargs=-Xmx1g\\n" >> android/gradle.properties',
   ].join(' && ');
   if (hasKeystore) {
     return `npm install --no-audit --no-fund && chmod +x android/gradlew && ${gradleConstraints} && cd android && ./gradlew assembleRelease`;
@@ -84,8 +87,8 @@ export class DockerSandbox {
     const createArgs = [
       'create',
       '--name', this.containerName,
-      '--memory=4g',
-      '--memory-swap=4g',
+      '--memory=5g',
+      '--memory-swap=5g',
       '--cpus=2.0',
       '--pids-limit=384',
       '--storage-opt', 'size=5G',

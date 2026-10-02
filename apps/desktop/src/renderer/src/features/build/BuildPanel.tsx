@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { useBuildStore } from '../../stores/build-store';
 import { buildApi } from '../../services/build-api';
@@ -14,6 +14,7 @@ export function BuildPanel() {
   const termRef = useRef<HTMLDivElement>(null);
   const termInstance = useRef<Terminal | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  const [copyLabel, setCopyLabel] = useState('Copy Log');
 
   // Status polling timer
   useEffect(() => {
@@ -66,8 +67,8 @@ export function BuildPanel() {
         },
         fontSize: 12,
         fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-        disableStdin: true,
         convertEol: true,
+        copyOnSelect: true,
       });
       term.open(termRef.current);
       termInstance.current = term;
@@ -84,6 +85,42 @@ export function BuildPanel() {
     }
   }, [currentBuild?.id]);
 
+  // ── Handlers — defined unconditionally (Rules of Hooks: no hooks after early return) ──
+  const isActive = currentBuild?.status === 'queued' || currentBuild?.status === 'running';
+
+  const handleCancel = useCallback(() => {
+    if (currentBuild) buildApi.cancelBuild(currentBuild.id);
+  }, [currentBuild]);
+
+  const handleDownload = useCallback(() => {
+    if (currentBuild?.artifactUrl) window.open(currentBuild.artifactUrl, '_blank');
+  }, [currentBuild]);
+
+  const handleCopyLog = useCallback(() => {
+    const term = termInstance.current;
+    if (!term) return;
+    const selection = term.getSelection();
+    // If the user has already selected text, copy just that; otherwise copy entire buffer.
+    const textToCopy = selection.length > 0 ? selection : (() => {
+      const lines: string[] = [];
+      for (let i = 0; i < term.buffer.active.length; i++) {
+        lines.push(term.buffer.active.getLine(i)?.translateToString(true) ?? '');
+      }
+      return lines.join('\n').trimEnd();
+    })();
+    navigator.clipboard.writeText(textToCopy).then(() => {
+      setCopyLabel('Copied!');
+      setTimeout(() => setCopyLabel('Copy Log'), 1500);
+    }).catch(() => {
+      setCopyLabel('Failed');
+      setTimeout(() => setCopyLabel('Copy Log'), 1500);
+    });
+  }, []);
+
+  const minutes = Math.floor(elapsed / 60);
+  const seconds = elapsed % 60;
+  const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
   if (!currentBuild) {
     return (
       <div id="build-panel-empty" className="build-panel empty">
@@ -92,21 +129,6 @@ export function BuildPanel() {
     );
   }
 
-  const isActive = currentBuild.status === 'queued' || currentBuild.status === 'running';
-
-  const handleCancel = () => {
-    buildApi.cancelBuild(currentBuild.id);
-  };
-
-  const handleDownload = () => {
-    if (currentBuild.artifactUrl) {
-      window.open(currentBuild.artifactUrl, '_blank');
-    }
-  };
-
-  const minutes = Math.floor(elapsed / 60);
-  const seconds = elapsed % 60;
-  const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
 
   return (
     <div id="build-panel" className="build-panel">
@@ -123,6 +145,9 @@ export function BuildPanel() {
           )}
         </div>
         <div className="build-actions">
+          <button id="build-copy-btn" className="btn-copy" onClick={handleCopyLog}>
+            {copyLabel}
+          </button>
           {isActive && (
             <button id="build-cancel-btn" className="btn-cancel" onClick={handleCancel}>
               Cancel Build

@@ -41,7 +41,11 @@ function getBuildCommand(framework: BuildFramework, hasKeystore: boolean): strin
   if (hasKeystore) {
     return `npm install --no-audit --no-fund && chmod +x android/gradlew && ${gradleConstraints} && cd android && ./gradlew assembleRelease`;
   }
-  return `npm install --no-audit --no-fund && chmod +x android/gradlew && ${gradleConstraints} && npx react-native build-android --mode=release`;
+  // NOTE: We do NOT use `npx react-native build-android` here — the RN CLI wrapper calls
+  // getTaskNames(..., 'bundle') internally, which runs bundleRelease and produces an .aab
+  // (Android App Bundle). .aab requires Google Play's bundletool to install; it cannot be
+  // sideloaded directly. We invoke ./gradlew assembleRelease explicitly to get a plain .apk.
+  return `npm install --no-audit --no-fund && chmod +x android/gradlew && ${gradleConstraints} && cd android && ./gradlew assembleRelease`;
 }
 
 function getArtifactPath(framework: BuildFramework): string {

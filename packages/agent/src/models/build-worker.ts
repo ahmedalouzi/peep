@@ -41,7 +41,7 @@ async function reconcileOrphanedJobs() {
           error_log = COALESCE(error_log, '') || '[RECONCILER] Job abandoned. Worker crashed or timed out.',
           updated_at = NOW()
       WHERE status = 'running' 
-        AND updated_at < NOW() - INTERVAL '12 minutes'
+        AND updated_at < NOW() - INTERVAL '25 minutes'
       RETURNING id
     `));
     if (res.rows.length > 0) {

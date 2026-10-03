@@ -143,7 +143,7 @@ threadsRouter.post('/:id', requireAuth, express.json(), async (req, res) => {
           INSERT INTO chat_messages (id, thread_id, role, content, tool_calls, created_at)
           VALUES ($1, $2, $3, $4, $5, COALESCE($6, NOW()))
         `, [
-          msg.id || require('crypto').randomUUID(),
+          (!msg.id || msg.id === 'welcome') ? require('crypto').randomUUID() : msg.id,
           threadId,
           msg.role,
           msg.content || '',

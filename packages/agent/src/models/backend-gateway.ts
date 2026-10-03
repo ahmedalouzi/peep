@@ -54,7 +54,13 @@ export class OpenAIAdapter implements ProviderAdapter {
     const modelId = options?.resolvedModelId || 'gpt-4o-mini';
     const payload = {
       model: modelId,
-      messages: request.messages.map(m => ({ role: m.role, content: m.content })),
+      messages: request.messages.map(m => {
+        const mapped: any = { role: m.role, content: m.content || '' };
+        if (m.tool_calls) mapped.tool_calls = m.tool_calls;
+        if (m.tool_call_id) mapped.tool_call_id = m.tool_call_id;
+        if (m.name) mapped.name = m.name;
+        return mapped;
+      }),
       tools: request.tools,
       temperature: 0.2
     };
@@ -88,7 +94,13 @@ export class OpenAIAdapter implements ProviderAdapter {
     const modelId = options?.resolvedModelId || 'gpt-4o-mini';
     const payload = {
       model: modelId,
-      messages: request.messages.map(m => ({ role: m.role, content: m.content })),
+      messages: request.messages.map(m => {
+        const mapped: any = { role: m.role, content: m.content || '' };
+        if (m.tool_calls) mapped.tool_calls = m.tool_calls;
+        if (m.tool_call_id) mapped.tool_call_id = m.tool_call_id;
+        if (m.name) mapped.name = m.name;
+        return mapped;
+      }),
       tools: request.tools,
       stream: true,
       temperature: 0.2
@@ -110,6 +122,7 @@ export class OpenAIAdapter implements ProviderAdapter {
     const reader = response.body.getReader();
     const decoder = new TextDecoder('utf-8');
     let buffer = '';
+    const toolCallsMap = new Map<number, any>();
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -126,9 +139,26 @@ export class OpenAIAdapter implements ProviderAdapter {
             if (delta?.content) {
               yield { type: 'delta', content: delta.content };
             }
+            if (delta?.tool_calls) {
+              for (const tc of delta.tool_calls) {
+                if (!toolCallsMap.has(tc.index)) {
+                  toolCallsMap.set(tc.index, { id: tc.id, name: tc.function?.name || '', arguments: tc.function?.arguments || '' });
+                } else {
+                  const existing = toolCallsMap.get(tc.index);
+                  if (tc.id) existing.id = tc.id;
+                  if (tc.function?.name) existing.name += tc.function.name;
+                  if (tc.function?.arguments) existing.arguments += tc.function.arguments;
+                }
+              }
+            }
           } catch {}
         }
       }
+    }
+    for (const tc of toolCallsMap.values()) {
+      let args = {};
+      try { args = JSON.parse(tc.arguments); } catch {}
+      yield { type: 'tool_call', toolCall: { id: tc.id, name: tc.name, arguments: args } };
     }
     yield { type: 'done' };
   }
@@ -260,7 +290,6 @@ export function _resetSentryLoaderForTest() {
 
 export class BackendAIGateway {
   private adapters = new Map<string, ProviderAdapter>();
-  private userAiCallTracker = new Map<string, { count: number; windowStart: number }>();
   readonly authService = new AuthenticationRouter();
   private router = new ServerModelRouter();
   readonly usageStore = new ServerUsageStore();
@@ -301,15 +330,6 @@ export class BackendAIGateway {
       this.adapters.set('anthropic', new MockOpenAIAdapter());
     }
 
-    // Periodic memory cleanup: remove rate limit trackers older than 2 minutes
-    setInterval(() => {
-      const now = Date.now();
-      for (const [userId, tracker] of this.userAiCallTracker.entries()) {
-        if (now - tracker.windowStart > 120000) {
-          this.userAiCallTracker.delete(userId);
-        }
-      }
-    }, 5 * 60 * 1000).unref();
   }
 
   async handleRequest(
@@ -419,27 +439,6 @@ export class BackendAIGateway {
       };
     }
 
-    // 1.5 Rate Limiting (Per-user) for AI endpoints
-    if (path === '/v1/ai/generate' || path === '/v1/ai/stream') {
-      const now = Date.now();
-      const tracker = this.userAiCallTracker.get(session.userId) || { count: 0, windowStart: now };
-      if (now - tracker.windowStart > 60000) {
-        tracker.count = 1;
-        tracker.windowStart = now;
-      } else {
-        tracker.count += 1;
-      }
-      this.userAiCallTracker.set(session.userId, tracker);
-
-      if (tracker.count > 30) {
-        return {
-          status: 429,
-          headers: responseHeaders,
-          body: { code: 'RATE_LIMIT_EXCEEDED', message: 'AI request rate limit exceeded. Limit: 30 requests/minute.' }
-        };
-      }
-    }
-
     // 2. Path routing
     if (path === '/v1/ai/generate') {
       const requestData = body as AIRequest;
@@ -466,7 +465,7 @@ export class BackendAIGateway {
       let config: any;
       try {
         const routingStart = Date.now();
-        config = this.router.route(requestData.tier);
+        config = this.router.route(requestData.tier, session?.plan || 'free', requestData.manualModel);
         const routingDuration = Date.now() - routingStart;
 
         let adapter = this.adapters.get(config.providerId) || this.adapters.get('openai')!;
@@ -552,7 +551,7 @@ export class BackendAIGateway {
       let config: any;
       try {
         const routingStart = Date.now();
-        config = this.router.route(requestData.tier);
+        config = this.router.route(requestData.tier, session?.plan || 'free', requestData.manualModel);
         const routingDuration = Date.now() - routingStart;
 
         let adapter = this.adapters.get(config.providerId) || this.adapters.get('openai')!;

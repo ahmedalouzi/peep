@@ -130,7 +130,7 @@ buildRouter.get('/history', requireAuth, async (req, res) => {
       await dbClient.query('SELECT set_config($1, $2, true)', ['app.current_user_id', userId]);
       
       const result = await dbClient.query(`
-        SELECT id, project_id, status, framework, target, created_at, started_at, completed_at, artifact_url
+        SELECT id, project_id AS "projectId", status, framework, target, created_at AS "createdAt", started_at AS "startedAt", completed_at AS "completedAt", artifact_url AS "artifactUrl"
         FROM build_jobs
         WHERE user_id = $1
         ORDER BY created_at DESC
@@ -163,7 +163,7 @@ buildRouter.get('/:jobId', requireAuth, async (req, res) => {
       await dbClient.query('SELECT set_config($1, $2, true)', ['app.current_user_id', userId]);
       
       const result = await dbClient.query(`
-        SELECT id, project_id, status, framework, target, created_at, started_at, completed_at, error_log, artifact_url
+        SELECT id, project_id AS "projectId", status, framework, target, created_at AS "createdAt", started_at AS "startedAt", completed_at AS "completedAt", error_log AS "errorLog", artifact_url AS "artifactUrl"
         FROM build_jobs
         WHERE id = $1
       `, [jobId]);
@@ -264,6 +264,9 @@ buildRouter.get('/:jobId/stream', requireAuth, async (req, res) => {
             const newChunk = logStr.slice(lastLength);
             lastLength = logStr.length;
             res.write(`data: ${JSON.stringify({ chunk: newChunk })}\n\n`);
+          } else {
+            // Send keep-alive to prevent Body Timeout Error on long Docker pulls
+            res.write(`:\n\n`);
           }
           
           if (row.status === 'success' || row.status === 'failed' || row.status === 'cancelled') {

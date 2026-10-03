@@ -877,6 +877,7 @@ export type CapabilityTier = 'fast' | 'reasoning' | 'premium';
 
 export interface AIRequest {
   tier: CapabilityTier;
+  manualModel?: string;
   messages: any[];
   tools?: any[];
 }

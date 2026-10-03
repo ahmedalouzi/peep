@@ -71,8 +71,13 @@ export function useWorkspace() {
       const name = newPath.split(/[\\/]/).pop() || 'Unknown';
       store.openFile({ path: newPath, name, content: file.content, dirty: false });
     } else {
-      await window.peep.writeFile(file.path, file.content);
-      store.openFile({ ...file, dirty: false });
+      store.openFile({ ...file, dirty: false, externallyModified: false });
+      try {
+        await window.peep.writeFile(file.path, file.content);
+      } catch (err) {
+        store.openFile({ ...file, dirty: true });
+        console.error(err);
+      }
     }
   }, [store]);
 
@@ -81,8 +86,12 @@ export function useWorkspace() {
     for (const file of openFiles) {
       if (file.dirty) {
         if (!file.path.startsWith('untitled-')) {
-          await window.peep.writeFile(file.path, file.content);
-          store.openFile({ ...file, dirty: false });
+          store.openFile({ ...file, dirty: false, externallyModified: false });
+          try {
+            await window.peep.writeFile(file.path, file.content);
+          } catch (err) {
+            store.openFile({ ...file, dirty: true });
+          }
         }
       }
     }

@@ -18,6 +18,7 @@ export interface AgentConfig {
   logger?: AgentLogger;
   threadId?: string;
   runId?: string;
+  manualModel?: string;
 }
 
 export interface AgentCallbacks {
@@ -117,6 +118,7 @@ async function callOpenAI(
       const stream = config.gateway.stream(
         {
           tier: config.capabilityTier,
+          manualModel: config.manualModel,
           messages: messages.map((m) => {
             if (m.role === 'tool') {
               return { role: 'tool', content: m.content, tool_call_id: m.tool_call_id, name: m.name || 'tool_name' };

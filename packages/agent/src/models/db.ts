@@ -42,13 +42,7 @@ export async function initDbSchema() {
     `);
     
     // Migration for existing tables
-    try {
-      await client.query(`ALTER TABLE users ADD COLUMN plan VARCHAR(50) DEFAULT 'free';`);
-    } catch (e: any) {
-      if (e.code !== '42701') { // 42701 is duplicate_column error in Postgres
-        throw e;
-      }
-    }
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS plan VARCHAR(50) DEFAULT 'free';`);
     
     await client.query(`
       CREATE TABLE IF NOT EXISTS sessions (
@@ -110,6 +104,13 @@ export async function initDbSchema() {
       INSERT INTO system_config (key, value)
       VALUES ('global_kill_switch', '{"is_active": false}')
       ON CONFLICT (key) DO NOTHING;
+    `);
+
+    // Insert mock user for dev bypass
+    await client.query(`
+      INSERT INTO users (id, email, password_hash, plan)
+      VALUES ('00000000-0000-0000-0000-000000000000', 'dev@synkro.com', 'mock_hash', 'pro')
+      ON CONFLICT (id) DO NOTHING;
     `);
 
     // Chat Threads
@@ -185,6 +186,28 @@ export async function initDbSchema() {
         version_code        INTEGER     NOT NULL DEFAULT 1,
         keystore_secret_id  TEXT
       );
+    `);
+
+    await client.query(`
+      ALTER TABLE build_jobs 
+      ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS build_duration_ms INTEGER,
+      ADD COLUMN IF NOT EXISTS source_path TEXT,
+      ADD COLUMN IF NOT EXISTS artifact_url TEXT,
+      ADD COLUMN IF NOT EXISTS artifact_size_bytes BIGINT,
+      ADD COLUMN IF NOT EXISTS error_log TEXT,
+      ADD COLUMN IF NOT EXISTS worker_id TEXT,
+      ADD COLUMN IF NOT EXISTS container_id TEXT,
+      ADD COLUMN IF NOT EXISTS version_name TEXT DEFAULT '1.0.0',
+      ADD COLUMN IF NOT EXISTS version_code INTEGER DEFAULT 1,
+      ADD COLUMN IF NOT EXISTS keystore_secret_id TEXT,
+      ADD COLUMN IF NOT EXISTS framework build_framework DEFAULT 'flutter',
+      ADD COLUMN IF NOT EXISTS target TEXT DEFAULT 'apk',
+      ADD COLUMN IF NOT EXISTS status build_status DEFAULT 'queued';
+    `);
+
+    await client.query(`
       CREATE INDEX IF NOT EXISTS idx_build_jobs_user_id    ON build_jobs(user_id);
       CREATE INDEX IF NOT EXISTS idx_build_jobs_status     ON build_jobs(status) WHERE status IN ('queued', 'running');
       CREATE INDEX IF NOT EXISTS idx_build_jobs_created_at ON build_jobs(created_at DESC);
@@ -246,7 +269,6 @@ export async function initDbSchema() {
       
       GRANT SELECT, INSERT ON build_jobs TO api_user;
       GRANT UPDATE (status) ON build_jobs TO api_user;
-      
       GRANT SELECT, INSERT, UPDATE, DELETE ON chat_threads, chat_messages, chat_runs TO api_user;
 
       DO $$ BEGIN

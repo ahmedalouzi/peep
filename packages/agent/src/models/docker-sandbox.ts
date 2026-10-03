@@ -16,7 +16,7 @@ export interface SandboxConfig {
 }
 
 const FRAMEWORK_IMAGES: Record<BuildFramework, string> = {
-  'flutter': 'ghcr.io/cirruslabs/flutter@sha256:0a9de3b70b5b7b921a346eb2793e363dc22280849a4fd690d9dde99ce1c2b1b8',
+  'flutter': 'ghcr.io/cirruslabs/flutter:3.24.3',
   'react-native': 'reactnativecommunity/react-native-android@sha256:10ab6f44862b9fb9c1c64fb94566ce9f3c11f5a016f9061ef1a38f30a6bcc76f',
 };
 
@@ -148,7 +148,9 @@ export class DockerSandbox {
 
     onLog(`[SYSTEM] Setting source ownership to unprivileged user...\n`);
     try {
-      await execFileAsync('chown', ['-R', '1000:1000', this.config.projectPath]);
+      if (process.platform !== 'win32') {
+        await execFileAsync('chown', ['-R', '1000:1000', this.config.projectPath]);
+      }
     } catch (err: any) {
       onLog(`[SYSTEM] Host source chown failed: ${err.message}\n`);
       return false;
@@ -165,7 +167,9 @@ export class DockerSandbox {
     if (hasKeystore) {
       onLog(`[SYSTEM] Injecting signing keystore...\n`);
       try {
-        await execFileAsync('chown', ['1000:1000', this.config.keystorePath!]);
+        if (process.platform !== 'win32') {
+          await execFileAsync('chown', ['1000:1000', this.config.keystorePath!]);
+        }
         await execFileAsync('docker', ['cp', this.config.keystorePath!, `${this.containerName}:/build/release.jks`]);
       } catch (err: any) {
         onLog(`[SYSTEM] Keystore injection failed: ${err.message}\n`);

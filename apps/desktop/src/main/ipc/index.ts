@@ -139,6 +139,11 @@ export async function registerIpcHandlers(): Promise<{
   const originalHandle = ipcMain.handle.bind(ipcMain);
   ipcMain.handle = (channel: string, listener: (...args: any[]) => any) => {
     return originalHandle(channel, async (event, ...args) => {
+      // Don't apply path traversal checks to text-heavy channels like chat/agent send
+      if (channel === 'agent:send' || channel === 'chat:send') {
+        return listener(event, ...args);
+      }
+      
       for (const arg of args) {
         if (typeof arg === 'string') {
           if (arg.includes('..') || arg.split(/[/\\]/).includes('..')) {
@@ -147,6 +152,7 @@ export async function registerIpcHandlers(): Promise<{
         } else if (typeof arg === 'object' && arg !== null) {
           for (const [key, value] of Object.entries(arg)) {
             if (typeof value === 'string' && (value.includes('..') || value.split(/[/\\]/).includes('..'))) {
+              if (key === 'message' || key === 'content' || key === 'prompt') continue; // Safe text fields
               throw new Error(`IPC Security Block: Traversal path argument key "${key}" not allowed in channel ${channel}`);
             }
           }

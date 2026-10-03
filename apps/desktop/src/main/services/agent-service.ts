@@ -1034,6 +1034,7 @@ export class AgentService {
         await runAgentLoop(
           {
             capabilityTier: settings.capabilityTier || 'fast',
+            manualModel: settings.apiModel,
             gateway: selectedGw,
             sessionToken: settings.sessionToken || 'dev_test_session',
             threadId: options.threadId,

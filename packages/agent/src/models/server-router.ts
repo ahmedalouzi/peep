@@ -54,7 +54,7 @@ export class ServerModelRouter {
     }
   };
 
-  route(tier: ModelTier, plan = 'pro'): ServerModelConfig {
+  route(tier: ModelTier, plan = 'pro', manualModel?: string): ServerModelConfig {
     const config = this.routes[tier];
     if (!config) {
       throw new Error(`Unsupported model tier: ${tier}`);
@@ -63,6 +63,17 @@ export class ServerModelRouter {
     // Plan boundary checking
     if (tier === 'premium' && plan === 'free') {
       throw new Error('Premium tier requires a paid active subscription plan.');
+    }
+
+    if (manualModel) {
+      let providerId = 'openai';
+      if (manualModel.startsWith('gemini')) providerId = 'google';
+      if (manualModel.startsWith('claude')) providerId = 'anthropic';
+      return {
+        ...config,
+        providerId,
+        modelId: manualModel
+      };
     }
 
     return config;

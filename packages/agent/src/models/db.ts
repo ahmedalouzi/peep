@@ -107,11 +107,13 @@ export async function initDbSchema() {
     `);
 
     // Insert mock user for dev bypass
-    await client.query(`
-      INSERT INTO users (id, email, password_hash, plan)
-      VALUES ('00000000-0000-0000-0000-000000000000', 'dev@synkro.com', 'mock_hash', 'pro')
-      ON CONFLICT (id) DO NOTHING;
-    `);
+    if (process.env.SYNKRO_SEED_DEV_USER === 'true') {
+      await client.query(`
+        INSERT INTO users (id, email, password_hash, plan)
+        VALUES ('00000000-0000-0000-0000-000000000000', 'dev@synkro.com', 'mock_hash', 'pro')
+        ON CONFLICT (id) DO NOTHING;
+      `);
+    }
 
     // Chat Threads
     await client.query(`

@@ -228,13 +228,19 @@ export async function startBuildWorker() {
                   [url, sizeBytes, job.id]
                 ));
               } catch (uploadErr: any) {
-                // SECURITY FIX: Never store a local filesystem path as artifact_url.
-                // For local testing without MinIO, we fallback to a mock URL so the UI button appears.
-                console.warn(`[BUILD_WORKER] MinIO upload failed for job ${job.id}, falling back to mock URL:`, uploadErr);
-                await withWorkerRole(async (c) => c.query(
-                  `UPDATE build_jobs SET status = 'success', completed_at = NOW(), artifact_url = $1, artifact_size_bytes = 0, updated_at = NOW() WHERE id = $2 AND status != 'cancelled'`,
-                  ['https://example.com/mock-artifact-local-fallback.apk', job.id]
-                ));
+                if (process.env.SYNKRO_ALLOW_MOCK_ARTIFACT === 'true') {
+                  console.warn(`[BUILD_WORKER] [WARNING] SYNKRO_ALLOW_MOCK_ARTIFACT is enabled. MinIO upload failed for job ${job.id}, falling back to mock URL:`, uploadErr);
+                  await withWorkerRole(async (c) => c.query(
+                    `UPDATE build_jobs SET status = 'success', completed_at = NOW(), artifact_url = $1, artifact_size_bytes = 0, updated_at = NOW() WHERE id = $2 AND status != 'cancelled'`,
+                    ['https://example.com/mock-artifact-local-fallback.apk', job.id]
+                  ));
+                } else {
+                  console.error(`[BUILD_WORKER] MinIO upload failed for job ${job.id}:`, uploadErr);
+                  await withWorkerRole(async (c) => c.query(
+                    `UPDATE build_jobs SET status = 'failed', completed_at = NOW(), error_log = COALESCE(error_log, '') || $1, updated_at = NOW() WHERE id = $2 AND status != 'cancelled'`,
+                    [`[STORAGE] Artifact upload failed: ${uploadErr.message}\n`, job.id]
+                  ));
+                }
               }
             } else {
               await withWorkerRole(async (c) => c.query(

@@ -22,7 +22,8 @@ const FRAMEWORK_IMAGES: Record<BuildFramework, string> = {
 
 function getBuildCommand(framework: BuildFramework, hasKeystore: boolean): string {
   if (framework === 'flutter') {
-    return 'git config --global --add safe.directory /sdks/flutter && cd /build && flutter build apk --release';
+    // Copy the root-owned SDK to a writable directory so the unprivileged worker can write to the cache.
+    return 'cp -r /sdks/flutter /tmp/flutter && git config --global --add safe.directory /tmp/flutter && export PATH=/tmp/flutter/bin:$PATH && cd /build && flutter build apk --release';
   }
   // Append sandbox Gradle constraints to android/gradle.properties before invoking the wrapper:
   //   - workers.max=2: cap JVM worker processes to our CPU budget (avoids spawning host-core-count workers)

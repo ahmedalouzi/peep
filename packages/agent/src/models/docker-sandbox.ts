@@ -16,14 +16,13 @@ export interface SandboxConfig {
 }
 
 const FRAMEWORK_IMAGES: Record<BuildFramework, string> = {
-  'flutter': 'ghcr.io/cirruslabs/flutter@sha256:0a9de3b70b5b7b921a346eb2793e363dc22280849a4fd690d9dde99ce1c2b1b8',
+  'flutter': 'synkro/flutter-sandbox:1',
   'react-native': 'reactnativecommunity/react-native-android@sha256:10ab6f44862b9fb9c1c64fb94566ce9f3c11f5a016f9061ef1a38f30a6bcc76f',
 };
 
 function getBuildCommand(framework: BuildFramework, hasKeystore: boolean): string {
   if (framework === 'flutter') {
-    // Copy the root-owned SDK to a writable directory so the unprivileged worker can write to the cache.
-    return 'cp -r /sdks/flutter /tmp/flutter && git config --global --add safe.directory /tmp/flutter && export PATH=/tmp/flutter/bin:$PATH && cd /build && flutter build apk --release';
+    return 'cd /build && flutter build apk --release';
   }
   // Append sandbox Gradle constraints to android/gradle.properties before invoking the wrapper:
   //   - workers.max=2: cap JVM worker processes to our CPU budget (avoids spawning host-core-count workers)

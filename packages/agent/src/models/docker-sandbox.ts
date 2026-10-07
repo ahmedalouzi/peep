@@ -211,10 +211,12 @@ export class DockerSandbox {
         if (!isResolved) {
           isResolved = true;
           clearTimeout(timeoutTimer);
-          await this.forceKill();
           if (code === 0) {
+            // Do NOT forceKill here. The container must remain (in stopped state)
+            // so we can extract the artifact from it.
             resolve(true);
           } else {
+            await this.forceKill();
             onLog(`[SYSTEM] Build exited with code ${code}`);
             resolve(false);
           }
@@ -224,51 +226,61 @@ export class DockerSandbox {
   }
 
   /**
-   * Extracts the built artifact using `docker exec cat` instead of `docker cp`.
+   * Extracts the built artifact safely from the stopped container.
    *
    * SECURITY: docker cp resolves symlinks found inside the container's tar
-   * stream relative to the HOST filesystem (a known Docker behavior class,
-   * see CVE-2019-14271). A malicious build could plant a symlink at the
-   * expected artifact path pointing to /etc/shadow or similar, and docker cp
-   * would happily exfiltrate the HOST's file — proven experimentally today.
-   *
-   * `docker exec <container> cat <path>` instead resolves the path strictly
-   * inside the container's own mount namespace, making symlink escape to the
-   * host impossible by construction.
+   * stream relative to the HOST filesystem (CVE-2019-14271).
+   * To prevent a malicious build from planting a symlink at the artifact path
+   * (e.g. pointing to /etc/shadow) and exfiltrating host files:
+   * 1. We docker cp the PARENT directory of the artifact into a fresh host temp dir.
+   * 2. We use fs.lstat (which does not follow symlinks) on the host to verify
+   *    the artifact is a regular file before reading/copying it.
    */
   async extractArtifact(localDestPath: string): Promise<boolean> {
     const framework = this.config.framework || 'flutter';
     const artifactPath = getArtifactPath(framework);
     const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
     const execFileAsync = promisify(execFile);
+    const { mkdtemp, lstat, copyFile, rm } = await import('node:fs/promises');
+    const { join, dirname, basename } = await import('node:path');
+    const os = await import('node:os');
 
-    // Defense-in-depth: reject outright if the artifact path is a symlink.
-    // A legitimate build artifact should never be a symlink.
+    const tempDir = await mkdtemp(join(os.tmpdir(), 'extract-'));
     try {
-      await execFileAsync('docker', ['exec', this.containerName, 'test', '-L', artifactPath]);
-      console.error(`[SECURITY] Critical: Symlink detected at artifact path. Extraction rejected.`);
-      return false;
-    } catch {
-      // test -L exits non-zero if the path is NOT a symlink — expected/safe.
-    }
+      // 1. Copy the parent directory to a safe host location
+      await execFileAsync('docker', ['cp', `${this.containerName}:${dirname(artifactPath)}/.`, tempDir]);
 
-    try {
-      const { createWriteStream } = await import('node:fs');
-      return new Promise((resolve) => {
-        const child = spawn('docker', ['exec', this.containerName, 'cat', artifactPath]);
-        const destStream = createWriteStream(localDestPath);
-        child.stdout?.pipe(destStream);
-        child.on('close', (code) => {
-          resolve(code === 0);
-        });
-        child.on('error', (err) => {
-          console.error(`[DOCKER] Artifact stream spawn error: ${err.message}`);
-          resolve(false);
-        });
-      });
+      const extractedFile = join(tempDir, basename(artifactPath));
+      
+      // 2. Safely verify it is a regular file
+      const stats = await lstat(extractedFile);
+      
+      if (stats.isSymbolicLink()) {
+        console.error(`[SECURITY] Critical: Symlink detected at artifact path. Extraction rejected.`);
+        return false;
+      }
+      
+      if (!stats.isFile()) {
+        console.error(`[SYSTEM] Artifact is not a regular file.`);
+        return false;
+      }
+
+      // 3. Size cap (250MB) to prevent disk exhaustion
+      const MAX_SIZE = 250 * 1024 * 1024;
+      if (stats.size > MAX_SIZE) {
+        console.error(`[SYSTEM] Artifact size exceeds limit of 250MB.`);
+        return false;
+      }
+
+      // 4. Move to final destination
+      await copyFile(extractedFile, localDestPath);
+      return true;
     } catch (err: any) {
       console.error(`[DOCKER] Artifact extraction failed: ${err.message}`);
       return false;
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
     }
   }
 

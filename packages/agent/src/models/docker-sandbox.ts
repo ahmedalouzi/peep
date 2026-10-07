@@ -22,7 +22,9 @@ const FRAMEWORK_IMAGES: Record<BuildFramework, string> = {
 
 function getBuildCommand(framework: BuildFramework, hasKeystore: boolean): string {
   if (framework === 'flutter') {
-    return 'cd /build && flutter build apk --release';
+    // If the project lacks an android/ folder (e.g. web-only repo), generate it safely
+    // without overwriting existing lib/ or pubspec.yaml.
+    return 'cd /build && ( [ -d android ] || flutter create --platforms=android . ) && flutter build apk --release';
   }
   // Append sandbox Gradle constraints to android/gradle.properties before invoking the wrapper:
   //   - workers.max=2: cap JVM worker processes to our CPU budget (avoids spawning host-core-count workers)

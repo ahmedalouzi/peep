@@ -1,5 +1,6 @@
 FROM ghcr.io/cirruslabs/flutter@sha256:0a9de3b70b5b7b921a346eb2793e363dc22280849a4fd690d9dde99ce1c2b1b8
 USER root
-RUN chown -R 1000:1000 /sdks/flutter && chmod -R u+rwX /sdks/flutter \
+RUN chown -R 1000:1000 /sdks/flutter /opt/android-sdk-linux \
+ && chmod -R u+rwX /sdks/flutter /opt/android-sdk-linux \
  && git config --system --add safe.directory /sdks/flutter
 USER 1000:1000

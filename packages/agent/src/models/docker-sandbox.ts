@@ -16,7 +16,7 @@ export interface SandboxConfig {
 }
 
 const FRAMEWORK_IMAGES: Record<BuildFramework, string> = {
-  'flutter': 'synkro/flutter-sandbox:1',
+  'flutter': 'synkro/flutter-sandbox:2',
   'react-native': 'reactnativecommunity/react-native-android@sha256:10ab6f44862b9fb9c1c64fb94566ce9f3c11f5a016f9061ef1a38f30a6bcc76f',
 };
 

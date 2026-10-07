@@ -90,6 +90,11 @@ export class DockerSandbox {
     const netName = await this.setupNetwork(onLog);
     if (!netName) return false;
 
+    // Flutter needs a much larger storage limit (15G) because the SDK/Android SDK are in the image layer
+    // and NDK/CMake downloads at build time consume a significant amount of additional space.
+    // React Native remains at 5G.
+    const storageLimit = framework === 'flutter' ? 'size=15G' : 'size=5G';
+
     const createArgs = [
       'create',
       '--name', this.containerName,
@@ -97,7 +102,7 @@ export class DockerSandbox {
       '--memory-swap=5g',
       '--cpus=2.0',
       '--pids-limit=384',
-      '--storage-opt', 'size=5G',
+      '--storage-opt', storageLimit,
       '--cap-drop=ALL',
       '--security-opt', 'no-new-privileges',
       '--network', netName,

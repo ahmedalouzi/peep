@@ -1,6 +1,6 @@
 import { db } from './db';
 import { DockerSandbox, BuildFramework } from './docker-sandbox';
-import { uploadArtifact, ensureBucket } from './artifact-store';
+import { uploadArtifact, ensureBucket, isMinioConfigured } from './artifact-store';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 import AdmZip from 'adm-zip';
@@ -72,12 +72,16 @@ async function reapOrphanedContainers() {
 export async function startBuildWorker() {
   console.log('[BUILD_WORKER] Starting worker, reconciler, and reaper...');
   
-  // Ensure MinIO bucket exists on startup
-  try {
-    await ensureBucket();
-    console.log('[BUILD_WORKER] MinIO bucket verified.');
-  } catch (err) {
-    console.warn('[BUILD_WORKER] MinIO not available, will retry on artifact upload:', err);
+  // Ensure MinIO bucket exists on startup if configured
+  if (isMinioConfigured()) {
+    try {
+      await ensureBucket();
+      console.log('[BUILD_WORKER] MinIO bucket verified.');
+    } catch (err) {
+      console.warn('[BUILD_WORKER] MinIO not available, will retry on artifact upload:', err);
+    }
+  } else {
+    console.log('[BUILD_WORKER] MinIO not configured, using local disk storage.');
   }
 
   // Startup cleanup: reap any lingering containers from previous crashes
@@ -222,7 +226,27 @@ export async function startBuildWorker() {
             const extracted = await sandbox.extractArtifact(localApkPath);
             if (extracted) {
               try {
-                const { url, sizeBytes } = await uploadArtifact(job.id, localApkPath, 'app-release.apk');
+                let url: string;
+                let sizeBytes: number;
+                
+                if (isMinioConfigured()) {
+                  const res = await uploadArtifact(job.id, localApkPath, 'app-release.apk');
+                  url = res.url;
+                  sizeBytes = res.sizeBytes;
+                } else {
+                  const destDir = process.env.ARTIFACT_DIR || '/var/lib/synkro/artifacts';
+                  const userDir = path.join(destDir, job.user_id.toString());
+                  const destPath = path.join(userDir, `${job.id}.apk`);
+                  
+                  await fs.mkdir(userDir, { recursive: true, mode: 0o700 });
+                  await fs.copyFile(localApkPath, destPath);
+                  const stat = await fs.stat(destPath);
+                  sizeBytes = stat.size;
+                  
+                  // Store relative URL for local artifacts
+                  url = `/api/build/${job.id}/download`;
+                }
+
                 await withWorkerRole(async (c) => c.query(
                   `UPDATE build_jobs SET status = 'success', completed_at = NOW(), artifact_url = $1, artifact_size_bytes = $2, updated_at = NOW() WHERE id = $3 AND status != 'cancelled'`,
                   [url, sizeBytes, job.id]

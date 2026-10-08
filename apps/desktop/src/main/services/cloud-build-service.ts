@@ -84,7 +84,12 @@ export class CloudBuildService {
       const errData = await res.json().catch(() => ({}));
       throw new Error(`Cloud Build Get Failed: ${errData.error || res.statusText}`);
     }
-    return res.json();
+    const data = await res.json();
+    if (data.artifactUrl && data.artifactUrl.startsWith('/')) {
+      const settings = this.db.getSettingsRaw();
+      data.artifactUrl = `${this.getGatewayUrl()}${data.artifactUrl}?token=${encodeURIComponent(settings.sessionToken || '')}`;
+    }
+    return data;
   }
 
   async getHistory() {
@@ -97,7 +102,14 @@ export class CloudBuildService {
       const errData = await res.json().catch(() => ({}));
       throw new Error(`Cloud Build History Failed: ${errData.error || res.statusText}`);
     }
-    return res.json();
+    const data = await res.json();
+    const settings = this.db.getSettingsRaw();
+    return data.map((job: any) => {
+      if (job.artifactUrl && job.artifactUrl.startsWith('/')) {
+        job.artifactUrl = `${this.getGatewayUrl()}${job.artifactUrl}?token=${encodeURIComponent(settings.sessionToken || '')}`;
+      }
+      return job;
+    });
   }
 
   async cancelBuild(id: string) {

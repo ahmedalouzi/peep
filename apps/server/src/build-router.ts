@@ -187,6 +187,65 @@ buildRouter.get('/:jobId', requireAuth, async (req, res) => {
   }
 });
 
+buildRouter.get('/:jobId/download', requireAuth, async (req, res) => {
+  try {
+    const userId = (req as any).user.userId;
+    const jobId = req.params.jobId;
+
+    const dbClient = await client.connect();
+    let job;
+    try {
+      await dbClient.query('BEGIN');
+      await dbClient.query('SET LOCAL ROLE api_user');
+      await dbClient.query('SELECT set_config($1, $2, true)', ['app.current_user_id', userId]);
+      
+      const result = await dbClient.query(`
+        SELECT id, status, artifact_url
+        FROM build_jobs
+        WHERE id = $1
+      `, [jobId]);
+      
+      await dbClient.query('COMMIT');
+      job = result.rows[0];
+    } catch (e) {
+      await dbClient.query('ROLLBACK');
+      throw e;
+    } finally {
+      dbClient.release();
+    }
+
+    if (!job) {
+      res.status(404).json({ error: 'Build job not found' });
+      return;
+    }
+    
+    if (job.status !== 'success') {
+      res.status(400).json({ error: 'Artifact not ready or build failed' });
+      return;
+    }
+
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const destDir = process.env.ARTIFACT_DIR || '/var/lib/synkro/artifacts';
+    
+    // We strictly use userId and jobId (UUIDs) avoiding path traversal
+    const artifactPath = path.join(destDir, userId.toString(), `${jobId}.apk`);
+
+    if (!fs.existsSync(artifactPath)) {
+      res.status(404).json({ error: 'Artifact file not found on disk' });
+      return;
+    }
+
+    res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+    res.setHeader('Content-Disposition', 'attachment; filename="app-release.apk"');
+    const stream = fs.createReadStream(artifactPath);
+    stream.pipe(res);
+  } catch (err) {
+    console.error('[GET /build/:jobId/download]', err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 buildRouter.post('/:jobId/cancel', requireAuth, async (req, res) => {
   try {
     const userId = (req as any).user.userId;

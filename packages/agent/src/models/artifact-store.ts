@@ -14,8 +14,12 @@ function getMinioClient(): MinioClient {
       accessKey: process.env.MINIO_ACCESS_KEY || '',
       secretKey: process.env.MINIO_SECRET_KEY || '',
     });
-  }
+}
   return minioInstance;
+}
+
+export function isMinioConfigured(): boolean {
+  return !!process.env.MINIO_ACCESS_KEY && !!process.env.MINIO_SECRET_KEY;
 }
 
 /**

@@ -144,7 +144,7 @@ app.whenReady().then(() => {
     });
   }
 
-  void registerIpcHandlers().then((services) => {
+  void registerIpcHandlers({ createWindow, syncSentryOptIn }).then((services) => {
     appServices = services;
     createWindow();
     setupPoCIpc(mainWindow);

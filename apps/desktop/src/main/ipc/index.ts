@@ -123,7 +123,15 @@ async function onProjectOpened(
   });
 }
 
-export async function registerIpcHandlers(): Promise<{
+interface IpcDependencies {
+  createWindow: () => void;
+  syncSentryOptIn: (enabled: boolean) => void;
+}
+
+export async function registerIpcHandlers({
+  createWindow,
+  syncSentryOptIn,
+}: IpcDependencies): Promise<{
   db: DatabaseService;
   workspace: WorkspaceManager;
   flutter: FlutterService;
@@ -307,10 +315,6 @@ export async function registerIpcHandlers(): Promise<{
   });
 
   ipcMain.handle(IPC_CHANNELS.APP_NEW_WINDOW, async () => {
-    // Requires createWindow function to be exported from main, or we can just emit an event to main.
-    // Or we can just import createWindow from index.ts. 
-    // To avoid circular dependency, we can just require it dynamically.
-    const { createWindow } = require('../index');
     await createWindow();
   });
 
@@ -768,7 +772,6 @@ export async function registerIpcHandlers(): Promise<{
 
   ipcMain.handle(IPC_CHANNELS.TELEMETRY_SET, async (_event, enabled: boolean) => {
     await telemetryService.setEnabled(enabled);
-    const { syncSentryOptIn } = require('../index');
     syncSentryOptIn(enabled);
     await db!.setSettings({ telemetryEnabled: enabled });
   });
